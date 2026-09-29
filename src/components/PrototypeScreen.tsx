@@ -541,7 +541,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
 
                 {/* Render through ScreenCanvas if UI spec exists, otherwise show prompt */}
                 {benchmarkScreen ? (
-                  <ScreenCanvas key={benchmarkScreen.id} screen={benchmarkScreen} readOnly={isReadOnlyRole} />
+                  <ScreenCanvas key={benchmarkScreen.id} screen={benchmarkScreen} readOnly={isReadOnlyRole} entities={definition.dataEntities} />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
                     <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">

@@ -69,6 +69,42 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
   banners. Never claim facts about a named company; patterns stay generic.
 - Not covered: the deterministic local engine does not benchmark (no LLM available).
 
+## Field constraints & validation (domain-neutral)
+
+The factory infers each entity's compulsory fields and validation rules for ANY domain; the code has
+no domain knowledge. Nothing in the engine, the prompt rules or the form may name a business domain.
+- **Model** (`src/types.ts`): `DataFieldDefinition` gains optional `constraints` (format, length, pattern,
+  range/step/precision, enumValues, unique, immutable, sensitivity), `origin` (BU / INFERRED / SYSTEM) and
+  `source` (user / system / derived). `DataEntityDefinition` gains `lifecycle`, `rules` and
+  `crossRecordRules`. All optional, so old sessions still load. Legacy `type` strings such as
+  `string(17)` or `enum(A, B)` are parsed into constraints.
+- **Engine** (`src/services/validationEngine.ts`): pure TypeScript, imported by both the browser and
+  Express. `validateRecord`, `evaluateRules`, `canTransition`, `withSystemFields`, `entityToSQL`.
+  Rule vocabulary: conditional, compare, requiredTogether, mutuallyExclusive. Edit rules here once, both
+  sides change.
+- **System fields**: `id` (unless a business key exists), `createdAt/By`, `updatedAt/By`, `rowVersion`, plus
+  the lifecycle status field. Injected by the server for every entity; clients may not send them.
+  Existing fields with alias names (`created_at`) keep their name but take the system constraints.
+- **Untrusted patterns**: model- and client-supplied regexes go through `isSafePattern` (length cap, no
+  backreferences, no quantified group with an unbounded quantifier or alternation). Unsafe ones are dropped
+  with a warning in `definition.constraintWarnings`.
+- **Inference**: `FIELD_INFERENCE_RULES` (server/constraints.ts) is added to the definition prompt.
+  `normalizeDefinitionConstraints` sanitises the result, drops rules that reference unknown fields, marks
+  provenance, and `finalizeConstraints` adds the BU review question `oq-constraint-validation`. Fields the
+  local engine invents are marked INFERRED even when the entity is confirmed.
+- **API**: `POST /api/validate-record` `{ entity, record, mode, existing? }` -> 200 `{valid:true}`,
+  422 `{valid:false, issues[{path,code,message}]}`, 400 malformed, 413 over 1 MB. Stateless: nothing is
+  stored. Rules that need storage (uniqueness, capacity, references) are NOT checked; they are listed as
+  `crossRecordRules` and written into the engineering package for the real backend.
+- **Engineering package**: SQL now has NOT NULL / UNIQUE / CHECK / enum constraints and section 8 of the
+  requirements document lists fields, lifecycle and rules.
+- **UI**: a `form-wizard` screen renders `EntityForm` (real inputs, blur validation, conditional
+  fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
+  appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
+  an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
+- **Checks**: `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+  `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
+
 ## Prototype UI
 
 Each screen carries a `ui` blueprint (`ScreenUISpec`: kpis, filters, sample table, detailPanels,

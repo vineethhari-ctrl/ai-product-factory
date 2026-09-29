@@ -78,6 +78,7 @@ export const UI_SPEC_RULES = `UI BLUEPRINT RULES (the prototype renders each scr
 - detailPanels: 2 to 3 panels of labelled facts about the selected record.
 - primaryActions: 2 to 4 verbs a user performs here, such as "Reassign", "Approve" or "Schedule service".
 - benchmarkNote: one sentence naming the industry pattern this layout mirrors.
+- entity: for a form-wizard screen, the exact name of the data entity the form creates or edits (as listed in dataEntities); omit it for other layouts.
 - All values are illustrative sample data; use plausible domain terminology and never real personal data.\n`;
 
 /** Make sure inferred items carry an "Industry benchmark" evidence entry. */

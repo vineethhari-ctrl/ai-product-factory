@@ -8,6 +8,8 @@ import {
   ClarificationItem 
 } from "../src/types";
 import { callLLMJSON } from "./llmRouter";
+import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
+import { entityToSQL } from "../src/services/validationEngine";
 import {
   BENCHMARK_TAG,
   UI_SPEC_RULES,
@@ -220,6 +222,13 @@ Return ONLY a valid JSON object matching this schema:
   return generateDeterministicUnderstanding(materials, productName, businessUnit, description);
 }
 
+/** Normalise entity constraints and add the BU review question when any were inferred. */
+function finalizeConstraints(definition: ProductDefinition): ProductDefinition {
+  const { definition: normalized, inferredCount } = normalizeDefinitionConstraints(definition);
+  if (inferredCount === 0) return normalized;
+  return { ...normalized, openQuestions: [constraintOpenQuestion(inferredCount), ...normalized.openQuestions] };
+}
+
 export async function generateProductDefinition(
   understanding: BusinessUnderstanding,
   productName: string,
@@ -242,6 +251,7 @@ ${JSON.stringify(understanding, null, 2)}
 
 ${benchmarkBlock}
 ${UI_SPEC_RULES}
+${FIELD_INFERENCE_RULES}
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
 - DATA ENTITIES: For EVERY entity, generate 8-15 fields with correct types (string, number, boolean, timestamp, enum(...), text, json, uuid), accurate required/optional flags, and descriptive notes. ALWAYS include: id (uuid, required), created_at (timestamp), updated_at (timestamp), created_by (string), status (enum), plus all domain-specific fields a real production database would need. NEVER leave an entity with fewer than 6 fields.
 - VALIDATIONS: Generate 8-15 input validation rules covering: email format, phone format, required field enforcement, min/max length, numeric range, date range constraints, enum value constraints, unique constraints, regex patterns, and cross-field dependencies. Cover EVERY user-facing form field.
@@ -299,7 +309,8 @@ Return ONLY a valid JSON object matching this schema:
         },
         "detailPanels": [{"title": "Request Details", "items": [{"label": "Priority", "value": "High"}]}],
         "primaryActions": ["Reassign", "Approve"],
-        "benchmarkNote": "Mirrors the queue-and-detail pattern common in OEM dealer service tools"
+        "entity": "Exact name of the data entity this screen creates or edits (required for form-wizard screens, otherwise omit)",
+        "benchmarkNote": "Mirrors the queue-and-detail pattern common in comparable industry products"
       }
     }
   ],
@@ -339,8 +350,16 @@ Return ONLY a valid JSON object matching this schema:
       "name": "Entity Name",
       "description": "Purpose",
       "fields": [
-        {"name": "field1", "type": "string", "required": true, "notes": "Primary Key"}
+        {"name": "fieldName", "type": "string", "required": true, "notes": "Why this field exists", "format": "identifier", "minLength": 3, "maxLength": 40, "pattern": "^[A-Z0-9-]+$", "unique": true, "origin": "BU" | "INFERRED"},
+        {"name": "stateField", "type": "enum", "required": true, "format": "enum", "enumValues": ["STATE_A", "STATE_B"], "origin": "INFERRED"},
+        {"name": "amountField", "type": "decimal", "required": false, "format": "decimal", "min": 0, "precision": 2, "sensitivity": "financial", "origin": "INFERRED"}
       ],
+      "lifecycle": {"statusField": "stateField", "states": ["STATE_A", "STATE_B"], "initial": "STATE_A", "transitions": [{"from": "STATE_A", "to": "STATE_B"}]},
+      "rules": [
+        {"id": "r1", "kind": "conditional", "when": {"field": "stateField", "op": "eq", "value": "STATE_B"}, "effect": "required", "target": "amountField", "message": "Enter an amount before moving to STATE_B."},
+        {"id": "r2", "kind": "compare", "left": "startField", "op": "lt", "right": "endField", "message": "End must be after start."}
+      ],
+      "crossRecordRules": ["Sentence describing a rule that needs other records, such as uniqueness or capacity."],
       "relationships": ["Entity B (1:N)"],
       "confidence": "CONFIRMED" | "INFERRED",
       "evidence": ["filename.ext"]
@@ -413,7 +432,7 @@ Return ONLY a valid JSON object matching this schema:
     });
     if (parsed) {
       const { evidenceMapping, ...rest } = parsed;
-      const definition: ProductDefinition = {
+      const built: ProductDefinition = {
         ...rest,
         // Table rows must match their column count or the prototype table breaks.
         screens: rest.screens.map((s) => ({ ...s, ui: normalizeUISpec(s.ui) })),
@@ -427,6 +446,8 @@ Return ONLY a valid JSON object matching this schema:
         isApproved: false,
         lastUpdated: new Date().toISOString(),
       };
+      // Sanitise inferred field constraints, guarantee the system fields, and ask the BU to confirm what was predicted.
+      const definition = finalizeConstraints(built);
       if (!thinness.thin) return definition;
 
       // Thin input: tag what was predicted and guarantee the BU is asked to validate it.
@@ -452,7 +473,7 @@ Return ONLY a valid JSON object matching this schema:
     console.warn("[AI Engine] LLM providers unavailable during definition, executing dynamic definition fallback:", err);
   }
 
-  return generateDeterministicDefinition(understanding, productName, businessUnit, version);
+  return finalizeConstraints(generateDeterministicDefinition(understanding, productName, businessUnit, version));
 }
 
 export async function analyzeChangeImpact(
@@ -822,6 +843,7 @@ function generateDeterministicPrototypeUI(definition: ProductDefinition): Produc
         },
       ],
       primaryActions: screen.components.slice(0, 2).map(c => c.split(" ")[0]),
+      entity: matchingEntity?.name,
       benchmarkNote: `Generic enterprise workbench pattern. Upload materials and regenerate for AI-powered, industry-specific UI inspired by leading products.`,
     };
   }
@@ -868,14 +890,7 @@ export function generateEngineeringPackageData(
 -- Business Unit: ${productDefinition.businessUnit}
 -- Generated: ${new Date().toISOString()}
 
-${productDefinition.dataEntities.map(de => {
-  const tableName = de.name.toLowerCase().replace(/[^a-z0-9_]+/g, '_');
-  const fieldsSQL = (de.fields && de.fields.length > 0)
-    ? de.fields.map(f => `  ${f.name.toLowerCase().replace(/[^a-z0-9_]+/g, '_')} ${f.type.toUpperCase().includes('NUMBER') ? 'NUMERIC' : f.type.toUpperCase().includes('BOOL') ? 'BOOLEAN' : 'VARCHAR(255)'}${f.required ? ' NOT NULL' : ''}`).join(',\n')
-    : `  id VARCHAR(64) PRIMARY KEY,\n  name VARCHAR(255) NOT NULL,\n  status VARCHAR(64) DEFAULT 'ACTIVE'`;
-
-  return `CREATE TABLE ${tableName} (\n${fieldsSQL}\n);`;
-}).join('\n\n')}
+${productDefinition.dataEntities.map(entityToSQL).join('\n\n')}
 `;
 
   const functionalRequirementsMarkdown = `# Functional Requirements Specification
@@ -932,7 +947,8 @@ ${changeHistory.length === 0 ? "No changes applied yet. Baseline release." : cha
   - *New Requirement:* ${ch.newRequirement}
   - *Affected:* ${Object.entries(ch.affectedAreas).map(([k, v]) => `${k}: ${v.length}`).join(", ")}
 `).join("\n")}
-`;
+
+${validationRulesMarkdown(productDefinition.dataEntities)}`;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1467,7 +1483,8 @@ function generateDeterministicDefinition(
           { name: 'created_at', type: 'timestamp', required: true, notes: 'Creation timestamp' },
           { name: 'updated_at', type: 'timestamp', required: true, notes: 'Last modification timestamp' },
           { name: 'created_by_user_id', type: 'uuid', required: true, notes: 'Creator user identifier' }
-        ],
+        // Generated by the engine, not stated by the BU, even when the entity itself is confirmed.
+        ].map(f => ({ ...f, origin: 'INFERRED' as const })),
         relationships: ['Parent Module (1:N)', 'Audit Log (1:N)', 'Assigned User (N:1)'],
         confidence: de.status,
         evidence: de.evidenceReferences || []

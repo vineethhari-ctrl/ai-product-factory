@@ -25,6 +25,7 @@ import {
   INITIAL_ENGINEERING_PACKAGE 
 } from './data/defaultData';
 import { buildDynamicFallbackUnderstanding } from './services/dynamicFallback';
+import { entityToSQL } from './services/validationEngine';
 import { Sparkles, CheckSquare } from 'lucide-react';
 
 // ─── Pipeline State Persistence ──────────────────────────────────────────────
@@ -482,7 +483,7 @@ export default function App() {
         requestBodySample: '{}',
         responseBodySample: '{"status": "SUCCESS"}'
       })),
-      dataModelSQL: (productDefinition.dataEntities || []).map(d => `CREATE TABLE ${d.name.toLowerCase().replace(/[^a-z0-9_]/g, '_')} (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);`).join('\n\n'),
+      dataModelSQL: (productDefinition.dataEntities || []).map(entityToSQL).join('\n\n'),
       permissionsMatrix: (productDefinition.permissions || []).map(p => ({
         role: p.role,
         entities: { 'core_resource': p.accessLevel }

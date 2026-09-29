@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ProductDefinition, ConfidenceStatus } from '../types';
+import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { 
@@ -344,6 +345,15 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
       setTimeout(() => setCopiedBRD(false), 2500);
     }
   };
+
+  /** BU review of a field: confirm an inferred one, or flip whether it is required. */
+  const updateField = (entityId: string, fieldName: string, patch: { origin?: 'BU'; required?: boolean }) =>
+    setDefinition(prev => prev ? ({
+      ...prev,
+      dataEntities: prev.dataEntities.map(e => e.id === entityId
+        ? { ...e, fields: e.fields.map(f => f.name === fieldName ? { ...f, ...patch } : f) }
+        : e),
+    }) : null);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -1079,27 +1089,95 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                           <th className="p-2.5 px-4">Field Name</th>
                           <th className="p-2.5 px-4">Data Type</th>
                           <th className="p-2.5 px-4">Required</th>
+                          <th className="p-2.5 px-4">Constraints</th>
+                          <th className="p-2.5 px-4">Origin</th>
                           <th className="p-2.5 px-4">Business Context & Notes</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {entity.fields.map((field, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50">
+                        {withSystemFields(entity).fields.map((field, idx) => {
+                          const isSystem = field.source === 'system';
+                          const chips = constraintSummary(field);
+                          return (
+                          <tr key={idx} className="hover:bg-slate-50/50 align-top">
                             <td className="p-2.5 px-4 font-mono font-medium text-slate-900">{field.name}</td>
                             <td className="p-2.5 px-4 font-mono text-indigo-600">{field.type}</td>
                             <td className="p-2.5 px-4">
-                              {field.required ? (
+                              {isEditing && !isSystem ? (
+                                <input
+                                  type="checkbox"
+                                  checked={field.required}
+                                  onChange={(e) => updateField(entity.id, field.name, { required: e.target.checked })}
+                                  aria-label={`${field.name} is required`}
+                                />
+                              ) : field.required ? (
                                 <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">YES</span>
                               ) : (
                                 <span className="text-[10px] text-slate-400">No</span>
                               )}
                             </td>
+                            <td className="p-2.5 px-4">
+                              <div className="flex flex-wrap gap-1">
+                                {chips.length > 0 ? chips.map(c => (
+                                  <span key={c} className="text-[10px] font-mono text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{c}</span>
+                                )) : <span className="text-[10px] text-slate-400">-</span>}
+                              </div>
+                            </td>
+                            <td className="p-2.5 px-4 whitespace-nowrap">
+                              {field.origin === 'SYSTEM' || isSystem ? (
+                                <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">SYSTEM</span>
+                              ) : field.origin === 'INFERRED' ? (
+                                <span className="inline-flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded">INFERRED</span>
+                                  <button
+                                    onClick={() => updateField(entity.id, field.name, { origin: 'BU' })}
+                                    className="text-[10px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                                    title="Confirm this field and its constraints as correct"
+                                  >
+                                    Confirm
+                                  </button>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">BU</span>
+                              )}
+                            </td>
                             <td className="p-2.5 px-4 text-slate-500">{field.notes || '-'}</td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+                  {(entity.lifecycle || (entity.rules && entity.rules.length > 0) || (entity.crossRecordRules && entity.crossRecordRules.length > 0)) && (
+                    <div className="p-4 border-t border-slate-200 bg-slate-50/50 space-y-3 text-xs text-slate-600">
+                      {entity.lifecycle && (
+                        <div>
+                          <div className="font-bold text-slate-800 mb-1">Lifecycle ({entity.lifecycle.statusField}, starts as {entity.lifecycle.initial})</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {entity.lifecycle.transitions.map((t, i) => (
+                              <span key={i} className="font-mono text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5">{t.from} → {t.to}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {entity.rules && entity.rules.length > 0 && (
+                        <div>
+                          <div className="font-bold text-slate-800 mb-1">Field rules (enforced in the browser and on the server)</div>
+                          <ul className="list-disc pl-4 space-y-0.5">
+                            {entity.rules.map(r => <li key={r.id}>{r.message} <span className="text-[10px] text-slate-400">({r.kind}, {r.origin ?? 'INFERRED'})</span></li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {entity.crossRecordRules && entity.crossRecordRules.length > 0 && (
+                        <div>
+                          <div className="font-bold text-slate-800 mb-1">Service-layer rules (need storage; the real backend must enforce these)</div>
+                          <ul className="list-disc pl-4 space-y-0.5">
+                            {entity.crossRecordRules.map((r, i) => <li key={i}>{r}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

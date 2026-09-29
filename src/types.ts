@@ -27,6 +27,8 @@ export interface EvidenceItem {
   role?: string;
   path?: string;
   evidenceRef?: string;
+  /** Field specifications carried by data-entity evidence items (used by the deterministic engine). */
+  fields?: DataFieldDefinition[];
 }
 
 export interface ClarificationItem {
@@ -93,6 +95,8 @@ export interface ScreenUISpec {
   table: { title: string; columns: string[]; rows: string[][] };
   detailPanels: Array<{ title: string; items: Array<{ label: string; value: string }> }>;
   primaryActions: string[];
+  /** Name of the data entity a form-wizard screen creates or edits, exactly as in dataEntities. */
+  entity?: string;
   /** Why this layout was chosen, e.g. which industry pattern it mirrors. */
   benchmarkNote?: string;
 }
@@ -137,11 +141,73 @@ export interface BusinessRuleDefinition {
   evidence: string[];
 }
 
+/** Generic value shapes. Domains supply values for these; the engine has no domain knowledge. */
+export type FieldFormat =
+  | 'text' | 'free-text' | 'identifier'
+  | 'email' | 'phone' | 'url' | 'uuid'
+  | 'date' | 'datetime' | 'time'
+  | 'integer' | 'decimal' | 'percentage' | 'boolean' | 'enum'
+  | 'currency-code' | 'country-code' | 'postal-code';
+
+export type FieldSensitivity = 'none' | 'pii' | 'financial' | 'credential';
+
+/** Where a constraint or field came from: stated by the BU, predicted by the model, or added by the system. */
+export type ConstraintOrigin = 'BU' | 'INFERRED' | 'SYSTEM';
+
+export interface FieldConstraints {
+  format?: FieldFormat;
+  minLength?: number;
+  maxLength?: number;
+  /** Regular expression source (no delimiters). Untrusted: checked by isSafePattern before use. */
+  pattern?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Maximum decimal places for decimal/percentage values. */
+  precision?: number;
+  enumValues?: string[];
+  unique?: boolean;
+  immutable?: boolean;
+  sensitivity?: FieldSensitivity;
+}
+
 export interface DataFieldDefinition {
   name: string;
   type: string;
   required: boolean;
   notes?: string;
+  /** Explicit constraints. Legacy `type` strings such as "string(17)" or "enum(A, B)" are still honoured. */
+  constraints?: FieldConstraints;
+  origin?: ConstraintOrigin;
+  /** 'system' fields are set by the server and rejected if a client sends them. */
+  source?: 'user' | 'system' | 'derived';
+}
+
+export type RuleOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'notIn' | 'present' | 'absent';
+
+/** Small fixed rule vocabulary; each domain only supplies field names and values. */
+export interface EntityRule {
+  id: string;
+  kind: 'conditional' | 'compare' | 'requiredTogether' | 'mutuallyExclusive';
+  message: string;
+  /** conditional: when `when` holds, `target` becomes required or forbidden. */
+  when?: { field: string; op: RuleOp; value?: string };
+  effect?: 'required' | 'forbidden';
+  target?: string;
+  /** compare: `left op right` must hold when both are present. */
+  left?: string;
+  op?: 'lt' | 'lte' | 'gt' | 'gte' | 'eq' | 'neq';
+  right?: string;
+  /** requiredTogether / mutuallyExclusive: the fields involved. */
+  fields?: string[];
+  origin?: ConstraintOrigin;
+}
+
+export interface EntityLifecycle {
+  statusField: string;
+  states: string[];
+  initial: string;
+  transitions: Array<{ from: string; to: string }>;
 }
 
 export interface DataEntityDefinition {
@@ -152,6 +218,10 @@ export interface DataEntityDefinition {
   relationships: string[];
   confidence: ConfidenceStatus;
   evidence: string[];
+  lifecycle?: EntityLifecycle;
+  rules?: EntityRule[];
+  /** Rules that need storage to enforce (uniqueness, capacity, references). Documented for the real backend. */
+  crossRecordRules?: string[];
 }
 
 export interface IntegrationDefinition {
@@ -198,6 +268,8 @@ export interface OpenQuestionItem {
 
 export interface ProductDefinition {
   benchmark?: BenchmarkInfo;
+  /** Problems found while normalising inferred field constraints (dropped patterns, clamped ranges). */
+  constraintWarnings?: string[];
   id: string;
   version: string;
   productName: string;

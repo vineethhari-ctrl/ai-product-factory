@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { FIELD_FORMATS } from "../src/services/validationEngine";
+import type { FieldFormat } from "../src/types";
 
 /**
  * Zod schemas for the JSON the model must return. They are passed to the
@@ -36,6 +38,53 @@ export const BusinessUnderstandingSchema = z.object({
   missingInformation: z.array(EvidenceItemSchema),
 });
 
+/** Field constraints are flat here (easier for a model to produce); the server folds them into DataFieldDefinition.constraints. */
+const FieldSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  required: z.boolean(),
+  notes: z.string().optional(),
+  format: z.enum(FIELD_FORMATS as [FieldFormat, ...FieldFormat[]]).optional(),
+  minLength: z.number().optional(),
+  maxLength: z.number().optional(),
+  pattern: z.string().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+  precision: z.number().optional(),
+  enumValues: z.array(z.string()).optional(),
+  unique: z.boolean().optional(),
+  immutable: z.boolean().optional(),
+  sensitivity: z.enum(["none", "pii", "financial", "credential"]).optional(),
+  origin: z.enum(["BU", "INFERRED"]).optional(),
+});
+
+const EntityRuleSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["conditional", "compare", "requiredTogether", "mutuallyExclusive"]),
+  message: z.string(),
+  when: z
+    .object({
+      field: z.string(),
+      op: z.enum(["eq", "neq", "gt", "gte", "lt", "lte", "in", "notIn", "present", "absent"]),
+      value: z.string().optional(),
+    })
+    .optional(),
+  effect: z.enum(["required", "forbidden"]).optional(),
+  target: z.string().optional(),
+  left: z.string().optional(),
+  op: z.enum(["lt", "lte", "gt", "gte", "eq", "neq"]).optional(),
+  right: z.string().optional(),
+  fields: z.array(z.string()).optional(),
+});
+
+const LifecycleSchema = z.object({
+  statusField: z.string(),
+  states: z.array(z.string()),
+  initial: z.string(),
+  transitions: z.array(z.object({ from: z.string(), to: z.string() })),
+});
+
 /** UI blueprint rendered by the prototype canvas. Values are illustrative sample data. */
 const ScreenUISchema = z.object({
   kpis: z.array(
@@ -60,6 +109,7 @@ const ScreenUISchema = z.object({
   ),
   primaryActions: z.array(z.string()),
   benchmarkNote: z.string().optional(),
+  entity: z.string().optional(),
 });
 
 export const ProductDefinitionSchema = z.object({
@@ -133,14 +183,10 @@ export const ProductDefinitionSchema = z.object({
       id: z.string(),
       name: z.string(),
       description: z.string(),
-      fields: z.array(
-        z.object({
-          name: z.string(),
-          type: z.string(),
-          required: z.boolean(),
-          notes: z.string().optional(),
-        })
-      ),
+      fields: z.array(FieldSchema),
+      lifecycle: LifecycleSchema.optional(),
+      rules: z.array(EntityRuleSchema).optional(),
+      crossRecordRules: z.array(z.string()).optional(),
       relationships: z.array(z.string()),
       confidence: Confidence,
       evidence: z.array(z.string()),

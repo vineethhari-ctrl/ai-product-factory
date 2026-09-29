@@ -10,10 +10,11 @@ import {
   generateEngineeringPackageData,
   generatePrototypeUI
 } from "./server/aiReasoningService";
+import { validateRecordHandler } from "./server/recordRoute";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -135,8 +136,18 @@ async function startServer() {
     }
   });
 
+  // Generic, domain-neutral record validation (shared engine with the browser forms)
+  app.post("/api/validate-record", validateRecordHandler);
+
   app.post("/api/export-package", handleExportPackage);
   app.post("/api/export-engineering", handleExportPackage);
+
+  // JSON error bodies for body-parser failures (otherwise Express answers with an HTML page)
+  app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "Malformed JSON body." });
+    if (err?.type === "entity.too.large") return res.status(413).json({ error: "Request body is too large." });
+    return next(err);
+  });
 
   // Vite middleware setup
   if (process.env.NODE_ENV !== "production") {

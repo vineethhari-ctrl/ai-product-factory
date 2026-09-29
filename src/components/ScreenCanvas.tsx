@@ -10,12 +10,28 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import { ScreenDefinition, ScreenUISpec } from '../types';
+import { DataEntityDefinition, ScreenDefinition, ScreenUISpec } from '../types';
+import { EntityForm } from './EntityForm';
 
 interface ScreenCanvasProps {
   screen: ScreenDefinition & { ui: ScreenUISpec };
   /** True for read-only / auditor roles: actions are shown but locked. */
   readOnly: boolean;
+  /** The product's data entities. A form-wizard screen renders a validated form for the entity it edits. */
+  entities?: DataEntityDefinition[];
+}
+
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** The entity a form screen edits: the blueprint's explicit reference, else a name match against the screen. */
+function resolveEntity(screen: ScreenDefinition, ui: ScreenUISpec, entities: DataEntityDefinition[] | undefined): DataEntityDefinition | null {
+  if (!entities || entities.length === 0) return null;
+  if (ui.entity) {
+    const exact = entities.find((e) => normName(e.name) === normName(ui.entity!));
+    if (exact) return exact;
+  }
+  const haystack = normName(`${screen.name} ${screen.module} ${screen.purpose}`);
+  return entities.find((e) => normName(e.name).length >= 4 && haystack.includes(normName(e.name))) ?? null;
 }
 
 const BENCHMARK_TAG = 'Industry benchmark';
@@ -49,7 +65,7 @@ const TrendIcon: React.FC<{ trend: 'up' | 'down' | 'flat' }> = ({ trend }) => {
   return <Minus className="w-3.5 h-3.5 text-slate-400" />;
 };
 
-export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly }) => {
+export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, entities }) => {
   const { ui } = screen;
   const [activeFilter, setActiveFilter] = useState(0);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -298,6 +314,22 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly }) 
       break;
 
     case 'form-wizard': {
+      const formEntity = resolveEntity(screen, ui, entities);
+      if (formEntity) {
+        body = (
+          <>
+            <EntityForm
+              key={formEntity.name}
+              entity={formEntity}
+              readOnly={readOnly}
+              stepTitles={ui.detailPanels.map((p) => p.title)}
+              submitLabel={ui.primaryActions[0]}
+            />
+            {table}
+          </>
+        );
+        break;
+      }
       const steps = ui.detailPanels.length > 0 ? ui.detailPanels : [{ title: 'Details', items: [] }];
       const step = steps[Math.min(wizardStep, steps.length - 1)];
       const isLast = wizardStep >= steps.length - 1;
