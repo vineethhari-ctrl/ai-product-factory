@@ -1,0 +1,6 @@
+{
+  "name": "AI Product Factory",
+  "description": "Enterprise platform transforming messy, unstructured business materials into structured product definitions, interactive prototypes, and Antigravity engineering packages.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
