@@ -276,8 +276,12 @@ export default function App() {
     if (!productDefinition) return;
 
     // Skip regeneration if screens already have AI-enriched UI specs
+    // Placeholder screens and pre-blueprint UI are rebuilt by the server, never reused.
     const allHaveUI = productDefinition.screens.length > 0 &&
-      productDefinition.screens.every(s => s.ui?.benchmarkNote);
+      productDefinition.screens.every(s =>
+        s.confidence !== 'MISSING' &&
+        s.ui?.benchmarkNote &&
+        !s.ui.benchmarkNote.startsWith('Generic enterprise workbench pattern'));
     if (allHaveUI) {
       showToast('Interactive prototype loaded with AI-generated UI.');
       return;

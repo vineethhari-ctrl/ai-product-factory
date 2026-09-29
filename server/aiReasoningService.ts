@@ -34,6 +34,7 @@ import {
   blueprintScreens,
   blueprintUnderstandingItems,
   blueprintValidations,
+  deriveOperatorRole,
   deriveSubject,
   ensureScreenUI,
 } from "./blueprint";
@@ -262,7 +263,7 @@ function withLocalBlueprint(
   const thinness = assessMaterialThinness(materials, description);
   if (!thinness.thin) return u;
   const subject = deriveSubject(productName, businessUnit);
-  const bp = blueprintUnderstandingItems(subject);
+  const bp = blueprintUnderstandingItems(subject, deriveOperatorRole(productName, description));
   const filled = new Set<string>();
   const fill = (key: keyof typeof bp, current: BusinessUnderstanding["personas"]) => {
     if (isPlaceholderSection(current)) {
@@ -775,9 +776,30 @@ export function applyChangeToDefinition(
  * Service Cloud queue pattern"). Returns an updated ProductDefinition with all
  * screens populated with UI specs.
  */
+/** UI written by the pre-blueprint fallback; regenerated rather than reused. */
+const LEGACY_UI_NOTE = /^Generic enterprise workbench pattern/;
+
+/**
+ * Definitions saved before the blueprint existed (or built from nothing) can hold a
+ * single placeholder screen and legacy UI. Drop the legacy UI and, when no real
+ * screen is specified, rebuild the scope from the blueprint.
+ */
+function upgradeStaleDefinition(definition: ProductDefinition): ProductDefinition {
+  const screens = definition.screens.map((s) => (s.ui?.benchmarkNote && LEGACY_UI_NOTE.test(s.ui.benchmarkNote) ? { ...s, ui: undefined } : s));
+  const placeholderOnly = screens.length === 0 || screens.every((s) => s.confidence === "MISSING");
+  const cleaned = { ...definition, screens };
+  if (!placeholderOnly) return cleaned;
+  const reason = "no screens were specified by the BU";
+  const upgraded = withDefinitionBlueprint(cleaned, definition, { thin: true, reason });
+  const finalized = finalizeConstraints(upgraded);
+  const seen = new Set<string>();
+  return { ...finalized, openQuestions: finalized.openQuestions.filter((q) => !seen.has(q.id) && !!seen.add(q.id)) };
+}
+
 export async function generatePrototypeUI(
-  definition: ProductDefinition
+  input: ProductDefinition
 ): Promise<ProductDefinition> {
+  const definition = upgradeStaleDefinition(input);
   const screenSummary = definition.screens.map((s, idx) => (
     `Screen ${idx + 1}: id="${s.id}", name="${s.name}", module="${s.module}", layoutType="${s.layoutType}", purpose="${s.purpose}", components=[${s.components.join(", ")}]`
   )).join("\n");
@@ -890,16 +912,17 @@ Return ONLY a valid JSON matching this schema:
  */
 function withDefinitionBlueprint(
   def: ProductDefinition,
-  u: BusinessUnderstanding,
+  u: Pick<BusinessUnderstanding, "benchmark"> | undefined,
   thinness: { thin: boolean; reason: string }
 ): ProductDefinition {
   const subject = deriveSubject(def.productName, def.businessUnit);
+  const operator = deriveOperatorRole(def.productName, def.objective);
   const bpScreens = blueprintScreens(subject);
   const bp = {
-    personas: blueprintPersonas(subject),
+    personas: blueprintPersonas(subject, operator),
     modules: bpScreens.modules,
     screens: bpScreens.screens,
-    userJourneys: blueprintJourneys(subject),
+    userJourneys: blueprintJourneys(subject, operator),
     businessRules: blueprintRules(subject),
     dataEntities: blueprintEntities(subject),
     integrations: blueprintIntegrations(),
@@ -910,8 +933,10 @@ function withDefinitionBlueprint(
   // Only the engine's own generic fallbacks count as "nothing there".
   const genericEntity = def.dataEntities.length === 1 && /^(ent-1|de-1)$/.test(def.dataEntities[0].id);
 
-  const personas = topUp(swap(def.personas, bp.personas), bp.personas, 3);
-  const screens = topUp(swap(def.screens, bp.screens), bp.screens, 4);
+  // In thin mode, "nothing found" placeholders (MISSING) give way to the blueprint.
+  const real = <T extends { confidence: string }>(items: T[]) => (thinness.thin ? items.filter((i) => i.confidence !== "MISSING") : items);
+  const personas = topUp(swap(real(def.personas), bp.personas), bp.personas, 3);
+  const screens = topUp(swap(real(def.screens), bp.screens), bp.screens, 4);
   const modules = screens.some((s) => s.id.startsWith("scr-bp-"))
     ? [...swap(def.modules, bp.modules).filter((m) => !m.name.endsWith("Core Module") || screens.some((s) => s.module === m.name)),
        ...bp.modules.filter((m) => !def.modules.some((d) => d.id === m.id))]
@@ -936,13 +961,13 @@ function withDefinitionBlueprint(
     dataEntities,
     integrations: swap(def.integrations, bp.integrations),
     permissions: personas.map((p) => ({ role: p.name, accessLevel: accessFor(p.role), constraints: p.permissions.join("; ") })),
-    ...(usesBlueprint ? { notifications: blueprintNotifications(subject), validations: blueprintValidations(subject) } : {}),
+    ...(usesBlueprint ? { notifications: blueprintNotifications(subject, operator), validations: blueprintValidations(subject) } : {}),
   };
   result = ensureScreenUI(result);
   if (!thinness.thin) return result;
 
   const tag = <T extends { confidence?: string; evidence?: string[] }>(items: T[]) => tagInferredEvidence(items, LOCAL_BENCHMARK_INDUSTRY);
-  const industry = u.benchmark?.industry || LOCAL_BENCHMARK_INDUSTRY;
+  const industry = u?.benchmark?.industry || LOCAL_BENCHMARK_INDUSTRY;
   const inferredCount = [
     result.personas, result.modules, result.screens, result.userJourneys,
     result.businessRules, result.dataEntities, result.integrations,

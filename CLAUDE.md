@@ -70,13 +70,18 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
 - Materials are optional: a product name alone is accepted (`/api/analyze-material` returns 400 only when both
   are missing) and is treated as thin input.
 - Without an LLM, the local engine applies the **product blueprint** (`server/blueprint.ts`): the product's
-  subject is derived from its name ("Service Requests Portal" -> "Service Request") and wrapped in the common
+  subject is derived from the head of its name, before any preposition ("Service Requests Portal" -> "Service
+  Request", "Bay planning for Job Controller in ..." -> "Bay Plan"); a "for <role>" qualifier ending in a generic
+  job-role word becomes the operator persona ("Job Controller"). The subject is wrapped in the common
   operational shape: 5 roles (incl. a read-only auditor), 3 modules, 6 screens covering all five layouts, a
   lifecycle entity with rules plus an activity entity, 4 journeys, 7 rules and 4 integrations. It fills only
   sections the keyword extractor found nothing for, and it tops screens up to at least 4. Everything is
   INFERRED and tagged, with the same validation gap and blocking question as the LLM path; the banner industry
   is "cross-industry operational software". The blueprint has no domain knowledge: every noun comes from the
   BU input.
+- Saved sessions from before the blueprint are upgraded on Build Prototype: the client does not reuse UI whose
+  note starts "Generic enterprise workbench pattern" or placeholder (MISSING) screens, and
+  `generatePrototypeUI` drops that legacy UI and rebuilds a placeholder-only definition from the blueprint.
 - `ensureScreenUI` gives every screen without a `ui` a full blueprint from its entity. Sample data comes from
   a seeded PRNG (stable across renders), filter chips are taken from the sample rows so they really filter,
   and status is always the last column.

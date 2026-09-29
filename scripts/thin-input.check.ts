@@ -4,7 +4,7 @@ delete process.env.ANTHROPIC_API_KEY;
 
 import { readFileSync } from "node:fs";
 import { analyzeBusinessMaterial, generateProductDefinition, generatePrototypeUI } from "../server/aiReasoningService";
-import { deriveSubject } from "../server/blueprint";
+import { deriveOperatorRole, deriveSubject } from "../server/blueprint";
 import { validateRecord, withSystemFields } from "../src/services/validationEngine";
 import type { ProductDefinition } from "../src/types";
 
@@ -15,6 +15,10 @@ const quiet = async <T>(fn: () => Promise<T>) => { const w = console.warn, l = c
 t("subject: product-type words dropped, plural singularised", deriveSubject("Warranty Claims Portal") === "Warranty Claim", deriveSubject("Warranty Claims Portal"));
 t("subject: acronyms kept", deriveSubject("Fleet EV Tracker") === "Fleet EV", deriveSubject("Fleet EV Tracker"));
 t("subject: falls back to BU, then a neutral noun", deriveSubject("Portal", "Field Inspections") === "Field Inspection" && deriveSubject("App") === "Request");
+
+t("subject: head phrase before a preposition, activity noun as record", deriveSubject("Bay planning for Job Controller in the Service workshop") === "Bay Plan", deriveSubject("Bay planning for Job Controller in the Service workshop"));
+t("subject: product-type role words dropped", deriveSubject("Volunteer Shift Planner") === "Volunteer Shift", deriveSubject("Volunteer Shift Planner"));
+t("operator role: taken from 'for <role>'", deriveOperatorRole("Bay planning for Job Controller in the Service workshop") === "Job Controller" && deriveOperatorRole("Portal for Service Requests") === undefined);
 
 async function pipeline(name: string, bu: string, description = ""): Promise<ProductDefinition> {
   const u = await quiet(() => analyzeBusinessMaterial([], name, bu, description));
@@ -48,6 +52,20 @@ for (const [name, bu] of [["Warranty Claims Portal", "After-Sales"], ["Volunteer
   t(`${tag} BU is asked to validate`, def.openQuestions.some((q) => q.id === "oq-benchmark-validation" && q.urgency === "blocking"));
   t(`${tag} navigation covers every screen`, def.screens.every((s) => def.navigation.some((n) => n.screenId === s.id)));
 }
+
+// The user named in the product name becomes the operator persona.
+const named = await pipeline("Bay planning for Job Controller in the Service workshop", "Operations");
+t("named role becomes the operator persona", named.personas.some((p) => p.name === "Job Controller") && named.userJourneys.some((j) => j.persona === "Job Controller"));
+t("named product: screens use the derived subject", named.screens.some((s) => s.name === "Bay Plan Work Queue"), named.screens.map((s) => s.name).join(", "));
+
+// A definition saved by the old engine (one placeholder screen, legacy UI) is upgraded on Build Prototype.
+const stale = JSON.parse(JSON.stringify(named)) as ProductDefinition;
+stale.screens = [{ id: "scr-1", name: "Primary Application Screen", module: "Core Module", layoutType: "dashboard", components: [], purpose: "No UI screenshots uploaded.", confidence: "MISSING", evidence: [],
+  ui: { ...named.screens[0].ui!, benchmarkNote: "Generic enterprise workbench pattern. Upload materials and regenerate." } }];
+const upgraded = await quiet(() => generatePrototypeUI(stale));
+t("stale placeholder definition is rebuilt", upgraded.screens.length >= 6 && !upgraded.screens.some((s) => s.name === "Primary Application Screen"), upgraded.screens.map((s) => s.name).join(", "));
+t("legacy UI is never reused", upgraded.screens.every((s) => !/^Generic enterprise workbench/.test(s.ui?.benchmarkNote ?? "")));
+t("upgrade does not duplicate open questions", new Set(upgraded.openQuestions.map((q) => q.id)).size === upgraded.openQuestions.length);
 
 // Stable: the same input renders the same prototype.
 const a = await pipeline("Warranty Claims Portal", "After-Sales");

@@ -41,7 +41,7 @@ const PRODUCT_SUFFIXES = new Set([
   "portal", "app", "application", "platform", "system", "hub", "suite", "console", "manager",
   "management", "tracker", "tracking", "workbench", "center", "centre", "studio", "cloud", "pro",
   "360", "dashboard", "tool", "tools", "engine", "online", "digital", "solution", "workspace",
-  "mvp", "v1", "v2", "prototype", "module", "the", "a", "an", "for", "and", "of", "my", "new",
+  "mvp", "v1", "v2", "prototype", "module", "planner", "scheduler", "the", "a", "an", "for", "and", "of", "my", "new",
 ]);
 
 function titleWord(w: string): string {
@@ -64,17 +64,48 @@ export function plural(s: string): string {
   return s + "s";
 }
 
-/** The record the product manages, e.g. "Service Requests Portal" -> "Service Request". */
+/** Activity nouns that name a record better in their object form ("Bay planning" -> "Bay Plan"). */
+const ACTIVITY_TO_RECORD: Record<string, string> = {
+  planning: "plan", scheduling: "schedule", forecasting: "forecast", rostering: "roster", budgeting: "budget",
+};
+
+/** Words that start a qualifier: "Bay planning | for Job Controller | in the workshop". */
+const PREPOSITION = /\s+(?:for|in|at|on|with|by|across|within|to|from|via|under)\s+/i;
+
+/**
+ * The record the product manages: "Service Requests Portal" -> "Service Request",
+ * "Bay planning for Job Controller in the workshop" -> "Bay Plan".
+ * The phrase before the first preposition is the product's head; qualifiers after it
+ * name who uses it or where, not what it manages.
+ */
 export function deriveSubject(productName: string, businessUnit = ""): string {
   const pick = (text: string) => {
-    const words = text.replace(/[^A-Za-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean);
+    const words = text.replace(/[^A-Za-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean)
+      .map((w) => ACTIVITY_TO_RECORD[w.toLowerCase()] ?? w);
     const kept = words.filter((w) => !PRODUCT_SUFFIXES.has(w.toLowerCase())).slice(-3);
     if (kept.length === 0) return "";
     kept[kept.length - 1] = singular(kept[kept.length - 1]);
     return kept.map(titleWord).join(" ");
   };
-  return pick(productName) || pick(businessUnit) || "Request";
+  const head = productName.split(PREPOSITION)[0];
+  return pick(head) || pick(productName) || pick(businessUnit) || "Request";
 }
+
+/** Generic job-role endings; a "for <role>" qualifier ending in one of these names the main user. */
+const ROLE_ENDING = /(controller|manager|planner|dispatcher|coordinator|supervisor|officer|agent|advisor|adviser|analyst|operator|technician|engineer|specialist|lead|administrator|admin|clerk|executive|inspector|auditor|reviewer|approver|assessor|scheduler|owner|associate|representative)s?$/i;
+
+/** The main user the BU named, e.g. "Bay planning for Job Controller in ..." -> "Job Controller". */
+export function deriveOperatorRole(productName: string, description = ""): string | undefined {
+  for (const text of [productName, description]) {
+    const m = text.match(/\bfor\s+(?:the\s+|a\s+|an\s+)?([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,3})/i);
+    if (!m) continue;
+    const phrase = m[1].split(PREPOSITION)[0].trim();
+    if (ROLE_ENDING.test(phrase)) return phrase.split(/\s+/).map((w, i, a) => titleWord(i === a.length - 1 ? singular(w) : w)).join(" ");
+  }
+  return undefined;
+}
+
+export const DEFAULT_OPERATOR = "Operations Specialist";
 
 function codePrefix(subject: string): string {
   const letters = subject.split(/\s+/).map((w) => w[0]).join("").toUpperCase();
@@ -174,7 +205,8 @@ function sampleValue(field: DataFieldDefinition, row: number, ctx: SampleContext
 
 /** Fields worth showing as columns, most identifying first. System and bulky fields are skipped. */
 function pickColumns(entity: DataEntityDefinition, max: number): DataFieldDefinition[] {
-  const fields = entity.fields.filter((f) => f.source !== "system" || f.name === entity.lifecycle?.statusField);
+  // System fields are hidden, except the lifecycle status and a system-generated business key.
+  const fields = entity.fields.filter((f) => f.source !== "system" || f.name === entity.lifecycle?.statusField || (resolveFieldConstraints(f).unique && !/^id$/i.test(f.name)));
   const bulky = (f: DataFieldDefinition) => {
     const c = resolveFieldConstraints(f);
     return c.format === "free-text" || /json|text|uuid/i.test(f.type) || c.format === "uuid" || /(^id$|_id$|Id$|created|updated|version)/.test(f.name);
@@ -183,6 +215,7 @@ function pickColumns(entity: DataEntityDefinition, max: number): DataFieldDefini
     const c = resolveFieldConstraints(f);
     const n = f.name.toLowerCase();
     if (c.unique || c.format === "identifier") return 0;
+    if (c.format === "email" || c.format === "phone") return 8; // contact details belong in the detail panel
     if (/(title|name|subject|summary)/.test(n)) return 1;
     if (/(org|customer|client|account|requester)/.test(n)) return 2;
     if (c.enumValues?.length && f.name !== entity.lifecycle?.statusField) return 3;
@@ -318,11 +351,11 @@ export function buildScreenUI(
 const inferred = <T extends object>(item: T, pattern: string) =>
   ({ ...item, confidence: "INFERRED" as const, evidence: [PATTERN(pattern)] });
 
-export function blueprintPersonas(subject: string): PersonaDefinition[] {
+export function blueprintPersonas(subject: string, operator = DEFAULT_OPERATOR): PersonaDefinition[] {
   const s = subject, sp = plural(subject).toLowerCase();
   return [
     inferred({ id: "p-bp-1", name: `${s} Requester`, role: "Requester", keyGoals: [`Raise a ${s.toLowerCase()} in minutes`, "See status without chasing anyone"], permissions: ["Create own records", "View own records"] }, "self-service requester role"),
-    inferred({ id: "p-bp-2", name: "Operations Specialist", role: "Specialist", keyGoals: [`Work the ${s.toLowerCase()} queue in priority order`, "Resolve within SLA"], permissions: ["Read/Write assigned records", "Change status"] }, "queue-based specialist role"),
+    inferred({ id: "p-bp-2", name: operator, role: operator === DEFAULT_OPERATOR ? "Specialist" : operator, keyGoals: [`Work the ${s.toLowerCase()} queue in priority order`, "Resolve within SLA"], permissions: ["Read/Write assigned records", "Change status"] }, "queue-based specialist role"),
     inferred({ id: "p-bp-3", name: "Team Lead", role: "Approver", keyGoals: ["Approve or reject decisions", "Balance workload and protect SLA"], permissions: ["Approve", "Reassign", "View team dashboards"] }, "approver and team-lead role"),
     inferred({ id: "p-bp-4", name: "Platform Administrator", role: "Administrator", keyGoals: ["Configure categories, SLAs and routing", "Manage users and roles"], permissions: ["Full Administrative Access"] }, "administrator role"),
     inferred({ id: "p-bp-5", name: "Compliance Auditor", role: "Auditor", keyGoals: [`Trace every decision on ${sp}`, "Export evidence for audits"], permissions: ["Read Only", "Audit Logs"] }, "independent read-only audit role"),
@@ -429,11 +462,11 @@ export function blueprintScreens(subject: string): { modules: ModuleDefinition[]
   return { modules, screens };
 }
 
-export function blueprintJourneys(subject: string): UserJourneyDefinition[] {
+export function blueprintJourneys(subject: string, operator = DEFAULT_OPERATOR): UserJourneyDefinition[] {
   const s = subject.toLowerCase();
   return [
     inferred({ id: "uj-bp-1", name: `Raise a ${s}`, persona: `${subject} Requester`, steps: [`Open New ${subject}`, "Fill basics and details; fields validate as they are left", "Review and submit", "Receive reference number and confirmation"], outcome: `A complete ${s} enters the queue with no rework.` }, "self-service intake journey"),
-    inferred({ id: "uj-bp-2", name: `Triage and decide a ${s}`, persona: "Operations Specialist", steps: [`Open ${subject} Work Queue sorted by priority`, "Take ownership", "Request information or put on hold if incomplete", "Send to Team Lead for approval"], outcome: "Every record is worked in priority order within SLA." }, "queue triage journey"),
+    inferred({ id: "uj-bp-2", name: `Triage and decide a ${s}`, persona: operator, steps: [`Open ${subject} Work Queue sorted by priority`, "Take ownership", "Request information or put on hold if incomplete", "Send to Team Lead for approval"], outcome: "Every record is worked in priority order within SLA." }, "queue triage journey"),
     inferred({ id: "uj-bp-3", name: "Approve or reject", persona: "Team Lead", steps: ["Review the record in the queue", "Check facts and activity in the 360 view", "Approve, or reject with a reason", "Requester is notified"], outcome: "Decisions are fast, justified and traceable." }, "approval journey"),
     inferred({ id: "uj-bp-4", name: "Monitor performance", persona: "Team Lead", steps: [`Open ${subject} Command Center`, "Spot at-risk records", "Reassign workload", "Review SLA trends in Performance & SLA Insights"], outcome: "SLA breaches are prevented, not reported after the fact." }, "operational oversight journey"),
   ];
@@ -464,10 +497,10 @@ export function blueprintIntegrations(): IntegrationDefinition[] {
   ];
 }
 
-export function blueprintNotifications(subject: string): NotificationRule[] {
+export function blueprintNotifications(subject: string, operator = DEFAULT_OPERATOR): NotificationRule[] {
   return [
     { event: `${subject} submitted`, channel: "Email & In-App", recipient: `${subject} Requester` },
-    { event: "Record assigned", channel: "In-App & Push", recipient: "Operations Specialist" },
+    { event: "Record assigned", channel: "In-App & Push", recipient: operator },
     { event: "Approval requested", channel: "Email & In-App", recipient: "Team Lead" },
     { event: "SLA at risk (80%)", channel: "In-App & Email", recipient: "Team Lead" },
     { event: "Decision made", channel: "Email", recipient: `${subject} Requester` },
@@ -487,15 +520,15 @@ export function blueprintValidations(subject: string): ValidationRule[] {
 }
 
 /** The blueprint as understanding items, so the Business Understanding screen is filled too. */
-export function blueprintUnderstandingItems(subject: string): Record<"personas" | "modules" | "screens" | "userJourneys" | "businessRules" | "dataEntities" | "integrations", EvidenceItem[]> {
+export function blueprintUnderstandingItems(subject: string, operator = DEFAULT_OPERATOR): Record<"personas" | "modules" | "screens" | "userJourneys" | "businessRules" | "dataEntities" | "integrations", EvidenceItem[]> {
   const item = (id: string, title: string, description: string, evidence: string[]): EvidenceItem =>
     ({ id, title, description, status: "INFERRED", evidenceReferences: evidence });
   const { modules, screens } = blueprintScreens(subject);
   return {
-    personas: blueprintPersonas(subject).map((p) => item(p.id, p.name, `${p.keyGoals.join(". ")}.`, p.evidence)),
+    personas: blueprintPersonas(subject, operator).map((p) => item(p.id, p.name, `${p.keyGoals.join(". ")}.`, p.evidence)),
     modules: modules.map((m) => item(m.id, m.name, m.description, m.evidence)),
     screens: screens.map((s) => item(s.id, s.name, s.purpose, s.evidence)),
-    userJourneys: blueprintJourneys(subject).map((j) => item(j.id, j.name, `${j.steps.join(" → ")}. ${j.outcome}`, j.evidence)),
+    userJourneys: blueprintJourneys(subject, operator).map((j) => item(j.id, j.name, `${j.steps.join(" → ")}. ${j.outcome}`, j.evidence)),
     businessRules: blueprintRules(subject).map((r) => item(r.id, `${r.code}: ${r.context}`, r.rule, r.evidence)),
     dataEntities: blueprintEntities(subject).map((e) => ({ ...item(e.id, e.name, e.description, e.evidence), fields: e.fields })),
     integrations: blueprintIntegrations().map((i) => item(i.id, i.system, `${i.purpose} (${i.protocol})`, i.evidence)),
