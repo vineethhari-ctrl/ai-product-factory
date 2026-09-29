@@ -67,7 +67,21 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
   open question (definition), so nothing inferred passes as confirmed.
 - `benchmark: { applied, industry, reason }` on `BusinessUnderstanding` / `ProductDefinition` drives the
   banners. Never claim facts about a named company; patterns stay generic.
-- Not covered: the deterministic local engine does not benchmark (no LLM available).
+- Materials are optional: a product name alone is accepted (`/api/analyze-material` returns 400 only when both
+  are missing) and is treated as thin input.
+- Without an LLM, the local engine applies the **product blueprint** (`server/blueprint.ts`): the product's
+  subject is derived from its name ("Service Requests Portal" -> "Service Request") and wrapped in the common
+  operational shape: 5 roles (incl. a read-only auditor), 3 modules, 6 screens covering all five layouts, a
+  lifecycle entity with rules plus an activity entity, 4 journeys, 7 rules and 4 integrations. It fills only
+  sections the keyword extractor found nothing for, and it tops screens up to at least 4. Everything is
+  INFERRED and tagged, with the same validation gap and blocking question as the LLM path; the banner industry
+  is "cross-industry operational software". The blueprint has no domain knowledge: every noun comes from the
+  BU input.
+- `ensureScreenUI` gives every screen without a `ui` a full blueprint from its entity. Sample data comes from
+  a seeded PRNG (stable across renders), filter chips are taken from the sample rows so they really filter,
+  and status is always the last column.
+- `npm run check:thin` runs a name-only pipeline for three unlike products and checks screens, UI, form
+  validation, tagging, determinism and domain neutrality.
 
 ## Field constraints & validation (domain-neutral)
 
@@ -102,7 +116,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI

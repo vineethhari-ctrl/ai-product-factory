@@ -24,6 +24,19 @@ import {
   tagInferredReferences,
 } from "./benchmark";
 import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, PrototypeUISchema } from "./aiSchemas";
+import {
+  blueprintEntities,
+  blueprintIntegrations,
+  blueprintJourneys,
+  blueprintNotifications,
+  blueprintPersonas,
+  blueprintRules,
+  blueprintScreens,
+  blueprintUnderstandingItems,
+  blueprintValidations,
+  deriveSubject,
+  ensureScreenUI,
+} from "./blueprint";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
@@ -37,7 +50,7 @@ export async function analyzeBusinessMaterial(
 ): Promise<BusinessUnderstanding> {
   const materialsSummary = materials.map((m, idx) => 
     `[Source ${idx + 1}: ${m.filename} (${m.fileType})] \n${m.contentSnippet || 'Uploaded file content'}`
-  ).join("\n\n---\n\n");
+  ).join("\n\n---\n\n") || "(No materials were supplied. Only the product name, business unit and notes above are known; predict the rest from industry benchmarks.)";
 
   const thinness = assessMaterialThinness(materials, description);
   const benchmarkBlock = thinness.thin ? analysisBenchmarkDirective(thinness.reason) : "";
@@ -219,7 +232,98 @@ Return ONLY a valid JSON object matching this schema:
     console.warn("[AI Engine] LLM providers unavailable, executing dynamic material synthesis fallback:", err);
   }
 
-  return generateDeterministicUnderstanding(materials, productName, businessUnit, description);
+  return withLocalBlueprint(
+    generateDeterministicUnderstanding(materials, productName, businessUnit, description),
+    materials, productName, businessUnit, description
+  );
+}
+
+/** Label used for benchmark banners when the local engine (no LLM) filled the gaps. */
+const LOCAL_BENCHMARK_INDUSTRY = "cross-industry operational software";
+
+/** Placeholder output of the keyword extractor: nothing real was found for that section. */
+function isPlaceholderSection(items: BusinessUnderstanding["personas"]): boolean {
+  if (items.length === 0 || items.every((i) => i.status === "MISSING")) return true;
+  return items.length === 1 && /(Core Module|^Primary .* Workflow)$/.test(items[0].title);
+}
+
+/**
+ * Thin input without an LLM: fill every section the keyword extractor could not
+ * find with the product blueprint, so a product name alone still yields a
+ * complete understanding. Everything filled is INFERRED and tagged.
+ */
+function withLocalBlueprint(
+  u: BusinessUnderstanding,
+  materials: UploadedMaterial[],
+  productName: string,
+  businessUnit: string,
+  description: string
+): BusinessUnderstanding {
+  const thinness = assessMaterialThinness(materials, description);
+  if (!thinness.thin) return u;
+  const subject = deriveSubject(productName, businessUnit);
+  const bp = blueprintUnderstandingItems(subject);
+  const filled = new Set<string>();
+  const fill = (key: keyof typeof bp, current: BusinessUnderstanding["personas"]) => {
+    if (isPlaceholderSection(current)) {
+      filled.add(key);
+      return bp[key];
+    }
+    // Keep what was found; top up screens so the prototype covers the whole journey.
+    if (key === "screens" && current.length < 4) {
+      filled.add(key);
+      return [...current, ...bp.screens];
+    }
+    return current;
+  };
+  const sections = {
+    personas: fill("personas", u.personas),
+    modules: fill("modules", u.modules),
+    screens: fill("screens", u.screens),
+    userJourneys: fill("userJourneys", u.userJourneys),
+    businessRules: fill("businessRules", u.businessRules),
+    dataEntities: fill("dataEntities", u.dataEntities),
+    integrations: fill("integrations", u.integrations),
+  };
+  const tag = <T extends { status: string; evidenceReferences: string[] }>(items: T[]) =>
+    tagInferredReferences(items, LOCAL_BENCHMARK_INDUSTRY);
+  const inferredCount = Object.values(sections).flat().filter((i) => i.status === "INFERRED").length;
+  // The extractor's "not found" gaps are answered by the blueprint; one validation gap replaces them.
+  const staleGaps = new Set([filled.has("personas") ? "mi-1" : "", filled.has("businessRules") ? "mi-2" : ""]);
+  // The extractor's clarifications name its placeholders; point them at the blueprint items instead.
+  const renames: Array<[string | undefined, string | undefined]> = [
+    [u.modules[0]?.title, sections.modules[0]?.title],
+    [u.dataEntities[0]?.title, sections.dataEntities[0]?.title],
+    [u.personas[0]?.title, sections.personas[0]?.title],
+  ];
+  const rename = (text: string) =>
+    renames.reduce((acc, [from, to]) => (from && to && from !== to ? acc.split(from).join(to) : acc), text);
+  const clarifications = u.clarifications?.map((c) => ({ ...c, question: rename(c.question), impactIfIgnored: rename(c.impactIfIgnored) }));
+  const overallSummary = materials.length > 0 ? u.overallSummary
+    : `${description ? `${description.trim().replace(/\.?$/, ".")} ` : ""}No materials were supplied for "${productName}" (${businessUnit}), so this understanding is a blueprint of how comparable operational products are structured, built around the ${subject.toLowerCase()} lifecycle: capture, triage, decide, close and oversee. Every predicted item is marked INFERRED for BU review; add materials to replace predictions with evidence.`;
+  return {
+    ...u,
+    overallSummary,
+    clarifications,
+    personas: tag(sections.personas),
+    modules: tag(sections.modules),
+    screens: tag(sections.screens),
+    userJourneys: tag(sections.userJourneys),
+    businessRules: tag(sections.businessRules),
+    dataEntities: tag(sections.dataEntities),
+    integrations: tag(sections.integrations),
+    missingInformation: [
+      ...u.missingInformation.filter((m) => !staleGaps.has(m.id)),
+      {
+        id: "mi-benchmark-validation",
+        title: "Blueprint-derived scope needs BU validation",
+        description: `${inferredCount} item(s) were predicted from how comparable operational products are structured because the supplied input was limited (${thinness.reason}). Confirm, correct or remove each item tagged "${BENCHMARK_TAG}". Connect an AI provider for industry-specific benchmarks.`,
+        status: "MISSING",
+        evidenceReferences: [`${BENCHMARK_TAG}: ${LOCAL_BENCHMARK_INDUSTRY}`],
+      },
+    ],
+    benchmark: benchmarkInfo(LOCAL_BENCHMARK_INDUSTRY, thinness.reason),
+  };
 }
 
 /** Normalise entity constraints and add the BU review question when any were inferred. */
@@ -473,7 +577,8 @@ Return ONLY a valid JSON object matching this schema:
     console.warn("[AI Engine] LLM providers unavailable during definition, executing dynamic definition fallback:", err);
   }
 
-  return finalizeConstraints(generateDeterministicDefinition(understanding, productName, businessUnit, version));
+  const local = generateDeterministicDefinition(understanding, productName, businessUnit, version);
+  return finalizeConstraints(withDefinitionBlueprint(local, understanding, thinness));
 }
 
 export async function analyzeChangeImpact(
@@ -778,77 +883,87 @@ Return ONLY a valid JSON matching this schema:
   return generateDeterministicPrototypeUI(definition);
 }
 
-/** Deterministic fallback that generates plausible ScreenUISpec for screens without one. */
+/**
+ * Local definition: swap blueprint-derived items for their full blueprint form,
+ * top up thin scope so every persona's journey has a screen, and give every
+ * screen a UI blueprint so the prototype never falls back to a placeholder.
+ */
+function withDefinitionBlueprint(
+  def: ProductDefinition,
+  u: BusinessUnderstanding,
+  thinness: { thin: boolean; reason: string }
+): ProductDefinition {
+  const subject = deriveSubject(def.productName, def.businessUnit);
+  const bpScreens = blueprintScreens(subject);
+  const bp = {
+    personas: blueprintPersonas(subject),
+    modules: bpScreens.modules,
+    screens: bpScreens.screens,
+    userJourneys: blueprintJourneys(subject),
+    businessRules: blueprintRules(subject),
+    dataEntities: blueprintEntities(subject),
+    integrations: blueprintIntegrations(),
+  };
+  const swap = <T extends { id: string }>(items: T[], full: T[]) => items.map((i) => full.find((f) => f.id === i.id) ?? i);
+  const topUp = <T extends { id: string }>(items: T[], full: T[], min: number) =>
+    thinness.thin && items.length < min ? [...items, ...full.filter((f) => !items.some((i) => i.id === f.id))] : items;
+  // Only the engine's own generic fallbacks count as "nothing there".
+  const genericEntity = def.dataEntities.length === 1 && /^(ent-1|de-1)$/.test(def.dataEntities[0].id);
+
+  const personas = topUp(swap(def.personas, bp.personas), bp.personas, 3);
+  const screens = topUp(swap(def.screens, bp.screens), bp.screens, 4);
+  const modules = screens.some((s) => s.id.startsWith("scr-bp-"))
+    ? [...swap(def.modules, bp.modules).filter((m) => !m.name.endsWith("Core Module") || screens.some((s) => s.module === m.name)),
+       ...bp.modules.filter((m) => !def.modules.some((d) => d.id === m.id))]
+    : def.modules;
+  const dataEntities = thinness.thin && genericEntity ? bp.dataEntities : swap(def.dataEntities, bp.dataEntities);
+  const usesBlueprint = dataEntities.some((e) => e.id === "ent-bp-1");
+
+  const iconFor: Record<string, string> = { dashboard: "LayoutDashboard", "split-view": "ShieldAlert", "table-detail": "FileText", "form-wizard": "Sliders", "profile-360": "Users" };
+  const accessFor = (role: string): ProductDefinition["permissions"][number]["accessLevel"] =>
+    /audit|read.?only|viewer/i.test(role) ? "Read Only" : /admin/i.test(role) ? "Full Admin" : /requester|customer|external/i.test(role) ? "Restricted Segment" : "Read/Write";
+
+  let result: ProductDefinition = {
+    ...def,
+    personas,
+    modules,
+    screens,
+    navigation: screens.map((s) => ({ id: `nav-${s.id}`, label: s.name, screenId: s.id, icon: iconFor[s.layoutType] ?? "FileText", allowedRoles: ["All"] })),
+    userJourneys: thinness.thin && def.userJourneys.length <= 1 && def.userJourneys.every((j) => j.confidence !== "CONFIRMED")
+      ? bp.userJourneys
+      : swap(def.userJourneys, bp.userJourneys),
+    businessRules: swap(def.businessRules, bp.businessRules),
+    dataEntities,
+    integrations: swap(def.integrations, bp.integrations),
+    permissions: personas.map((p) => ({ role: p.name, accessLevel: accessFor(p.role), constraints: p.permissions.join("; ") })),
+    ...(usesBlueprint ? { notifications: blueprintNotifications(subject), validations: blueprintValidations(subject) } : {}),
+  };
+  result = ensureScreenUI(result);
+  if (!thinness.thin) return result;
+
+  const tag = <T extends { confidence?: string; evidence?: string[] }>(items: T[]) => tagInferredEvidence(items, LOCAL_BENCHMARK_INDUSTRY);
+  const industry = u.benchmark?.industry || LOCAL_BENCHMARK_INDUSTRY;
+  const inferredCount = [
+    result.personas, result.modules, result.screens, result.userJourneys,
+    result.businessRules, result.dataEntities, result.integrations,
+  ].flat().filter((i) => i.confidence === "INFERRED").length;
+  return {
+    ...result,
+    personas: tag(result.personas),
+    modules: tag(result.modules),
+    screens: tag(result.screens),
+    userJourneys: tag(result.userJourneys),
+    businessRules: tag(result.businessRules),
+    dataEntities: tag(result.dataEntities),
+    integrations: tag(result.integrations),
+    openQuestions: [benchmarkOpenQuestion(industry, inferredCount), ...result.openQuestions],
+    benchmark: benchmarkInfo(industry, thinness.reason),
+  };
+}
+
+/** Deterministic fallback: a complete, seeded UI blueprint for every screen without one. */
 function generateDeterministicPrototypeUI(definition: ProductDefinition): ProductDefinition {
-  const updated = JSON.parse(JSON.stringify(definition)) as ProductDefinition;
-
-  for (let i = 0; i < updated.screens.length; i++) {
-    const screen = updated.screens[i];
-    if (screen.ui) continue; // Already has a UI spec
-
-    // Find the entity that best matches this screen's module/name
-    const matchingEntity = updated.dataEntities.find(e =>
-      screen.name.toLowerCase().includes(e.name.toLowerCase().split(" ")[0]) ||
-      screen.module.toLowerCase().includes(e.name.toLowerCase().split(" ")[0])
-    ) || updated.dataEntities[0];
-
-    const fields = matchingEntity?.fields || [];
-    const fieldNames = fields.slice(0, 5).map(f => f.name);
-    const entityName = matchingEntity?.name || "Record";
-
-    // Generate domain-specific KPIs from the screen context
-    const kpis = [
-      { label: `Active ${entityName}s`, value: String(Math.floor(Math.random() * 900 + 100)), trend: "up" as const, delta: `+${(Math.random() * 10 + 1).toFixed(1)}% vs last week` },
-      { label: `Pending Review`, value: String(Math.floor(Math.random() * 50 + 5)), trend: "down" as const, delta: `-${(Math.random() * 5 + 1).toFixed(1)}% vs yesterday` },
-      { label: `Completion Rate`, value: `${(90 + Math.random() * 9).toFixed(1)}%`, trend: "up" as const, delta: "+1.2% vs target" },
-      { label: `Avg Response Time`, value: `${Math.floor(Math.random() * 20 + 2)} min`, trend: "flat" as const, delta: "Within SLA" },
-    ];
-
-    const columns = ["ID", ...fieldNames.slice(0, 3).map(f => f.charAt(0).toUpperCase() + f.slice(1)), "Status", "Updated"];
-    const statuses = ["Active", "Pending", "In Progress", "Completed", "Overdue"];
-    const rows = Array.from({ length: 5 }, (_, rowIdx) => {
-      const row = [
-        `${entityName.toUpperCase().slice(0, 3)}-${1001 + rowIdx}`,
-        ...fieldNames.slice(0, 3).map(f => {
-          if (f.toLowerCase().includes("name") || f.toLowerCase().includes("title")) return `${entityName} ${String.fromCharCode(65 + rowIdx)}`;
-          if (f.toLowerCase().includes("date") || f.toLowerCase().includes("time")) return new Date(Date.now() - rowIdx * 86400000).toLocaleDateString();
-          return `${f} ${rowIdx + 1}`;
-        }),
-        statuses[rowIdx % statuses.length],
-        new Date(Date.now() - rowIdx * 3600000).toLocaleTimeString(),
-      ];
-      // Ensure row length matches columns
-      return Array.from({ length: columns.length }, (_, ci) => row[ci] || "—");
-    });
-
-    updated.screens[i].ui = {
-      kpis,
-      filters: ["All", "Active", "Pending", "My Queue", "Overdue"],
-      table: { title: `${screen.name} Records`, columns, rows },
-      detailPanels: [
-        {
-          title: `${entityName} Details`,
-          items: fields.slice(0, 4).map(f => ({
-            label: f.name.charAt(0).toUpperCase() + f.name.slice(1),
-            value: f.type.includes("number") ? String(Math.floor(Math.random() * 1000)) : `Sample ${f.name}`
-          })),
-        },
-        {
-          title: "Activity & History",
-          items: [
-            { label: "Created", value: new Date(Date.now() - 7 * 86400000).toLocaleDateString() },
-            { label: "Last Modified", value: "Today" },
-            { label: "Assigned To", value: updated.personas[0]?.name || "System User" },
-          ],
-        },
-      ],
-      primaryActions: screen.components.slice(0, 2).map(c => c.split(" ")[0]),
-      entity: matchingEntity?.name,
-      benchmarkNote: `Generic enterprise workbench pattern. Upload materials and regenerate for AI-powered, industry-specific UI inspired by leading products.`,
-    };
-  }
-
-  return updated;
+  return ensureScreenUI(definition);
 }
 
 export function generateEngineeringPackageData(

@@ -47,6 +47,12 @@ function statusStyle(value: string): string | null {
   if (/^(overdue|blocked|failed|critical|rejected|offline|breached|escalated|late|expired)$/i.test(value.trim())) {
     return 'bg-rose-50 text-rose-700 border-rose-200';
   }
+  if (/^(submitted|on hold|queued|assigned|high)$/i.test(value.trim())) {
+    return 'bg-sky-50 text-sky-700 border-sky-200';
+  }
+  if (/^(closed|archived|cancelled|canceled|inactive)$/i.test(value.trim())) {
+    return 'bg-slate-100 text-slate-600 border-slate-200';
+  }
   return null;
 }
 

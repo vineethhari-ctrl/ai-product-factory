@@ -58,6 +58,8 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   const [showQuickText, setShowQuickText] = useState(false);
   const [inspectingMaterial, setInspectingMaterial] = useState<UploadedMaterial | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A product name alone is enough: thin input is completed from benchmark patterns and flagged for review.
+  const canAnalyze = materials.length > 0 || productName.trim().length > 0;
 
   const getFileType = (filename: string, mime: string): MaterialType => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -369,10 +371,10 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
             </div>
             
             <button
-              disabled={materials.length === 0 || isAnalyzing}
+              disabled={!canAnalyze || isAnalyzing}
               onClick={onAnalyze}
               className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold transition-all shadow-sm ${
-                materials.length > 0 && !isAnalyzing
+                canAnalyze && !isAnalyzing
                   ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-indigo-200'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
@@ -391,8 +393,14 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
             </button>
 
             {materials.length === 0 && (
-              <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200/60 leading-normal">
-                Upload at least one business file or click the Demo Pack button to begin analysis.
+              <p className={`text-[11px] p-2.5 rounded-lg border leading-normal ${
+                canAnalyze
+                  ? 'text-indigo-700 bg-indigo-50 border-indigo-200/60'
+                  : 'text-amber-700 bg-amber-50 border-amber-200/60'
+              }`}>
+                {canAnalyze
+                  ? 'No files needed: the factory will predict personas, screens, rules and data from how comparable products are built, and mark every prediction for your review. Add files any time for sharper results.'
+                  : 'Enter a product name (a one-line description helps), upload business files, or click the Demo Pack button to begin.'}
               </p>
             )}
 

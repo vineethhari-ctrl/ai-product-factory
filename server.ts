@@ -28,12 +28,13 @@ async function startServer() {
   app.post("/api/analyze-material", async (req, res) => {
     try {
       const { materials, productName, businessUnit, description } = req.body;
-      if (!materials || !Array.isArray(materials) || materials.length === 0) {
-        return res.status(400).json({ error: "No business materials provided for analysis." });
+      // Materials are optional: a product name alone is completed from benchmark patterns.
+      if ((materials !== undefined && !Array.isArray(materials)) || (!materials?.length && !String(productName ?? "").trim())) {
+        return res.status(400).json({ error: "Provide a product name or at least one business material." });
       }
 
       const understanding = await analyzeBusinessMaterial(
-        materials,
+        materials ?? [],
         productName || "Untitled Product",
         businessUnit || "General",
         description || ""

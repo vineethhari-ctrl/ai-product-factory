@@ -170,7 +170,7 @@ export default function App() {
 
   // Step 1 -> 2: Understand Business
   const handleAnalyzeMaterials = async () => {
-    if (materials.length === 0) return;
+    if (materials.length === 0 && !productName.trim()) return;
     setIsAnalyzing(true);
     setApiError(null);
     try {
