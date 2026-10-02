@@ -2,7 +2,6 @@ import type {
   BusinessRuleDefinition,
   DataEntityDefinition,
   DataFieldDefinition,
-  EvidenceItem,
   IntegrationDefinition,
   ModuleDefinition,
   NotificationRule,
@@ -32,7 +31,7 @@ import { resolveFieldConstraints } from "../src/services/validationEngine";
  * renders the same prototype.
  */
 
-const PATTERN = (p: string) => `${BENCHMARK_TAG}: ${p}`;
+export const PATTERN = (p: string) => `${BENCHMARK_TAG}: ${p}`;
 
 // ─── Subject ────────────────────────────────────────────────────────────────
 
@@ -107,7 +106,7 @@ export function deriveOperatorRole(productName: string, description = ""): strin
 
 export const DEFAULT_OPERATOR = "Operations Specialist";
 
-function codePrefix(subject: string): string {
+export function codePrefix(subject: string): string {
   const letters = subject.split(/\s+/).map((w) => w[0]).join("").toUpperCase();
   return (letters.length >= 2 ? letters : subject.replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase()).slice(0, 4) || "REC";
 }
@@ -120,7 +119,7 @@ function hashSeed(s: string): number {
   return h >>> 0;
 }
 
-function rng(seed: string): () => number {
+export function rng(seed: string): () => number {
   let a = hashSeed(seed);
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -132,8 +131,8 @@ function rng(seed: string): () => number {
 }
 
 /** Obviously fictional people and organisations; never real personal data. */
-const PEOPLE = ["Priya Raman", "Marcus Chen", "Elena García", "Samuel Okafor", "Hannah Weber", "Diego Alvarez", "Aisha Khan", "Tomás Novak"];
-const ORGS = ["Northwind Group", "Contoso Ltd", "Fabrikam Inc", "Tailspin Partners", "Litware Co", "Adventure Works", "Woodgrove Unit"];
+export const PEOPLE = ["Priya Raman", "Marcus Chen", "Elena García", "Samuel Okafor", "Hannah Weber", "Diego Alvarez", "Aisha Khan", "Tomás Novak"];
+export const ORGS = ["Northwind Group", "Contoso Ltd", "Fabrikam Inc", "Tailspin Partners", "Litware Co", "Adventure Works", "Woodgrove Unit"];
 const QUALIFIERS = ["standard intake", "expedited", "renewal", "exception review", "follow-up", "annual cycle", "escalated"];
 
 const humanize = (name: string) =>
@@ -145,17 +144,20 @@ const humanize = (name: string) =>
 
 /** "IN_REVIEW" -> "In Review" so status chips colour and read naturally. */
 export const stateLabel = (s: string) =>
-  s.toLowerCase().split(/[_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  /[a-z]/.test(s) ? s // already a readable label, e.g. a stage from the brief
+  : s.toLowerCase().split(/[_\s]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 /** Fixed anchor so sample dates do not change between renders. */
-const ANCHOR = Date.UTC(2026, 8, 28);
-const fmtDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+export const ANCHOR = Date.UTC(2026, 8, 28);
+export const fmtDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 interface SampleContext {
   subject: string;
   entity: DataEntityDefinition;
   rand: () => number;
+  /** Status values to cycle through instead of spreading rows over every state. */
+  statusCycle?: string[];
 }
 
 /** One plausible, domain-neutral value for a field, based on its format and name only. */
@@ -164,8 +166,18 @@ function sampleValue(field: DataFieldDefinition, row: number, ctx: SampleContext
   const n = field.name.toLowerCase();
   const r = ctx.rand;
   const lc = ctx.entity.lifecycle;
-  if (lc && field.name === lc.statusField) return stateLabel(lc.states[(row * 3 + 1) % lc.states.length]);
-  if (c.enumValues?.length) return stateLabel(c.enumValues[(row + Math.floor(r() * 2)) % c.enumValues.length]);
+  if (lc && field.name === lc.statusField) {
+    // Lifecycles written as readable labels (stages from a brief) are shown as written.
+    const readable = lc.states.some((v) => /[a-z]/.test(v));
+    if (ctx.statusCycle?.length) { const v = ctx.statusCycle[row % ctx.statusCycle.length]; return readable ? v : stateLabel(v); }
+    if (readable) return lc.states[(row * 3 + 1) % lc.states.length];
+    return stateLabel(lc.states[(row * 3 + 1) % lc.states.length]);
+  }
+  if (c.enumValues?.length) {
+    const v = c.enumValues[(row + Math.floor(r() * 2)) % c.enumValues.length];
+    // A list that already holds readable labels ("Partner", "ABC") is shown as written.
+    return c.enumValues.some((e) => /[a-z]/.test(e)) ? v : stateLabel(v);
+  }
   switch (c.format) {
     case "email": {
       const p = PEOPLE[(row + 2) % PEOPLE.length].toLowerCase().normalize("NFD").replace(/[^a-z ]/g, "").split(" ");
@@ -195,7 +207,7 @@ function sampleValue(field: DataFieldDefinition, row: number, ctx: SampleContext
   }
   if (/(assignee|owner|agent|reviewer|approver|user|by$|name$|contact|requester|person)/.test(n)) return PEOPLE[(row * 3) % PEOPLE.length];
   if (/(org|company|account|customer|client|party|vendor|supplier|site|location|branch)/.test(n)) return ORGS[row % ORGS.length];
-  if (/(title|subject|summary|label|headline)/.test(n)) return `${ORGS[row % ORGS.length]} — ${QUALIFIERS[row % QUALIFIERS.length]}`;
+  if (/(title|subject|summary|label|headline)/.test(n)) return `${ctx.subject} for ${ORGS[row % ORGS.length]} · ${QUALIFIERS[row % QUALIFIERS.length]}`;
   if (/(date|due|deadline|at$)/.test(n)) return fmtDate(ANCHOR + (row * 2 - 4) * DAY);
   if (/(amount|value|cost|price|total|fee|budget)/.test(n)) return (500 + r() * 24_500).toLocaleString("en-US", { maximumFractionDigits: 0 });
   if (/(count|qty|quantity|score)/.test(n)) return String(1 + Math.floor(r() * 40));
@@ -236,9 +248,9 @@ export interface SampleTable {
   rows: string[][];
 }
 
-export function sampleTable(entity: DataEntityDefinition, subject: string, seed: string, rowCount = 7): SampleTable {
+export function sampleTable(entity: DataEntityDefinition, subject: string, seed: string, rowCount = 7, statusCycle?: string[]): SampleTable {
   const rand = rng(seed);
-  const ctx: SampleContext = { subject, entity, rand };
+  const ctx: SampleContext = { subject, entity, rand, statusCycle };
   let cols = pickColumns(entity, 6);
   const hasKey = cols.some((f) => resolveFieldConstraints(f).unique || resolveFieldConstraints(f).format === "identifier");
   if (!hasKey) cols = [{ name: "reference", type: "string", required: true, constraints: { format: "identifier" } }, ...pickColumns(entity, 5)];
@@ -519,22 +531,6 @@ export function blueprintValidations(subject: string): ValidationRule[] {
   ];
 }
 
-/** The blueprint as understanding items, so the Business Understanding screen is filled too. */
-export function blueprintUnderstandingItems(subject: string, operator = DEFAULT_OPERATOR): Record<"personas" | "modules" | "screens" | "userJourneys" | "businessRules" | "dataEntities" | "integrations", EvidenceItem[]> {
-  const item = (id: string, title: string, description: string, evidence: string[]): EvidenceItem =>
-    ({ id, title, description, status: "INFERRED", evidenceReferences: evidence });
-  const { modules, screens } = blueprintScreens(subject);
-  return {
-    personas: blueprintPersonas(subject, operator).map((p) => item(p.id, p.name, `${p.keyGoals.join(". ")}.`, p.evidence)),
-    modules: modules.map((m) => item(m.id, m.name, m.description, m.evidence)),
-    screens: screens.map((s) => item(s.id, s.name, s.purpose, s.evidence)),
-    userJourneys: blueprintJourneys(subject, operator).map((j) => item(j.id, j.name, `${j.steps.join(" → ")}. ${j.outcome}`, j.evidence)),
-    businessRules: blueprintRules(subject).map((r) => item(r.id, `${r.code}: ${r.context}`, r.rule, r.evidence)),
-    dataEntities: blueprintEntities(subject).map((e) => ({ ...item(e.id, e.name, e.description, e.evidence), fields: e.fields })),
-    integrations: blueprintIntegrations().map((i) => item(i.id, i.system, `${i.purpose} (${i.protocol})`, i.evidence)),
-  };
-}
-
 /** Best entity for a screen: explicit ui.entity, then a name match, then the first entity with a lifecycle. */
 export function entityForScreen(screen: ScreenDefinition, entities: DataEntityDefinition[]): DataEntityDefinition | undefined {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -551,8 +547,8 @@ export function entityForScreen(screen: ScreenDefinition, entities: DataEntityDe
 }
 
 /** Give every screen without a UI blueprint a complete one. Screens with one are left alone. */
-export function ensureScreenUI(definition: ProductDefinition): ProductDefinition {
-  const subject = deriveSubject(definition.productName, definition.businessUnit);
+export function ensureScreenUI(definition: ProductDefinition, subjectOverride?: string): ProductDefinition {
+  const subject = subjectOverride ?? definition.blueprintBrief?.subject ?? deriveSubject(definition.productName, definition.businessUnit);
   return {
     ...definition,
     screens: definition.screens.map((s) =>

@@ -43,6 +43,18 @@ export interface ClarificationItem {
   answeredBy?: string; // Default: 'Business Unit / Product Lead'
 }
 
+/** Structure the local engine reads from the BU's own words when no LLM is available (server/briefParser.ts). */
+export interface BlueprintBrief {
+  /** The record that moves through the process, e.g. from "X 360" or the stage names. */
+  subject?: string;
+  /** Ordered lifecycle stages from an arrow chain ("A → B → C"). */
+  stages: string[];
+  /** People and organisations the brief names. */
+  parties: string[];
+  /** Child records from a "<things> such as a, b, c" list. */
+  parts?: { name: string; types: string[] };
+}
+
 /** Set when the BU input was thin and requirements were predicted from industry patterns. */
 export interface BenchmarkInfo {
   applied: boolean;
@@ -52,6 +64,8 @@ export interface BenchmarkInfo {
 
 export interface BusinessUnderstanding {
   benchmark?: BenchmarkInfo;
+  /** Set by the local engine; carries the parsed brief to the definition and prototype steps. */
+  blueprintBrief?: BlueprintBrief;
   businessObjective: EvidenceItem;
   personas: EvidenceItem[];
   modules: EvidenceItem[];
@@ -268,6 +282,8 @@ export interface OpenQuestionItem {
 
 export interface ProductDefinition {
   benchmark?: BenchmarkInfo;
+  /** Set by the local engine; carries the parsed brief to the definition and prototype steps. */
+  blueprintBrief?: BlueprintBrief;
   /** Problems found while normalising inferred field constraints (dropped patterns, clamped ranges). */
   constraintWarnings?: string[];
   id: string;

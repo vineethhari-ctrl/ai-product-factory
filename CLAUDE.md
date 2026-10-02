@@ -79,14 +79,24 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
   INFERRED and tagged, with the same validation gap and blocking question as the LLM path; the banner industry
   is "cross-industry operational software". The blueprint has no domain knowledge: every noun comes from the
   BU input.
+- **Brief-driven blueprint** (`server/briefParser.ts`, `server/processBlueprint.ts`): before falling back to the
+  generic shape, the local engine reads the BU's own words (notes plus material text) for writing patterns, not
+  domain words: an arrow chain `A → B → C` gives the lifecycle stages; `X 360` (or the noun shared by the stages)
+  gives the subject; acronyms defined as groups (`ABCs (… Partners)`), lowercase role plurals and slash groups
+  give the parties; a `<things> such as a, b, c` list gives a child entity with a type list. With 3+ stages the
+  product is built around the process: lifecycle states = stages + On Hold/Cancelled (in-order transitions), an
+  intake form for the first stage, one work screen per stage group (max 8), a 360 view with the stage timeline
+  and parts by serial, per-stage performance, a stage-record (proof of record) entity, one module per phase
+  and parties as personas. The parsed brief is stored as `blueprintBrief` on the understanding and definition
+  so later steps rebuild the same blueprint. `buildBlueprint` picks process or generic.
 - Saved sessions from before the blueprint are upgraded on Build Prototype: the client does not reuse UI whose
   note starts "Generic enterprise workbench pattern" or placeholder (MISSING) screens, and
   `generatePrototypeUI` drops that legacy UI and rebuilds a placeholder-only definition from the blueprint.
 - `ensureScreenUI` gives every screen without a `ui` a full blueprint from its entity. Sample data comes from
   a seeded PRNG (stable across renders), filter chips are taken from the sample rows so they really filter,
   and status is always the last column.
-- `npm run check:thin` runs a name-only pipeline for three unlike products and checks screens, UI, form
-  validation, tagging, determinism and domain neutrality.
+- `npm run check:thin` runs a name-only pipeline for three unlike products and a brief with a process chain, and
+  checks parsing, screens, UI, lifecycle order, form validation, tagging, determinism and domain neutrality.
 
 ## Field constraints & validation (domain-neutral)
 

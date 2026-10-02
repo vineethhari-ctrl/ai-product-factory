@@ -53,11 +53,14 @@ function statusStyle(value: string): string | null {
   if (/^(closed|archived|cancelled|canceled|inactive)$/i.test(value.trim())) {
     return 'bg-slate-100 text-slate-600 border-slate-200';
   }
+  if (/^on track$/i.test(value.trim())) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (/^at risk$/i.test(value.trim())) return 'bg-amber-50 text-amber-700 border-amber-200';
   return null;
 }
 
-const StatusOrText: React.FC<{ value: string }> = ({ value }) => {
-  const style = statusStyle(value);
+/** `chip` marks a status column: values that are not a known status (e.g. a lifecycle stage) still render as a chip. */
+const StatusOrText: React.FC<{ value: string; chip?: boolean }> = ({ value, chip }) => {
+  const style = statusStyle(value) ?? (chip && value && value !== '—' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : null);
   return style ? (
     <span className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${style}`}>{value}</span>
   ) : (
@@ -207,7 +210,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               >
                 {row.map((cell, ci) => (
                   <td key={ci} className={`px-4 py-2.5 whitespace-nowrap ${ci === 0 ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
-                    <StatusOrText value={cell} />
+                    <StatusOrText value={cell} chip={ci === statusColIdx} />
                   </td>
                 ))}
               </tr>
@@ -232,7 +235,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Selected record</div>
           <div className="text-base font-bold text-slate-900">{selectedTitle}</div>
         </div>
-        {statusColIdx >= 0 && <StatusOrText value={selected[statusColIdx] ?? ''} />}
+        {statusColIdx >= 0 && <StatusOrText value={selected[statusColIdx] ?? ''} chip />}
       </div>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         {ui.table.columns.slice(1).map((c, i) => (
@@ -302,7 +305,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
                         <div className="text-xs font-bold text-slate-900 truncate">{row[0]}</div>
                         <div className="text-[11px] text-slate-500 truncate">{row[1] ?? ''}</div>
                       </div>
-                      {statusColIdx >= 0 && <StatusOrText value={row[statusColIdx] ?? ''} />}
+                      {statusColIdx >= 0 && <StatusOrText value={row[statusColIdx] ?? ''} chip />}
                     </button>
                   </li>
                 ))}
@@ -411,7 +414,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               <div className="text-lg font-bold text-slate-900 truncate">{selectedTitle || 'No record selected'}</div>
               <div className="text-xs text-slate-500">{selected?.[1] ?? ''}</div>
             </div>
-            {statusColIdx >= 0 && selected && <StatusOrText value={selected[statusColIdx] ?? ''} />}
+            {statusColIdx >= 0 && selected && <StatusOrText value={selected[statusColIdx] ?? ''} chip />}
             {actionsBar}
           </div>
           {panels('md:grid-cols-2 xl:grid-cols-3')}

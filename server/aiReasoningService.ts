@@ -24,20 +24,8 @@ import {
   tagInferredReferences,
 } from "./benchmark";
 import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, PrototypeUISchema } from "./aiSchemas";
-import {
-  blueprintEntities,
-  blueprintIntegrations,
-  blueprintJourneys,
-  blueprintNotifications,
-  blueprintPersonas,
-  blueprintRules,
-  blueprintScreens,
-  blueprintUnderstandingItems,
-  blueprintValidations,
-  deriveOperatorRole,
-  deriveSubject,
-  ensureScreenUI,
-} from "./blueprint";
+import { ensureScreenUI } from "./blueprint";
+import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
@@ -262,8 +250,11 @@ function withLocalBlueprint(
 ): BusinessUnderstanding {
   const thinness = assessMaterialThinness(materials, description);
   if (!thinness.thin) return u;
-  const subject = deriveSubject(productName, businessUnit);
-  const bp = blueprintUnderstandingItems(subject, deriveOperatorRole(productName, description));
+  // The brief is everything the BU wrote: notes plus any material text.
+  const briefText = [description, ...materials.map((m) => m.contentSnippet ?? "")].filter(Boolean).join("\n");
+  const blueprint = buildBlueprint(productName, businessUnit, briefText);
+  const subject = blueprint.subject;
+  const bp = blueprintToUnderstanding(blueprint);
   const filled = new Set<string>();
   const fill = (key: keyof typeof bp, current: BusinessUnderstanding["personas"]) => {
     if (isPlaceholderSection(current)) {
@@ -300,10 +291,15 @@ function withLocalBlueprint(
   const rename = (text: string) =>
     renames.reduce((acc, [from, to]) => (from && to && from !== to ? acc.split(from).join(to) : acc), text);
   const clarifications = u.clarifications?.map((c) => ({ ...c, question: rename(c.question), impactIfIgnored: rename(c.impactIfIgnored) }));
+  const { stages, parties } = blueprint.brief;
+  const shape = stages.length >= 3
+    ? `built around the ${stages.length}-stage ${subject.toLowerCase()} lifecycle in the brief (${stages.join(" → ")})${parties.length ? `, shared by ${parties.join(", ")}` : ""}`
+    : `built around the ${subject.toLowerCase()} lifecycle: capture, triage, decide, close and oversee`;
   const overallSummary = materials.length > 0 ? u.overallSummary
-    : `${description ? `${description.trim().replace(/\.?$/, ".")} ` : ""}No materials were supplied for "${productName}" (${businessUnit}), so this understanding is a blueprint of how comparable operational products are structured, built around the ${subject.toLowerCase()} lifecycle: capture, triage, decide, close and oversee. Every predicted item is marked INFERRED for BU review; add materials to replace predictions with evidence.`;
+    : `${description ? `${description.trim().replace(/\.?$/, ".")} ` : ""}No materials were supplied for "${productName}" (${businessUnit}), so the product scope below is predicted from the brief, ${shape}. Every predicted item is marked INFERRED for BU review; add materials to replace predictions with evidence.`;
   return {
     ...u,
+    blueprintBrief: blueprint.brief,
     overallSummary,
     clarifications,
     personas: tag(sections.personas),
@@ -912,21 +908,11 @@ Return ONLY a valid JSON matching this schema:
  */
 function withDefinitionBlueprint(
   def: ProductDefinition,
-  u: Pick<BusinessUnderstanding, "benchmark"> | undefined,
+  u: Pick<BusinessUnderstanding, "benchmark" | "blueprintBrief"> | undefined,
   thinness: { thin: boolean; reason: string }
 ): ProductDefinition {
-  const subject = deriveSubject(def.productName, def.businessUnit);
-  const operator = deriveOperatorRole(def.productName, def.objective);
-  const bpScreens = blueprintScreens(subject);
-  const bp = {
-    personas: blueprintPersonas(subject, operator),
-    modules: bpScreens.modules,
-    screens: bpScreens.screens,
-    userJourneys: blueprintJourneys(subject, operator),
-    businessRules: blueprintRules(subject),
-    dataEntities: blueprintEntities(subject),
-    integrations: blueprintIntegrations(),
-  };
+  const blueprint = buildBlueprint(def.productName, def.businessUnit, def.objective, u?.blueprintBrief ?? def.blueprintBrief);
+  const bp = blueprint;
   const swap = <T extends { id: string }>(items: T[], full: T[]) => items.map((i) => full.find((f) => f.id === i.id) ?? i);
   const topUp = <T extends { id: string }>(items: T[], full: T[], min: number) =>
     thinness.thin && items.length < min ? [...items, ...full.filter((f) => !items.some((i) => i.id === f.id))] : items;
@@ -941,7 +927,11 @@ function withDefinitionBlueprint(
     ? [...swap(def.modules, bp.modules).filter((m) => !m.name.endsWith("Core Module") || screens.some((s) => s.module === m.name)),
        ...bp.modules.filter((m) => !def.modules.some((d) => d.id === m.id))]
     : def.modules;
-  const dataEntities = thinness.thin && genericEntity ? bp.dataEntities : swap(def.dataEntities, bp.dataEntities);
+  const swapped = thinness.thin && genericEntity ? bp.dataEntities : swap(def.dataEntities, bp.dataEntities);
+  // Blueprint screens are built on the blueprint entities, so those must be present.
+  const dataEntities = screens.some((s) => s.id.startsWith("scr-bp-")) && !swapped.some((e) => e.id === "ent-bp-1")
+    ? [...bp.dataEntities, ...swapped]
+    : swapped;
   const usesBlueprint = dataEntities.some((e) => e.id === "ent-bp-1");
 
   const iconFor: Record<string, string> = { dashboard: "LayoutDashboard", "split-view": "ShieldAlert", "table-detail": "FileText", "form-wizard": "Sliders", "profile-360": "Users" };
@@ -961,9 +951,10 @@ function withDefinitionBlueprint(
     dataEntities,
     integrations: swap(def.integrations, bp.integrations),
     permissions: personas.map((p) => ({ role: p.name, accessLevel: accessFor(p.role), constraints: p.permissions.join("; ") })),
-    ...(usesBlueprint ? { notifications: blueprintNotifications(subject, operator), validations: blueprintValidations(subject) } : {}),
+    ...(usesBlueprint ? { notifications: bp.notifications, validations: bp.validations } : {}),
+    blueprintBrief: blueprint.brief,
   };
-  result = ensureScreenUI(result);
+  result = ensureScreenUI(result, blueprint.subject);
   if (!thinness.thin) return result;
 
   const tag = <T extends { confidence?: string; evidence?: string[] }>(items: T[]) => tagInferredEvidence(items, LOCAL_BENCHMARK_INDUSTRY);
