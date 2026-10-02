@@ -98,6 +98,26 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
 - `npm run check:thin` runs a name-only pipeline for three unlike products and a brief with a process chain, and
   checks parsing, screens, UI, lifecycle order, form validation, tagging, determinism and domain neutrality.
 
+## AI usage control (`server/usage.ts`)
+
+Who spent what, per BA and project, with limits, a monthly budget and a response cache. Settings in `.env.example`.
+- **Identity**: the browser asks the BA's name once (`IdentityPrompt`) and creates a project id on New Initiative
+  (`src/services/aiSession.ts`); every `/api` call carries `X-User` and `X-Project-Id`. Self-declared: team
+  accountability, not security.
+- **Router order** (`llmRouter.ts`): no key -> local engine (not metered); cache hit (same task + prompt) -> saved
+  result, free and not counted; over a limit -> local engine with a notice; else Gemini -> Claude.
+- **Click** = one AI button press that reached a provider. Tokens come from the provider responses
+  (`recordTokens` in both clients, including unusable answers and Gemini thinking tokens). Calls with no tokens
+  (network failure) are not counted.
+- **Limits** (rolling 24 h): per project per button (3), per BA per button (3), BA daily tokens (300k); team monthly
+  budget in USD ($50). Over a limit the request is answered offline, never refused.
+- **Notices**: `X-AI-Notice` response header (tokens used and cost, cache reuse, limit reached) -> toast.
+  `GET /api/usage` -> the BA's tokens and per-button counts, the project's counts, and the team's month by BA/day,
+  shown by `UsagePanel` in the header.
+- Prompts must not embed timestamps or random ids, or the cache never hits (the server sets identity fields).
+- Storage: `DATA_DIR/ai-usage.json` and `DATA_DIR/ai-cache/` (gitignored). Costs are estimates from list prices
+  (`AI_PRICE_<MODEL>` overrides). `npm run check:usage` covers limits, budget, cache, metering and the router.
+
 ## Field constraints & validation (domain-neutral)
 
 The factory infers each entity's compulsory fields and validation rules for ANY domain; the code has
@@ -131,7 +151,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI

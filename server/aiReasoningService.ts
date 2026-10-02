@@ -364,7 +364,7 @@ AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
 REQUIREMENTS:
 Return ONLY a valid JSON object matching this schema:
 {
-  "id": "prod-def-${Date.now()}",
+  "id": "prod-def-id",
   "version": "${version}",
   "productName": "${productName}",
   "businessUnit": "${businessUnit}",
@@ -518,7 +518,7 @@ Return ONLY a valid JSON object matching this schema:
     "Dual Vehicle Access": ["Meeting_Audio_Transcript_Operations_Sync.txt"]
   },
   "isApproved": false,
-  "lastUpdated": "${new Date().toISOString()}"
+  "lastUpdated": "ISO-8601 timestamp"
 }`;
 
   try {
@@ -600,8 +600,8 @@ Business Rules: ${JSON.stringify(currentDefinition.businessRules.map(r => r.code
 
 Analyze the requested change and return ONLY a valid JSON object matching this schema:
 {
-  "id": "change-${Date.now()}",
-  "timestamp": "${new Date().toISOString()}",
+  "id": "change-id",
+  "timestamp": "ISO-8601 timestamp",
   "changeRequested": "${changeRequest}",
   "affectedAreas": {
     "screens": ["Screen 1", "Screen 2"],

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ActiveScreen, ProductDefinition } from '../types';
+import { UsagePanel } from './UsagePanel';
 import { 
   Factory, 
   Layers, 
@@ -151,6 +152,8 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
           </div>
+
+          <UsagePanel />
 
           {/* New Initiative reset — always visible */}
           <button

@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "check:validation": "tsx scripts/validation-engine.check.ts",
     "check:ui": "tsx scripts/ui-form.check.tsx",
-    "check:thin": "tsx scripts/thin-input.check.ts"
+    "check:thin": "tsx scripts/thin-input.check.ts",
+    "check:usage": "tsx scripts/usage.check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

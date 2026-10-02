@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { AITask, ClaudeRoute, TASK_ROUTE, ROUTING_MATRIX } from "./routing";
+import { recordTokens } from "./usage";
 
 export type { AITask };
 
@@ -66,6 +67,8 @@ export async function callClaudeJSON<S extends z.ZodType>(
       messages: [{ role: "user", content: prompt }],
     });
     const message = await stream.finalMessage();
+    // Billed whether or not the answer is usable.
+    recordTokens(task, route.model, message.usage.input_tokens, message.usage.output_tokens);
 
     if (message.stop_reason === "refusal") {
       console.warn(`[AI Engine] ${task}: ${route.model} declined (${message.stop_details?.category ?? "unspecified"}).`);

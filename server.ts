@@ -11,6 +11,7 @@ import {
   generatePrototypeUI
 } from "./server/aiReasoningService";
 import { validateRecordHandler } from "./server/recordRoute";
+import { currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
 
 async function startServer() {
   const app = express();
@@ -18,6 +19,25 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+  // Every API request knows its BA (X-User) and project (X-Project-Id) for AI usage metering.
+  app.use("/api", usageContext);
+  // AI endpoints report what happened (tokens used, cache reuse, limit reached) in X-AI-Notice.
+  app.use("/api", (_req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body: unknown) => {
+      const notices = currentNotices();
+      if (notices.length && !res.headersSent) res.setHeader("X-AI-Notice", encodeURIComponent(notices.join("\n")));
+      return json(body);
+    };
+    next();
+  });
+
+  // AI usage for the current BA and project, and the team's month
+  app.get("/api/usage", (req, res) => {
+    const { user, project } = requestIdentity(req);
+    res.json(usageReport(user, project));
+  });
 
   // Health check
   app.get("/api/health", (_req, res) => {

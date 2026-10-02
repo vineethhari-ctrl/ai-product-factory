@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { AITask, GeminiRoute, TASK_ROUTE, ROUTING_MATRIX } from "./routing";
+import { recordTokens } from "./usage";
 
 /**
  * Gemini provider (primary). Uses GEMINI_API_KEY. One model per task, chosen by
@@ -69,6 +70,10 @@ export async function callGeminiJSON<S extends z.ZodType>(
         contents: prompt,
         config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
       });
+
+      // Billed whether or not the answer is usable; thinking tokens are billed as output.
+      const usage = response.usageMetadata;
+      recordTokens(task, model, usage?.promptTokenCount ?? 0, (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0));
 
       if (response.candidates?.[0]?.finishReason === "MAX_TOKENS") {
         console.warn(`[AI Engine] ${task}: ${model} hit its ${maxTokens}-token output ceiling and the JSON is cut off; raise maxTokens in routing.ts.`);

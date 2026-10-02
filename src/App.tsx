@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AI_NOTICE_EVENT, newProjectId } from './services/aiSession';
+import { IdentityPrompt } from './components/UsagePanel';
 import { 
   ActiveScreen, 
   UploadedMaterial, 
@@ -117,9 +119,9 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, ms = 4000) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
+    setTimeout(() => setToastMessage(null), ms);
   };
 
   // ── Auto-save pipeline state to localStorage ─────────────
@@ -159,6 +161,14 @@ export default function App() {
     productDefinition,
     engineeringPackage,
   ]);
+
+  // ── AI usage notices from the server (tokens used, saved result reused, limit reached) ──
+  useEffect(() => {
+    const onNotice = (e: Event) => showToast((e as CustomEvent<string>).detail, 9000);
+    window.addEventListener(AI_NOTICE_EVENT, onNotice);
+    return () => window.removeEventListener(AI_NOTICE_EVENT, onNotice);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Show 'Session restored' toast once on mount if saved state was found ──
   useEffect(() => {
@@ -536,6 +546,9 @@ export default function App() {
     try { localStorage.removeItem(LEGACY_DEV_KEY); } catch {/* noop */}
     try { sessionStorage.clear(); } catch {/* noop */}
 
+    // A new initiative is a new project for AI usage limits.
+    newProjectId();
+
     // 2. Stage 1 — intake fields
     setProductName('');
     setBusinessUnit('');
@@ -597,10 +610,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
+      <IdentityPrompt />
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 border border-slate-700">
           <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>{toastMessage}</span>
+          <span className="whitespace-pre-line max-w-md">{toastMessage}</span>
         </div>
       )}
 
