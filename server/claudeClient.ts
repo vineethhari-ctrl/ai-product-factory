@@ -1,27 +1,23 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { AITask, ClaudeRoute, TASK_ROUTE, ROUTING_MATRIX } from "./routing";
+import { AITask, claudeRoute } from "./routing";
 import { recordTokens } from "./usage";
 
 export type { AITask };
 
 /**
- * Claude provider (failover, used when Gemini is unavailable). One model per
- * task, chosen by the Model Routing Architecture Matrix (routing.ts).
+ * Claude provider. One model per task, chosen by the Model Routing
+ * Architecture Matrix (routing.ts `claudeRoute`, which also picks the
+ * parameters the model accepts).
  *
  *  1. The SDK retries 408/409/429/5xx (including 529 overloaded) and network
  *     errors with backoff (`maxRetries`).
  *  2. A refusal, a cut-off response (`max_tokens`) or schema-invalid output
  *     ends the attempt.
- *  3. On any failure `null` is returned and the caller falls back to the
- *     deterministic local engine.
+ *  3. On any failure `null` is returned and the router tries the next
+ *     provider, then the deterministic local engine.
  */
-
-/** Task -> Claude model, output ceiling and (where supported) temperature/effort. Edit the matrix in routing.ts. */
-export const MODEL_ROUTES: Record<AITask, ClaudeRoute> = Object.fromEntries(
-  (Object.keys(TASK_ROUTE) as AITask[]).map((task) => [task, ROUTING_MATRIX[TASK_ROUTE[task]].claude])
-) as Record<AITask, ClaudeRoute>;
 
 let cachedClient: Anthropic | null = null;
 let warnedMissingKey = false;
@@ -52,7 +48,7 @@ export async function callClaudeJSON<S extends z.ZodType>(
   const client = getClient();
   if (!client) return null;
 
-  const route = MODEL_ROUTES[task];
+  const route = claudeRoute(task);
   const started = Date.now();
   try {
     const stream = client.messages.stream({

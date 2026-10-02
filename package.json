@@ -13,7 +13,8 @@
     "check:validation": "tsx scripts/validation-engine.check.ts",
     "check:ui": "tsx scripts/ui-form.check.tsx",
     "check:thin": "tsx scripts/thin-input.check.ts",
-    "check:usage": "tsx scripts/usage.check.ts"
+    "check:usage": "tsx scripts/usage.check.ts",
+    "check:routing": "tsx scripts/routing.check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

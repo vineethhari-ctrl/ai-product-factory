@@ -1,19 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { AITask, GeminiRoute, TASK_ROUTE, ROUTING_MATRIX } from "./routing";
+import { AITask, geminiRoute } from "./routing";
 import { recordTokens } from "./usage";
 
 /**
- * Gemini provider (primary). Uses GEMINI_API_KEY. One model per task, chosen by
- * the Model Routing Architecture Matrix (routing.ts); transient errors
+ * Gemini provider. Uses GEMINI_API_KEY. One model per task, chosen by the
+ * Model Routing Architecture Matrix (routing.ts `geminiRoute`); transient errors
  * (429/503) are retried with backoff. Returns null when the key is missing or
- * the call fails, so the router can fail over to Claude.
+ * the call fails, so the router can try the next provider.
  */
-
-/** Task -> Gemini model, temperature and output ceiling. Edit the matrix in routing.ts. */
-export const GEMINI_MODELS: Record<AITask, GeminiRoute> = Object.fromEntries(
-  (Object.keys(TASK_ROUTE) as AITask[]).map((task) => [task, ROUTING_MATRIX[TASK_ROUTE[task]].gemini])
-) as Record<AITask, GeminiRoute>;
 
 const MAX_ATTEMPTS = 3;
 
@@ -60,7 +55,7 @@ export async function callGeminiJSON<S extends z.ZodType>(
   const ai = getClient();
   if (!ai) return null;
 
-  const { model, temperature, maxTokens } = GEMINI_MODELS[task];
+  const { model, temperature, maxTokens } = geminiRoute(task);
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const started = Date.now();

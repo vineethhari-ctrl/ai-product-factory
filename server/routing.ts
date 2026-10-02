@@ -1,9 +1,13 @@
 /**
  * Model Routing Architecture Matrix - single source of truth.
  *
- * Provider order for every task: Gemini (primary) -> Claude (failover) -> local
- * deterministic engine. `geminiClient.ts` exports GEMINI_MODELS and
- * `claudeClient.ts` exports MODEL_ROUTES; both are derived from this file.
+ * Each task has its own provider order: the provider best suited to the task goes first, the
+ * other is the failover, then the local deterministic engine. A provider without a key is
+ * skipped. Per task, the order and the models can be overridden in .env without code changes:
+ *   AI_ORDER_<TASK>=claude,gemini        e.g. AI_ORDER_GENERATE_DEFINITION=gemini,claude
+ *   AI_CLAUDE_MODEL_<TASK>=<model id>    e.g. AI_CLAUDE_MODEL_GENERATE_DEFINITION=claude-opus-5-5
+ *   AI_GEMINI_MODEL_<TASK>=<model id>
+ * (<TASK> is the task name upper-cased with "-" as "_".)
  *
  * The matrix as specified named models that no longer exist for this setup, so
  * the applied IDs differ. Spec value -> applied value:
@@ -17,6 +21,8 @@
 export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui";
 
 export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general";
+
+export type Provider = "gemini" | "claude";
 
 /** Which matrix rule each backend task belongs to. */
 export const TASK_ROUTE: Record<AITask, RouteClass> = {
@@ -82,4 +88,67 @@ export const ROUTING_MATRIX: Record<RouteClass, RouteRule> = {
 
 export function routeFor(task: AITask): RouteRule {
   return ROUTING_MATRIX[TASK_ROUTE[task]];
+}
+
+/**
+ * Which provider each task asks first. Chosen per task for quality per dollar:
+ * - analyze-material: Gemini reads large, mixed material (notes, slides, screenshots) well.
+ * - generate-definition: the output BAs judge the product on; Claude's long structured reasoning.
+ * - generate-prototype-ui: Claude's schema-enforced output means fewer unusable (still billed) answers.
+ * - analyze-change: small and frequent; the cheapest model that still guarantees valid output (Haiku).
+ */
+export const TASK_PROVIDER_ORDER: Record<AITask, Provider[]> = {
+  "analyze-material": ["gemini", "claude"],
+  "generate-definition": ["claude", "gemini"],
+  "generate-prototype-ui": ["claude", "gemini"],
+  "analyze-change": ["claude", "gemini"],
+};
+
+const envKey = (prefix: string, task: AITask) => `${prefix}_${task.toUpperCase().replace(/-/g, "_")}`;
+
+/** Provider order for a task: AI_ORDER_<TASK> if valid, else the default above. */
+export function providerOrder(task: AITask): Provider[] {
+  const raw = process.env[envKey("AI_ORDER", task)];
+  if (raw) {
+    const order = [...new Set(raw.split(",").map((p) => p.trim().toLowerCase()))].filter((p): p is Provider => p === "gemini" || p === "claude");
+    if (order.length > 0) return order;
+    console.warn(`[AI Engine] ${envKey("AI_ORDER", task)}="${raw}" names no known provider; using the default order.`);
+  }
+  return TASK_PROVIDER_ORDER[task];
+}
+
+/** Gemini model, temperature and ceiling for a task, with AI_GEMINI_MODEL_<TASK> applied. */
+export function geminiRoute(task: AITask): GeminiRoute {
+  const base = routeFor(task).gemini;
+  const model = process.env[envKey("AI_GEMINI_MODEL", task)]?.trim();
+  return model ? { ...base, model } : base;
+}
+
+/** Haiku 4.5's output ceiling. */
+const HAIKU_MAX_OUTPUT = 64_000;
+
+/**
+ * Claude model and parameters for a task, with AI_CLAUDE_MODEL_<TASK> applied. Parameters follow
+ * the model family, not the route, so swapping models can never send one a parameter it rejects:
+ * Haiku 4.5 takes temperature but not effort; Sonnet 5.5 / Opus 5.5 / Fable take effort but no temperature.
+ */
+export function claudeRoute(task: AITask): ClaudeRoute {
+  const base = routeFor(task).claude;
+  const model = process.env[envKey("AI_CLAUDE_MODEL", task)]?.trim() || base.model;
+  if (/haiku/i.test(model)) {
+    return { model, maxTokens: Math.min(base.maxTokens, HAIKU_MAX_OUTPUT), ...(base.temperature !== undefined ? { temperature: base.temperature } : {}) };
+  }
+  return { model, maxTokens: base.maxTokens, ...(base.effort ? { effort: base.effort } : {}) };
+}
+
+/** One line per task for the start-up log: which models run, in order, and which are skipped for lack of a key. */
+export function describeRouting(): string[] {
+  const keys: Record<Provider, boolean> = { gemini: !!process.env.GEMINI_API_KEY?.trim(), claude: !!process.env.ANTHROPIC_API_KEY?.trim() };
+  return (Object.keys(TASK_ROUTE) as AITask[]).map((task) => {
+    const steps = providerOrder(task).map((p) => {
+      const model = p === "gemini" ? geminiRoute(task).model : claudeRoute(task).model;
+      return keys[p] ? model : `(${model}: no key)`;
+    });
+    return `${task}: ${[...steps, "offline engine"].join(" -> ")}`;
+  });
 }

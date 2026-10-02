@@ -11,6 +11,7 @@ import {
   generatePrototypeUI
 } from "./server/aiReasoningService";
 import { validateRecordHandler } from "./server/recordRoute";
+import { describeRouting } from "./server/routing";
 import { currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
 
 async function startServer() {
@@ -187,6 +188,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AI Product Factory server running on http://0.0.0.0:${PORT}`);
+    for (const line of describeRouting()) console.log(`[AI Routing] ${line}`);
   });
 }
 

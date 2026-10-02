@@ -11,25 +11,29 @@ provider key is exposed to it.
 - `npm install` needs `--legacy-peer-deps` (existing esbuild/vite peer conflict)
 
 ## Environment (server-side only, never `VITE_`-prefixed)
-- `GEMINI_API_KEY` – primary provider. If unset, Gemini is skipped.
-- `ANTHROPIC_API_KEY` – failover provider. If unset, Claude is skipped.
+- `GEMINI_API_KEY` – Gemini provider. If unset, Gemini is skipped.
+- `ANTHROPIC_API_KEY` – Claude provider. If unset, Claude is skipped.
 - With neither key, every endpoint serves the deterministic local engine.
 
 ## Model Routing Architecture Matrix
 
-Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`). `GEMINI_MODELS` (in
-`geminiClient.ts`) and `MODEL_ROUTES` (in `claudeClient.ts`) are derived from it; edit only that file.
+Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROVIDER_ORDER`). The clients read
+`geminiRoute(task)` / `claudeRoute(task)` from it; edit only that file (or override in `.env`).
 
-- Primary provider: Google Gemini (`GEMINI_API_KEY`)
-- Failover provider: Anthropic Claude (`ANTHROPIC_API_KEY`)
-- Fallback engine: local deterministic engine
-- Order per task: **Gemini -> Claude -> local**. One model per provider per task.
+- Each task has its own provider order: the provider suited to the task first, the other as failover, then the
+  local deterministic engine. A provider without a key is skipped, so one key alone runs every task on it.
+- Per-task overrides in `.env`, no code change: `AI_ORDER_<TASK>=claude,gemini`, `AI_CLAUDE_MODEL_<TASK>=…`,
+  `AI_GEMINI_MODEL_<TASK>=…` (`<TASK>` = task name upper-cased, `-` -> `_`). `claudeRoute` sets parameters by model
+  family (Haiku: temperature, no effort, max 64k output; Sonnet/Opus 5.5: effort, no temperature), so a swap never
+  sends a rejected parameter.
+- The server logs the resolved chain per task at start-up (`[AI Routing] …`). `npm run check:routing` covers it.
 
-| Matrix rule | Backend task (endpoint) | Gemini primary | Claude failover | Temp | Max tokens (applied) |
+| Task (button) | Endpoint | First | Failover | Why | Max tokens (applied) |
 |---|---|---|---|---|---|
-| 1. OEM benchmark inference & KPI analytics | `analyze-material` (`/api/analyze-material`) | gemini-3.1-pro-preview | claude-sonnet-5-5 (effort medium) | 0.2 (Gemini only) | 16,384 |
-| 2. Interactive UI prototyping & code generation | `generate-definition` (`/api/generate-definition`) | gemini-3.1-pro-preview | claude-sonnet-5-5 (effort high) | 0.4 (Gemini only) | 32,768 |
-| 3. Fast general text & standard route intent | `analyze-change` (`/api/analyze-change`) | gemini-3.6-flash | claude-haiku-4-5 | 0.5 | 2,048 |
+| `analyze-material` (Understand Business) | `/api/analyze-material` | gemini-3.1-pro-preview (temp 0.2) | claude-sonnet-5-5 (effort medium) | Gemini reads large mixed material well | 16,384 |
+| `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Most quality-critical; long structured reasoning | 32,768 |
+| `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 32,768 |
+| `analyze-change` (Change Impact) | `/api/analyze-change` | claude-haiku-4-5 (temp 0.5) | gemini-3.6-flash (temp 0.5) | Small and frequent: cheapest model with guaranteed valid output | 2,048 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call.
 
@@ -50,9 +54,9 @@ the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
 - Gemini: 429/503 retried 3x with backoff; a cut-off (`MAX_TOKENS`), empty or schema-invalid response
-  ends the attempt and fails over to Claude.
+  ends the attempt and passes to the task's next provider.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
-  the attempt. Then the local engine serves the request.
+  the attempt and passes to the next provider. After the last one, the local engine serves the request.
 - A missing key skips that provider.
 
 ## Industry-benchmark inference (thin BU input)
@@ -104,8 +108,9 @@ Who spent what, per BA and project, with limits, a monthly budget and a response
 - **Identity**: the browser asks the BA's name once (`IdentityPrompt`) and creates a project id on New Initiative
   (`src/services/aiSession.ts`); every `/api` call carries `X-User` and `X-Project-Id`. Self-declared: team
   accountability, not security.
-- **Router order** (`llmRouter.ts`): no key -> local engine (not metered); cache hit (same task + prompt) -> saved
-  result, free and not counted; over a limit -> local engine with a notice; else Gemini -> Claude.
+- **Router order** (`llmRouter.ts`): no key for the task's providers -> local engine (not metered); cache hit (same
+  task + prompt) -> saved result, free and not counted; over a limit -> local engine with a notice; else the task's
+  providers in order.
 - **Click** = one AI button press that reached a provider. Tokens come from the provider responses
   (`recordTokens` in both clients, including unusable answers and Gemini thinking tokens). Calls with no tokens
   (network failure) are not counted.
@@ -151,7 +156,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
