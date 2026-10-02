@@ -48,8 +48,11 @@ export function usageLimits() {
 const DEFAULT_PRICES: Array<[RegExp, number, number]> = [
   [/gemini.*flash/i, 0.3, 2.5],
   [/gemini.*pro/i, 2, 12],
+  // Anthropic first-party list prices: Haiku 4.5 $1/$5, Opus 5.5 $4/$20, Sonnet 5.5 $2/$10.
   [/claude.*haiku/i, 1, 5],
+  [/claude-opus-5-5/i, 4, 20],
   [/claude.*opus/i, 5, 25],
+  [/claude-sonnet-5/i, 2, 10],
   [/claude/i, 3, 15],
 ];
 
