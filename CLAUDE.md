@@ -123,6 +123,23 @@ Who spent what, per BA and project, with limits, a monthly budget and a response
 - Storage: `DATA_DIR/ai-usage.json` and `DATA_DIR/ai-cache/` (gitignored). Costs are estimates from list prices
   (`AI_PRICE_<MODEL>` overrides). `npm run check:usage` covers limits, budget, cache, metering and the router.
 
+## Reading uploaded files (`src/services/materialExtractor.ts`)
+
+Files are read in the browser at upload; the text becomes `contentSnippet`, which the AI prompts, the offline
+engine and the brief parser already use.
+- Word (.docx: paragraphs, tables as `a | b | c` rows), PowerPoint (.pptx: slide text in order plus speaker
+  notes), Excel (.xlsx/.xlsm: every sheet by name, rows as `a | b`, up to 500 rows a sheet) via JSZip; PDF via
+  pdf.js (`pdfjsBrowser.ts`, loaded only when a PDF is uploaded; its worker is a separate build asset); text, CSV,
+  Markdown, JSON as written.
+- Not read, with a plain-language note to the BA: images and audio (asks for a description or transcript), old
+  .doc/.ppt/.xls (asks to Save As the new format), scanned PDFs (almost no text per page), damaged or
+  password-protected files. Unread files still tell the AI they exist.
+- Each file is capped at 40,000 characters (about 10k tokens); a cut is stated in the text and the note.
+- `UploadedMaterial.extraction` holds the result (`read` / `partial` / `not-read` / `error`), shown as a badge per
+  file; the eye icon shows exactly the text the AI will read. Understand Business waits until every file is read.
+- `npm run check:materials` reads real Word, PowerPoint, Excel, PDF and text fixtures (`scripts/fixtures/materials`)
+  plus the unreadable cases.
+
 ## Field constraints & validation (domain-neutral)
 
 The factory infers each entity's compulsory fields and validation rules for ANY domain; the code has
@@ -156,7 +173,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:materials` (reading uploaded files), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI

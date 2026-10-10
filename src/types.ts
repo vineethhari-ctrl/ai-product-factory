@@ -2,6 +2,16 @@ export type ConfidenceStatus = 'CONFIRMED' | 'INFERRED' | 'AMBIGUOUS' | 'MISSING
 
 export type MaterialType = 'image' | 'pdf' | 'pptx' | 'docx' | 'excel' | 'text' | 'audio';
 
+/** How the text of an uploaded file was read (src/services/materialExtractor.ts). */
+export interface MaterialExtraction {
+  /** read: all text used; partial: some text (long file cut, or scanned); not-read: unsupported type; error: unreadable. */
+  status: 'read' | 'partial' | 'not-read' | 'error';
+  /** Plain-language explanation for the BA, empty when everything was read. */
+  note: string;
+  chars: number;
+  truncated: boolean;
+}
+
 export interface UploadedMaterial {
   id: string;
   filename: string;
@@ -12,6 +22,8 @@ export interface UploadedMaterial {
   contentSnippet?: string;
   status: 'uploaded' | 'processing' | 'ready' | 'error';
   tags?: string[];
+  /** Set for uploaded files once their text has been read. */
+  extraction?: MaterialExtraction;
 }
 
 export interface EvidenceItem {

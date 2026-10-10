@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { UploadedMaterial, MaterialType } from '../types';
+import { extractMaterialText } from '../services/materialExtractor';
 import { 
   UploadCloud, 
   FileText, 
@@ -11,7 +12,8 @@ import {
   Plus, 
   Sparkles, 
   ArrowRight, 
-  CheckCircle2, 
+  CheckCircle2,
+  AlertTriangle, 
   AlertCircle,
   Eye,
   Info,
@@ -37,6 +39,51 @@ interface CreateProductScreenProps {
   onResetAll: () => void;
 }
 
+/** Per-file badge: what was read from the file, or why it was not. */
+const ReadStatus: React.FC<{ material: UploadedMaterial }> = ({ material }) => {
+  const x = material.extraction;
+  const base = 'inline-flex items-center gap-1 text-[11px] font-medium border px-2 py-0.5 rounded';
+  if (material.status === 'processing') {
+    return (
+      <span className={`${base} text-slate-600 bg-slate-50 border-slate-200`}>
+        <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+        Reading…
+      </span>
+    );
+  }
+  if (!x) {
+    // Notes typed in the app and demo materials: their text is used as written.
+    return (
+      <span className={`${base} text-emerald-700 bg-emerald-50 border-emerald-200`}>
+        <CheckCircle2 className="w-3 h-3" />
+        Ready
+      </span>
+    );
+  }
+  if (x.status === 'read') {
+    return (
+      <span className={`${base} text-emerald-700 bg-emerald-50 border-emerald-200`} title={`${x.chars.toLocaleString()} characters will be sent for analysis`}>
+        <CheckCircle2 className="w-3 h-3" />
+        Read · {x.chars >= 1000 ? `${(x.chars / 1000).toFixed(1)}k` : x.chars} chars
+      </span>
+    );
+  }
+  if (x.status === 'partial') {
+    return (
+      <span className={`${base} text-amber-700 bg-amber-50 border-amber-200`} title={x.note}>
+        <AlertTriangle className="w-3 h-3" />
+        Partly read
+      </span>
+    );
+  }
+  return (
+    <span className={`${base} text-rose-700 bg-rose-50 border-rose-200`} title={x.note}>
+      <AlertTriangle className="w-3 h-3" />
+      {x.status === 'error' ? 'Unreadable' : 'Not read'}
+    </span>
+  );
+};
+
 export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   productName,
   setProductName,
@@ -59,7 +106,8 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   const [inspectingMaterial, setInspectingMaterial] = useState<UploadedMaterial | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A product name alone is enough: thin input is completed from benchmark patterns and flagged for review.
-  const canAnalyze = materials.length > 0 || productName.trim().length > 0;
+  const isReading = materials.some((m) => m.status === 'processing');
+  const canAnalyze = (materials.length > 0 || productName.trim().length > 0) && !isReading;
 
   const getFileType = (filename: string, mime: string): MaterialType => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -73,20 +121,36 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   };
 
   const handleFiles = (files: FileList | File[]) => {
-    const newItems: UploadedMaterial[] = Array.from(files).map((file, idx) => {
-      const fileType = getFileType(file.name, file.type);
-      return {
-        id: `mat-${Date.now()}-${idx}`,
-        filename: file.name,
-        fileType,
-        sizeBytes: file.size,
-        uploadedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: 'ready',
-        contentSnippet: `[File Content Indexed from ${file.name}] Size: ${(file.size / 1024).toFixed(1)} KB. Stored for cross-material semantic analysis.`
-      };
-    });
-
+    const list = Array.from(files);
+    const stamp = Date.now();
+    const newItems: UploadedMaterial[] = list.map((file, idx) => ({
+      id: `mat-${stamp}-${idx}`,
+      filename: file.name,
+      fileType: getFileType(file.name, file.type),
+      sizeBytes: file.size,
+      uploadedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'processing',
+      contentSnippet: '',
+    }));
     setMaterials(prev => [...prev, ...newItems]);
+
+    // Read each file's text in the browser; the AI and the offline engine work from it.
+    list.forEach(async (file, idx) => {
+      const id = newItems[idx].id;
+      let update: Partial<UploadedMaterial>;
+      try {
+        const { text, extraction } = await extractMaterialText(file.name, file.type, await file.arrayBuffer());
+        update = {
+          status: extraction.status === 'error' ? 'error' : 'ready',
+          // Unread files still tell the AI they exist, so it can ask for their content.
+          contentSnippet: text || `[${file.name}: content not available to the AI. ${extraction.note}]`,
+          extraction,
+        };
+      } catch (err) {
+        update = { status: 'error', contentSnippet: '', extraction: { status: 'error', note: `Could not read this file (${(err as Error).message}).`, chars: 0, truncated: false } };
+      }
+      setMaterials(prev => prev.map(m => (m.id === id ? { ...m, ...update } : m)));
+    });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -386,7 +450,7 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
                 </>
               ) : (
                 <>
-                  <span>Understand Business</span>
+                  <span>{isReading ? 'Reading files…' : 'Understand Business'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -523,10 +587,7 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Ready
-                      </span>
+                      <ReadStatus material={mat} />
                       <button
                         type="button"
                         onClick={() => setInspectingMaterial(mat)}
@@ -570,9 +631,18 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
                 Close
               </button>
             </div>
+            {inspectingMaterial.extraction?.note && (
+              <p className={`text-xs p-2.5 rounded-lg border ${
+                inspectingMaterial.extraction.status === 'read' || inspectingMaterial.extraction.status === 'partial'
+                  ? 'text-amber-800 bg-amber-50 border-amber-200'
+                  : 'text-rose-800 bg-rose-50 border-rose-200'
+              }`}>
+                {inspectingMaterial.extraction.note}
+              </p>
+            )}
             <div>
               <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Extracted Content Snippet for AI Ingestion
+                Text the AI will read{inspectingMaterial.extraction ? ` (${inspectingMaterial.extraction.chars.toLocaleString()} characters)` : ''}
               </div>
               <pre className="p-3 bg-slate-900 text-slate-200 rounded-lg text-xs font-mono whitespace-pre-wrap max-h-72 overflow-y-auto">
                 {inspectingMaterial.contentSnippet || 'No preview available.'}
