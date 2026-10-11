@@ -4,6 +4,42 @@ Express + Vite + React app. The browser calls `/api/*`; the Express server (`ser
 routes LLM work through `server/llmRouter.ts`. No provider is called from the browser and no
 provider key is exposed to it.
 
+## Project memory (read first; keep this section current and short)
+
+**Working agreement with the owner**
+- The owner is a product owner, not a developer: reply in plain language, short, with exact commands. They run the
+  app on Windows (Command Prompt) from a local clone of `main`: `git pull origin main`, `npm install
+  --legacy-peer-deps` (no space after `--`), `npm run dev`, open http://localhost:3000.
+- Save tokens: no long recaps, read only the files a task needs, one validated push instead of many.
+- The owner uses **Sonnet by default**. Say "Please switch to Opus for this" as the first line, before starting,
+  only when the task is: a multi-file feature or architecture change, a bug Sonnet already failed to fix once,
+  prompt or output-quality redesign for the AI pipeline, or a security review. Otherwise do it on Sonnet.
+- Work on a feature branch; merge to `main` (fast-forward) only when the owner says "merge to main".
+  Run every `npm run check:*`, `npm run lint` and `npm run build` before pushing.
+- Never put client names or client material in the repo; keep the engine domain-neutral (see below).
+
+**Status (2026-10-11): about 72% of a dependable team tool.** Done and on `main`: full pipeline
+(understand -> BRD -> prototype -> change -> engineering package); offline engine that builds from a product name or
+a brief; reading uploaded Word/PowerPoint/Excel/PDF/text; per-task model routing; AI usage limits, budget, cache
+and usage panel.
+
+**Next, in order**
+1. First real run with an AI key (owner has Gemini Pro accounts for free-tier keys; no Claude API key yet).
+   Expect prompt/format fixes. Gemini free tier may lack the Pro preview model and may use prompts for training:
+   warn before confidential material is uploaded.
+2. Projects live only in each browser (localStorage): add server-side project storage so BAs can share them.
+3. Real sign-in (names are self-declared today).
+4. Shared hosting with a persistent disk (usage log and cache live in `DATA_DIR`). AI Studio's copy is not linked
+   to this GitHub repo; its GitHub sync offers only "create new repository".
+5. Smaller: images and audio are not read, editing field constraints beyond Confirm/Required, "Future Modules" menu.
+
+**Decisions already made (do not reopen without the owner)**
+- Limits: each AI button 3x per project and 3x per BA per rolling 24 h, 300k tokens per BA per day, $50 team month;
+  over a limit the offline engine answers. Identical requests reuse the cached result.
+- Routing: Understand Business Gemini -> Claude Sonnet; BRD and Prototype Claude Sonnet -> Gemini; Change Impact
+  Claude Haiku -> Gemini Flash. A Claude Pro or Gemini Pro subscription does not pay for API use.
+- No key rotation across accounts (provider terms).
+
 ## Commands
 - `npm run dev` – start Express + Vite (port 3000)
 - `npm run lint` – `tsc --noEmit`
