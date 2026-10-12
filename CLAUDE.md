@@ -8,7 +8,7 @@ provider key is exposed to it.
 - `npm run dev` – start Express + Vite (port 3000)
 - `npm run lint` – `tsc --noEmit`
 - `npm run build` – Vite build + server bundle
-- `npm install` needs `--legacy-peer-deps` (existing esbuild/vite peer conflict)
+- `npm install` works plainly: `.npmrc` sets `legacy-peer-deps=true` (existing esbuild/vite peer conflict)
 
 ## Environment (server-side only, never `VITE_`-prefixed)
 - `GEMINI_API_KEY` – Gemini provider. If unset, Gemini is skipped.
