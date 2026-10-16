@@ -98,6 +98,20 @@ t("process: stage screens filter on stages present in their rows", pd.screens.fi
 t("process: rows match columns on every screen", pd.screens.every((s) => s.ui!.table.rows.every((r) => r.length === s.ui!.table.columns.length)));
 t("process: everything predicted is tagged for BU review", pd.screens.every((s) => s.confidence === "INFERRED" && s.evidence[0].startsWith("Industry benchmark")) && pd.openQuestions.some((q) => q.id === "oq-benchmark-validation"));
 
+// A name written as a request, and a brief that says who does what instead of an arrow chain.
+t("subject: a request-style name uses what follows 'for'", deriveSubject("Build an app for city libraries") === "City Library", deriveSubject("Build an app for city libraries"));
+t("operator role: a relative clause is not part of the role", deriveOperatorRole("Lending desk", "An app for city libraries where clerks lend books") === undefined);
+const ACTIONS = "An app for city libraries where clerks register books, volunteers shelve returns, and members approve late fees on their phone.";
+const acted = parseBrief(ACTIONS, "Build an app for city libraries");
+t("brief: 'who does what' clauses become ordered stages", JSON.stringify(acted.stages) === JSON.stringify(["Register", "Shelve Return", "Approve Late Fee"]), JSON.stringify(acted.stages));
+t("brief: the first clause's object is the subject", acted.subject === "Book", String(acted.subject));
+t("brief: each stage keeps the party that performs it", JSON.stringify(acted.stageOwners) === JSON.stringify(["Clerk", "Volunteer", "Member"]) && ["Clerk", "Volunteer", "Member"].every((p) => acted.parties.includes(p)), JSON.stringify(acted));
+t("brief: fewer than three clauses make no stages", parseBrief("Clerks register books and members pay fees.").stages.length === 0);
+const lib = await pipeline("Build an app for city libraries", "Community", ACTIONS);
+t("actions: parties are personas, not sentence fragments", ["Clerk", "Volunteer", "Member"].every((p) => lib.personas.some((x) => x.name === p)) && lib.personas.every((p) => !/\bwhere\b|\bbuild\b/i.test(p.name)), lib.personas.map((p) => p.name).join(","));
+t("actions: a work screen per later stage, named by the action", ["Shelve Return", "Approve Late Fee"].every((n) => lib.screens.some((s) => s.name === n)) && lib.screens.some((s) => s.name === "Book 360"), lib.screens.map((s) => s.name).join(" | "));
+t("actions: sample rows name the party that owns their stage", lib.screens.every((s) => { const t2 = s.ui!.table, p = t2.columns.indexOf("Responsible Party"); return p < 0 || t2.rows.every((r) => { const i = acted.stages.indexOf(r[r.length - 1]); return i < 0 || r[p] === acted.stageOwners![i]; }); }));
+
 // Stable: the same input renders the same prototype.
 const a = await pipeline("Warranty Claims Portal", "After-Sales");
 const b = await pipeline("Warranty Claims Portal", "After-Sales");

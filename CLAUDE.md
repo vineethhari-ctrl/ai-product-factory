@@ -87,7 +87,10 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
   generic shape, the local engine reads the BU's own words (notes plus material text) for writing patterns, not
   domain words: an arrow chain `A → B → C` gives the lifecycle stages; `X 360` (or the noun shared by the stages)
   gives the subject; acronyms defined as groups (`ABCs (… Partners)`), lowercase role plurals and slash groups
-  give the parties; a `<things> such as a, b, c` list gives a child entity with a type list. With 3+ stages the
+  give the parties; a `<things> such as a, b, c` list gives a child entity with a type list. Without an arrow
+  chain, 3+ "who does what" clauses (`clerks register books, volunteers shelve returns, members approve fees`) give
+  the stages in order, each with its owner (`stageOwners`), and the first object is the subject. A name written as a
+  request ("Build an app for X") takes its subject from X; a relative clause ("where ...") never becomes a role. With 3+ stages the
   product is built around the process: lifecycle states = stages + On Hold/Cancelled (in-order transitions), an
   intake form for the first stage, one work screen per stage group (max 8), a 360 view with the stage timeline
   and parts by serial, per-stage performance, a stage-record (proof of record) entity, one module per phase

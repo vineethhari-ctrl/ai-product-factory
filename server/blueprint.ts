@@ -68,6 +68,12 @@ const ACTIVITY_TO_RECORD: Record<string, string> = {
   planning: "plan", scheduling: "schedule", forecasting: "forecast", rostering: "roster", budgeting: "budget",
 };
 
+/** A name written as a request: "Build an app for X", "We need a system to manage X". */
+const REQUEST_NAME = /^\s*(?:please\s+)?(?:(?:we|i)\s+(?:need|want)|build|create|develop|make|design|implement|deliver)\s+(?:(?:an?|the|new|our|simple|mobile|web)\s+)*(?:app|application|platform|system|portal|tool|solution|website|site|product|software|dashboard)?\s*(?:for|to\s+(?:manage|track|handle|run|support)|that\s+(?:manages|tracks|handles))\s+(.+)$/i;
+
+/** A relative clause ends a role phrase: "for city libraries | where clerks ...". */
+const RELATIVE = /\s+(?:where|who|which|that|whose|when|so|to)\s+/i;
+
 /** Words that start a qualifier: "Bay planning | for Job Controller | in the workshop". */
 const PREPOSITION = /\s+(?:for|in|at|on|with|by|across|within|to|from|via|under)\s+/i;
 
@@ -78,6 +84,9 @@ const PREPOSITION = /\s+(?:for|in|at|on|with|by|across|within|to|from|via|under)
  * name who uses it or where, not what it manages.
  */
 export function deriveSubject(productName: string, businessUnit = ""): string {
+  // A request rather than a name: "Build an app for city libraries" -> "city libraries".
+  const ask = productName.match(REQUEST_NAME);
+  if (ask) productName = ask[1];
   const pick = (text: string) => {
     const words = text.replace(/[^A-Za-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean)
       .map((w) => ACTIVITY_TO_RECORD[w.toLowerCase()] ?? w);
@@ -98,7 +107,7 @@ export function deriveOperatorRole(productName: string, description = ""): strin
   for (const text of [productName, description]) {
     const m = text.match(/\bfor\s+(?:the\s+|a\s+|an\s+)?([A-Za-z][A-Za-z-]*(?:\s+[A-Za-z][A-Za-z-]*){0,3})/i);
     if (!m) continue;
-    const phrase = m[1].split(PREPOSITION)[0].trim();
+    const phrase = m[1].split(PREPOSITION)[0].split(RELATIVE)[0].trim();
     if (ROLE_ENDING.test(phrase)) return phrase.split(/\s+/).map((w, i, a) => titleWord(i === a.length - 1 ? singular(w) : w)).join(" ");
   }
   return undefined;

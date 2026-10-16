@@ -170,11 +170,58 @@ export function extractParts(text: string): BlueprintBrief["parts"] {
   return undefined;
 }
 
+export interface BriefAction { party: string; verb: string; object: string }
+
+/** Words that end an action's object: "approve extra costs | on their phone". */
+const OBJECT_END = /\s+(?:on|in|at|for|with|via|by|to|from|into|using|through|before|after|within|when|while|so|if|once|until|during)\s+/i;
+const OBJECT_LEAD = /^(?:(?:the|a|an|their|its|his|her|our|each|every|any|all|new|incoming)\s+)+/i;
+const MODALS = /^(?:can|must|will|should|may|then|also|first|later)$/i;
+const PARTICLES = /^(?:in|out|up|off|over|back|down)$/i;
+/** General words for people that the role-ending test misses ("clerks", "members"). */
+const PEOPLE_WORDS = new Set(["clerks", "members", "users", "guests", "clients", "leads", "partners", "parents", "residents", "citizens", "employees", "staff", "teams", "heads", "chiefs", "buyers", "sellers"]);
+
+/**
+ * Who does what to which record: "clerks log requests, leads assign desks".
+ * A clause that starts with a plural role noun, then a verb (with an optional particle), then its object.
+ */
+export function extractActions(text: string): BriefAction[] {
+  const actions: BriefAction[] = [];
+  for (const sentence of text.split(/[.;!?\n]+/)) {
+    for (const raw of sentence.split(/,|\band\b|\bwhere\b|\bwhile\b|\bwhen\b|\bwhereas\b/i)) {
+      const words = raw.trim().replace(/^(?:the|our|their)\s+/i, "").split(/\s+/).map(cleanWord).filter(Boolean);
+      if (words.length < 3) continue;
+      const role = words[0].toLowerCase();
+      if (!PEOPLE_WORDS.has(role) && (!ROLE_PLURAL.test(role) || NOT_ROLES.has(role))) continue;
+      let i = 1;
+      while (i < words.length && MODALS.test(words[i])) i++;
+      const verb = words[i]?.toLowerCase();
+      if (!verb || !/^[a-z]{3,}$/.test(verb) || STOP.has(verb) || /(?:ing|ed)$/.test(verb)) continue;
+      i++;
+      const particle = words[i] && PARTICLES.test(words[i]) && words.length > i + 1 ? ` ${words[i++].toLowerCase()}` : "";
+      const object = ` ${words.slice(i).join(" ")} `.split(OBJECT_END)[0].trim().replace(OBJECT_LEAD, "").split(/\s+/).slice(0, 4).join(" ");
+      if (!object || !/^[A-Za-z][A-Za-z -]*$/.test(object)) continue;
+      const objWords = object.split(" ");
+      objWords[objWords.length - 1] = singular(objWords[objWords.length - 1]);
+      actions.push({ party: titlePhrase(singular(role)), verb: titlePhrase(verb + particle), object: titlePhrase(objWords.join(" ")) });
+    }
+  }
+  return actions.slice(0, MAX_STAGES);
+}
+
 export function parseBrief(text: string, productName = ""): BlueprintBrief {
-  const stages = extractStages(text);
-  const subject = extractSubject(text, stages, productName);
+  let stages = extractStages(text);
+  let subject = extractSubject(text, stages, productName);
+  let stageOwners: string[] | undefined;
+  // Without an arrow chain, three or more "who does what" clauses describe the process.
+  const actions = stages.length ? [] : extractActions(text);
+  if (actions.length >= 3) {
+    subject ??= actions[0].object;
+    stages = actions.map((a) => (a.object.toLowerCase() === subject!.toLowerCase() ? a.verb : `${a.verb} ${a.object}`));
+    stageOwners = actions.map((a) => a.party);
+  }
   const parts = extractParts(text);
   const partNames = new Set((parts?.types ?? []).map((t) => t.toLowerCase()));
-  const parties = extractParties(`${productName}. ${text}`).filter((p) => !partNames.has(p.toLowerCase()));
-  return { subject, stages, parties, ...(parts ? { parts } : {}) };
+  const parties = [...new Set([...(stageOwners ?? []), ...extractParties(`${productName}. ${text}`)])]
+    .filter((p) => !partNames.has(p.toLowerCase())).slice(0, 6);
+  return { subject, stages, parties, ...(stageOwners ? { stageOwners } : {}), ...(parts ? { parts } : {}) };
 }

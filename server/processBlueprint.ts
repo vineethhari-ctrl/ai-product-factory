@@ -222,13 +222,21 @@ function processPersonas(subject: string, operator: string, brief: BlueprintBrie
 const STAGE_NOTE = (label: string, prev?: string, next?: string) =>
   `Stage workbench built from your lifecycle: records at "${label}"${prev ? `, received from "${prev}"` : ""}${next ? `, handed to "${next}"` : ""}. Mirrors the queue-per-stage pattern of leading lifecycle products.`;
 
-function stageUI(subject: string, entity: DataEntityDefinition, group: string[], stages: string[], seed: string, layout: ScreenDefinition["layoutType"], owner?: string): ScreenUISpec {
+/** Sample rows name the party that owns each row's stage, when the brief says who does what. */
+function alignOwners(table: { columns: string[]; rows: string[][] }, ownerOf: (stage: string) => string | undefined) {
+  const party = table.columns.indexOf("Responsible Party");
+  const status = table.columns.length - 1;
+  if (party >= 0) for (const row of table.rows) row[party] = ownerOf(row[status]) ?? row[party];
+  return table;
+}
+
+function stageUI(subject: string, entity: DataEntityDefinition, group: string[], stages: string[], seed: string, layout: ScreenDefinition["layoutType"], owner?: string, ownerOf: (stage: string) => string | undefined = () => undefined): ScreenUISpec {
   const first = group[0], last = group[group.length - 1];
   const idx = stages.indexOf(last);
   const prev = stages[stages.indexOf(first) - 1];
   const next = stages[idx + 1];
   const rand = rng(`${seed}|kpi`);
-  const table = sampleTable(entity, subject, seed, 7, [...group, ...group, ...(next ? [next] : []), HOLD]);
+  const table = alignOwners(sampleTable(entity, subject, seed, 7, [...group, ...group, ...(next ? [next] : []), HOLD]), ownerOf);
   const statusIdx = table.columns.length - 1;
   const at = 12 + Math.floor(rand() * 60);
   const overdue = Math.floor(rand() * 8) + 1;
@@ -284,7 +292,8 @@ function processBlueprint(productName: string, subject: string, operator: string
   const phases = groupStages(stages, Math.min(3, stages.length));
   const phaseOf = (stage: string) => phases.findIndex((p) => p.includes(stage));
   const phaseName = (p: string[]) => (p.length > 1 ? `${p[0]} → ${p[p.length - 1]}` : p[0]);
-  const ownerOf = (stage: string) => (parties.length ? parties[phaseOf(stage) % parties.length] : undefined);
+  const ownerOf = (stage: string) =>
+    brief.stageOwners?.[stages.indexOf(stage)] ?? (parties.length ? parties[phaseOf(stage) % parties.length] : undefined);
 
   const counts = stages.map(() => 4 + Math.floor(rand() * 40));
   const overview: ScreenUISpec = {
@@ -295,7 +304,7 @@ function processBlueprint(productName: string, subject: string, operator: string
       { label: `Reached ${stages[stages.length - 1]}`, value: String(counts[counts.length - 1]), trend: "flat", delta: "This month" },
     ],
     filters: ["All", ...stages.slice(0, 3), HOLD],
-    table: { title: `${S} Needing Attention`, ...sampleTable(main, subject, `${seed}|overview`, 7, [stages[1], stages[Math.floor(stages.length / 2)], HOLD, stages[stages.length - 2], stages[0], stages[2], stages[stages.length - 1]]) },
+    table: { title: `${S} Needing Attention`, ...alignOwners(sampleTable(main, subject, `${seed}|overview`, 7, [stages[1], stages[Math.floor(stages.length / 2)], HOLD, stages[stages.length - 2], stages[0], stages[2], stages[stages.length - 1]]), ownerOf) },
     detailPanels: [
       { title: "Records per Stage", items: stages.map((st, i) => ({ label: st, value: String(counts[i]) })) },
       { title: "Stage Owners", items: phases.map((p) => ({ label: phaseName(p), value: ownerOf(p[0]) ?? "Operations Lead" })) },
@@ -309,7 +318,7 @@ function processBlueprint(productName: string, subject: string, operator: string
     label: st,
     value: i < current ? `✓ ${fmtDate(ANCHOR - (current - i) * 3 * DAY)} · ${ownerOf(st) ?? PEOPLE[i % PEOPLE.length]}` : i === current ? "In Progress" : "Pending",
   }));
-  const records360 = sampleTable(main, subject, `${seed}|360`, 7, [stages[current], stages[current - 1], stages[current + 1], stages[current], HOLD, stages[current - 2], stages[current]]);
+  const records360 = alignOwners(sampleTable(main, subject, `${seed}|360`, 7, [stages[current], stages[current - 1], stages[current + 1], stages[current], HOLD, stages[current - 2], stages[current]]), ownerOf);
   const first360 = records360.rows[0];
   const record360: ScreenUISpec = {
     kpis: [
@@ -356,7 +365,7 @@ function processBlueprint(productName: string, subject: string, operator: string
 
   const first = stages[0];
   const intake = buildScreenUI({ id: "scr-bp-intake", name: `New ${first}`, layoutType: "form-wizard" }, main, subject, seed);
-  intake.table = { ...intake.table, title: `Recent ${first} Records` };
+  intake.table = { ...alignOwners(intake.table, ownerOf), title: `Recent ${first} Records` };
   intake.primaryActions = [`Submit ${first}`, "Save Draft"];
   intake.benchmarkNote = `Capture for "${first}", the first stage of your lifecycle; the record then moves to "${stages[1]}". Mirrors the guided-intake pattern of top self-service products.`;
 
@@ -376,7 +385,7 @@ function processBlueprint(productName: string, subject: string, operator: string
         layoutType: layout,
         components: ["Stage queue", "Hand-off details", "Proof of record"],
         purpose: `Work ${plural(s)} at ${g.join(" and ")}${ownerOf(g[0]) ? ` (owned by ${ownerOf(g[0])})` : ""} and hand them to the next stage.`,
-        ui: stageUI(subject, main, g, stages, `${seed}|stage-${i}`, layout, ownerOf(g[0])),
+        ui: stageUI(subject, main, g, stages, `${seed}|stage-${i}`, layout, ownerOf(g[0]), ownerOf),
       }, `work queue for the "${g.join(" / ")}" stage`);
     }),
     inferred({ id: "scr-bp-5", name: `${subject} 360`, module: oversight, layoutType: "profile-360" as const, components: ["Lifecycle timeline", "Proof of record", ...(brief.parts ? [`${plural(brief.parts.name)} by serial`] : [])], purpose: `Everything about one ${s}: each stage, who completed it, when, and the evidence.`, ui: record360 }, "360-degree record view with proof of record"),

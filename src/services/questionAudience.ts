@@ -87,6 +87,9 @@ interface QuestionContext {
 const lower = (s: string) => s.toLowerCase();
 
 /** Plain business questions every product needs answered; built only from the BU's own nouns. */
+/** "a request", "an order". */
+const withArticle = (word: string) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
+
 export function defaultBUClarifications(ctx: QuestionContext): ClarificationItem[] {
   const s = lower(ctx.subject);
   const flow = ctx.stages.length >= 3 ? ` (${ctx.stages[0]} to ${ctx.stages[ctx.stages.length - 1]})` : '';
@@ -95,22 +98,22 @@ export function defaultBUClarifications(ctx: QuestionContext): ClarificationItem
     ({ id, type, question, impactIfIgnored, askedAt: ctx.askedAt, status: 'OPEN', audience: 'BU' });
   return [
     item('clr-bu-1', 'HIGH: MISSING LOGIC',
-      `Who approves a ${s}, and what should happen when it is rejected: is it sent back for correction, closed, or escalated?`,
+      `Who approves ${withArticle(s)}, and what should happen when it is rejected: is it sent back for correction, closed, or escalated?`,
       'Without an agreed approval path, the screens and rules for decisions cannot be designed.'),
     item('clr-bu-2', 'HIGH: MISSING LOGIC',
       `How quickly must each ${steps} be completed, and who should be told when it runs late?`,
       'Without target times, late work cannot be flagged and the team cannot be held to a standard.'),
     item('clr-bu-3', 'HIGH: MISSING LOGIC',
-      `Which 3 to 5 numbers will show that this is working, for example the time from start to finish of a ${s}, how many are stuck, or how many are completed each week?`,
+      `Which 3 to 5 numbers will show that this is working, for example the time from start to finish of ${withArticle(s)}, how many are stuck, or how many are completed each week?`,
       'Without agreed measures, the dashboards cannot show what matters to the business.'),
     item('clr-bu-4', 'BLOCKER: CONTRADICTION',
-      `Can any step of a ${s} be skipped or done out of order? If so, who is allowed to do it and must they give a reason?`,
+      `Can any step of ${withArticle(s)} be skipped or done out of order? If so, who is allowed to do it and must they give a reason?`,
       'Without this, the process may either block legitimate exceptions or allow uncontrolled shortcuts.'),
     item('clr-bu-5', 'MEDIUM: PERMISSION GAP',
-      `Which roles may view, create or change a ${s} at each ${ctx.stages.length >= 3 ? 'stage' : 'step'}${ctx.role ? `, and what should a ${ctx.role} not be able to see or change` : ''}?`,
+      `Which roles may view, create or change ${withArticle(s)} at each ${ctx.stages.length >= 3 ? 'stage' : 'step'}${ctx.role ? `, and what should ${withArticle(ctx.role)} not be able to see or change` : ''}?`,
       'Without this, people may see or change information they should not.'),
     item('clr-bu-6', 'HIGH: MISSING LOGIC',
-      `What goes wrong most often today with a ${s}, and what must the new process do differently?`,
+      `What goes wrong most often today with ${withArticle(s)}, and what must the new process do differently?`,
       'Without this, the new product may repeat the problems it is meant to solve.'),
   ];
 }

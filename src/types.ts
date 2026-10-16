@@ -70,6 +70,8 @@ export interface BlueprintBrief {
   stages: string[];
   /** People and organisations the brief names. */
   parties: string[];
+  /** The party that performs each stage, when the brief says so ("clerks log requests"). */
+  stageOwners?: string[];
   /** Child records from a "<things> such as a, b, c" list. */
   parts?: { name: string; types: string[] };
 }
