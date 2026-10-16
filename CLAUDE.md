@@ -140,6 +140,23 @@ engine and the brief parser already use.
 - `npm run check:materials` reads real Word, PowerPoint, Excel, PDF and text fixtures (`scripts/fixtures/materials`)
   plus the unreadable cases.
 
+## Questions for two audiences (`src/services/questionAudience.ts`)
+
+Every clarification, gap, conflict and open question carries `audience`: `BU` (BU Team) or `TECH` (BA & Tech Team).
+- **BU Team**: business flows, rules, user journeys, KPIs, in plain language. **BA & Tech Team**: data design,
+  interfaces, architecture, security, system limits.
+- The AI is told the rule (`QUESTION_AUDIENCE_RULES`, `server/questions.ts`) and must label each question. The server
+  then checks: a question with technical vocabulary (`technicalTerms`) goes to TECH whatever the model said; a BU
+  question whose "impact" text has jargon gets a plain impact line. Words that are also business language in some
+  industries (server, tenant, protocol, container, queue, polling) count only inside a technical phrase.
+- When a team has no questions, standard ones are added: 6 plain BU questions built from the BU's own nouns
+  (approval, timings, KPIs, skipping steps, who sees what, today's problems) and 5 tech ones.
+- Screens show "1. BU Team" and "2. BA & Tech Team" as separate sections, each with its own count and its own
+  copy-for-email; the engineering package lists open questions per team. Old saved projects are sorted on the fly
+  (`forAudience`, `labelOpenQuestion`).
+- `npm run check:questions` covers the classifier, the standard questions, the offline pipeline, the LLM path
+  (a jargon BU question is moved) and domain neutrality.
+
 ## Field constraints & validation (domain-neutral)
 
 The factory infers each entity's compulsory fields and validation rules for ANY domain; the code has
@@ -173,7 +190,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:materials` (reading uploaded files), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI

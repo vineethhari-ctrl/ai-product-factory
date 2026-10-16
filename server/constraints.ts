@@ -110,6 +110,7 @@ export function constraintOpenQuestion(inferredCount: number): OpenQuestionItem 
     question: `${inferredCount} data field(s) and validation rule(s) were inferred rather than stated by the BU. Please review the Data Entities tab, where each is marked INFERRED, and confirm, correct or remove them before sign-off.`,
     urgency: "important",
     status: "open",
+    audience: "TECH",
   };
 }
 

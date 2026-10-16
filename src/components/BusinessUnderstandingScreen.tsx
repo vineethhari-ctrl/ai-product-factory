@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BusinessUnderstanding, UploadedMaterial, EvidenceItem, ClarificationItem } from '../types';
+import { BusinessUnderstanding, UploadedMaterial, EvidenceItem, ClarificationItem, Audience } from '../types';
+import { ANSWERED_BY, AUDIENCE_HINT, AUDIENCE_LABEL, labelClarification, withQuestionAudiences } from '../services/questionAudience';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { 
@@ -45,80 +46,48 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
   const [isAnalyzingGaps, setIsAnalyzingGaps] = useState(false);
   const [copied, setCopied] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'open' | 'answered'>('all');
+  const [audienceTab, setAudienceTab] = useState<Audience>('BU');
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({});
 
-  // Derive or load ClarificationItems with full audit metadata
+  // Load ClarificationItems, each labelled for the BU Team or the BA & Tech Team. Projects saved before
+  // audiences existed are labelled here; if one side is empty, the standard questions for it are added.
   const getInitialClarifications = useCallback((): ClarificationItem[] => {
     if (understanding?.clarifications && understanding.clarifications.length > 0) {
-      return understanding.clarifications;
+      return understanding.clarifications.map(labelClarification);
     }
 
-    const prodName = understanding?.businessObjective?.title || 'System Product';
-    const primaryPersona = understanding?.personas?.[0]?.title || 'System Specialist';
-    const secondaryPersona = understanding?.personas?.[1]?.title || 'Operations Manager';
-    const primaryModule = understanding?.modules?.[0]?.title || 'Core Module';
-    const primaryEntity = understanding?.dataEntities?.[0]?.title || 'Operational Asset';
     const primarySource = understanding?.businessObjective?.evidenceReferences?.[0] || 'Uploaded Materials';
-
-    const conflictsList = understanding?.conflicts || [];
-    const missingInfoList = understanding?.missingInformation || [];
     const defaultAskedAt = understanding?.extractedAt || new Date().toISOString();
-
-    const derivedFromConflicts: ClarificationItem[] = conflictsList.map((item, idx) => ({
+    const derivedFromConflicts: ClarificationItem[] = (understanding?.conflicts || []).map((item, idx) => ({
       id: item.id || `conflict-${idx}`,
       type: 'BLOCKER: CONTRADICTION' as const,
-      question: item.description || item.title || `Unresolved specification conflict detected in ${primaryModule}.`,
+      question: item.description || item.title,
       impactIfIgnored: `Evidence references: ${item.evidenceReferences?.join(', ') || primarySource}`,
       askedAt: defaultAskedAt,
       status: 'OPEN' as const,
+      audience: item.audience,
     }));
-
-    const derivedFromMissing: ClarificationItem[] = missingInfoList.map((item, idx) => ({
+    const derivedFromMissing: ClarificationItem[] = (understanding?.missingInformation || []).map((item, idx) => ({
       id: item.id || `missing-${idx}`,
       type: 'HIGH: MISSING LOGIC' as const,
-      question: item.description || item.title || `Operational SLA constraint required for ${primaryModule}.`,
+      question: item.description || item.title,
       impactIfIgnored: `Scope gap identified from: ${item.evidenceReferences?.join(', ') || primarySource}`,
       askedAt: defaultAskedAt,
       status: 'OPEN' as const,
+      audience: item.audience,
     }));
 
-    const defaultIntelligentClarifications: ClarificationItem[] = [
+    const real = (i: EvidenceItem) => i.status !== 'MISSING';
+    return withQuestionAudiences(
+      { ...understanding, clarifications: [...derivedFromConflicts, ...derivedFromMissing] },
       {
-        id: 'clr-domain-1',
-        type: 'BLOCKER: CONTRADICTION',
-        question: `Development Prerequisite - High-Availability & Fallback Protocol: What is the mandatory circuit-breaker SLA and retry policy when downstream integrations for ${primaryModule} experience 5xx errors or network timeouts during peak operations?`,
-        impactIfIgnored: `Evidence source: ${primarySource}. Developers cannot construct backend retry middleware without explicit timeout boundaries.`,
-        askedAt: defaultAskedAt,
-        status: 'OPEN',
-      },
-      {
-        id: 'clr-domain-2',
-        type: 'HIGH: MISSING LOGIC',
-        question: `Development Prerequisite - Data Isolation & Multi-Tenancy: Are database queries for ${primaryEntity} strictly partitioned by tenant organization key, or is cross-account read access permitted for ${secondaryPersona} audit logging?`,
-        impactIfIgnored: `Source materials reference ${primaryEntity} but omit row-level security (RLS) and database tenant partition rules.`,
-        askedAt: defaultAskedAt,
-        status: 'OPEN',
-      },
-      {
-        id: 'clr-domain-3',
-        type: 'HIGH: MISSING LOGIC',
-        question: `Development Prerequisite - Authentication & Digital Attestation: Does the operational override workflow in ${primaryModule} require federated SAML/OIDC tokens with secondary Multi-Factor Authentication (MFA) signature?`,
-        impactIfIgnored: `Required to finalize identity gateway integration and OAuth2 scope validation for ${primaryPersona}.`,
-        askedAt: defaultAskedAt,
-        status: 'OPEN',
-      },
-      {
-        id: 'clr-domain-4',
-        type: 'MEDIUM: PERMISSION GAP',
-        question: `Development Prerequisite - Compliance Retention Window: What is the exact retention and purging schedule for immutable audit logs generated by ${prodName}?`,
-        impactIfIgnored: `Required for automated database retention cron jobs and regulatory data governance compliance.`,
-        askedAt: defaultAskedAt,
-        status: 'OPEN',
+        subject: understanding?.blueprintBrief?.subject || understanding?.dataEntities?.find(real)?.title || 'request',
+        stages: understanding?.blueprintBrief?.stages || [],
+        role: understanding?.personas?.find(real)?.title,
+        module: understanding?.modules?.find(real)?.title,
+        productName: understanding?.businessObjective?.title,
       }
-    ];
-
-    const combined = [...derivedFromConflicts, ...derivedFromMissing];
-    return combined.length > 0 ? combined : defaultIntelligentClarifications;
+    ).clarifications ?? [];
   }, [understanding]);
 
   const [clarifications, setClarifications] = useState<ClarificationItem[]>(getInitialClarifications);
@@ -129,6 +98,12 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
 
   const openCount = clarifications.filter(c => c.status === 'OPEN').length;
   const answeredCount = clarifications.filter(c => c.status === 'ANSWERED').length;
+  const audienceOf = (c: ClarificationItem): Audience => c.audience ?? 'BU';
+  const byAudience = (a: Audience) => clarifications.filter(c => audienceOf(c) === a);
+  // The modal shows one team at a time, so each team's list and report stay separate.
+  const tabItems = byAudience(audienceTab);
+  const tabOpen = tabItems.filter(c => c.status === 'OPEN').length;
+  const tabAnswered = tabItems.filter(c => c.status === 'ANSWERED').length;
 
   const handleOpenClarifications = () => {
     setIsAnalyzingGaps(true);
@@ -154,7 +129,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
           status: 'ANSWERED' as const,
           answer: text,
           answeredAt: nowIso,
-          answeredBy: 'Business Unit / Product Lead'
+          answeredBy: ANSWERED_BY[audienceOf(c)]
         };
       }
       return c;
@@ -186,30 +161,30 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
   };
 
   const handleCopyToEmail = async () => {
-    if (clarifications.length === 0) return;
+    if (tabItems.length === 0) return;
 
-    const openItems = clarifications.filter(c => c.status === 'OPEN');
-    const answeredItems = clarifications.filter(c => c.status === 'ANSWERED');
+    const openItems = tabItems.filter(c => c.status === 'OPEN');
+    const answeredItems = tabItems.filter(c => c.status === 'ANSWERED');
 
-    let reportText = `PRE-BRD CLARIFICATION & AUDIT TRAIL REPORT\n`;
+    let reportText = `QUESTIONS FOR THE ${AUDIENCE_LABEL[audienceTab].toUpperCase()} (${AUDIENCE_HINT[audienceTab]})\n`;
     reportText += `Product: ${understanding?.businessObjective?.title || 'Active Initiative'}\n`;
     reportText += `Generated: ${new Date().toLocaleString()}\n`;
-    reportText += `Summary: ${answeredItems.length} Resolved, ${openItems.length} Open Gaps\n\n`;
+    reportText += `Summary: ${answeredItems.length} answered, ${openItems.length} open\n\n`;
 
-    if (answeredItems.length > 0) {
-      reportText += `--- RESOLVED AUDIT TRAIL DECISIONS ---\n`;
-      answeredItems.forEach((c, idx) => {
-        reportText += `${idx + 1}. [RESOLVED: ${c.type}] ${c.question}\n`;
-        reportText += `   Decision: ${c.answer}\n`;
-        reportText += `   Answered By: ${c.answeredBy || 'BU Lead'} at ${c.answeredAt ? new Date(c.answeredAt).toLocaleString() : 'N/A'}\n\n`;
+    if (openItems.length > 0) {
+      reportText += `--- OPEN QUESTIONS ---\n`;
+      openItems.forEach((c, idx) => {
+        reportText += `${idx + 1}. ${c.question}\n`;
+        reportText += `   Why it matters: ${c.impactIfIgnored}\n\n`;
       });
     }
 
-    if (openItems.length > 0) {
-      reportText += `--- OPEN BU CLARIFICATIONS REQUIRED ---\n`;
-      openItems.forEach((c, idx) => {
-        reportText += `${idx + 1}. [${c.type}] ${c.question}\n`;
-        reportText += `   Impact if ignored: ${c.impactIfIgnored}\n\n`;
+    if (answeredItems.length > 0) {
+      reportText += `--- ANSWERED ---\n`;
+      answeredItems.forEach((c, idx) => {
+        reportText += `${idx + 1}. ${c.question}\n`;
+        reportText += `   Answer: ${c.answer}\n`;
+        reportText += `   Answered by: ${c.answeredBy || ANSWERED_BY[audienceTab]} on ${c.answeredAt ? new Date(c.answeredAt).toLocaleString() : 'N/A'}\n\n`;
       });
     }
 
@@ -220,7 +195,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
     }
   };
 
-  const filteredClarifications = clarifications.filter(c => {
+  const filteredClarifications = tabItems.filter(c => {
     if (filterTab === 'open') return c.status === 'OPEN';
     if (filterTab === 'answered') return c.status === 'ANSWERED';
     return true;
@@ -253,13 +228,13 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
             <span className="text-xs text-slate-500 font-mono">{uploadedMaterials.length} sources analyzed</span>
             {answeredCount > 0 && (
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5" /> {answeredCount} BU Decisions Recorded
+                <UserCheck className="w-3.5 h-3.5" /> {answeredCount} Decisions Recorded
               </span>
             )}
           </div>
           <h2 className="text-xl font-bold text-slate-900">Business Understanding</h2>
           <p className="text-sm text-slate-600 max-w-2xl">
-            The AI has structured the materials into a coherent model. Review the inferred components below, or manage proactive BU clarifications & audit trail decisions.
+            The AI has structured the materials into a coherent model. Review the inferred components below, or answer the clarifications: business questions for the BU Team, technical ones for the BA & Tech Team.
           </p>
         </div>
 
@@ -270,7 +245,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
             className="px-4 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer relative"
           >
             <HelpCircle className="w-4 h-4 text-amber-600" />
-            <span>Identify BU Clarifications</span>
+            <span>Clarifications (BU & Tech)</span>
             {openCount > 0 && (
               <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
                 {openCount}
@@ -315,7 +290,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-amber-600 font-semibold text-sm uppercase tracking-wider">
               <HelpCircle className="w-4 h-4" />
-              <span>Pre-BRD Clarifications & Audit Trail ({answeredCount} / {clarifications.length} Resolved)</span>
+              <span>Clarifications: BU Team and BA & Tech Team ({answeredCount} / {clarifications.length} answered)</span>
             </div>
             <button
               onClick={handleOpenClarifications}
@@ -326,8 +301,30 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {clarifications.map((item) => (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {(['BU', 'TECH'] as Audience[]).map((aud) => {
+              const items = byAudience(aud);
+              return (
+                <section key={aud} className={`rounded-xl border p-4 space-y-3 ${aud === 'BU' ? 'border-indigo-200 bg-indigo-50/30' : 'border-slate-300 bg-slate-50/60'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">
+                        {aud === 'BU' ? '1. ' : '2. '}{AUDIENCE_LABEL[aud]} <span className="text-slate-500 font-semibold">({items.filter(c => c.status === 'ANSWERED').length}/{items.length} answered)</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500">{AUDIENCE_HINT[aud]}{aud === 'BU' ? ' — plain business language, no technical terms' : ''}</p>
+                    </div>
+                    <button
+                      onClick={() => { setAudienceTab(aud); handleOpenClarifications(); }}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap cursor-pointer"
+                    >
+                      Answer / copy for email →
+                    </button>
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic">No questions for this team.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {items.map((item) => (
               <div 
                 key={item.id} 
                 className={`p-4 rounded-xl border text-xs space-y-2 ${
@@ -355,16 +352,21 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                 {item.status === 'ANSWERED' ? (
                   <div className="bg-white p-2.5 rounded-lg border border-emerald-200 text-emerald-950 font-medium space-y-1">
                     <div className="flex items-center justify-between text-[10px] text-emerald-700 font-bold">
-                      <span className="flex items-center gap-1"><UserCheck className="w-3 h-3" /> {item.answeredBy || 'BU Lead'}</span>
+                      <span className="flex items-center gap-1"><UserCheck className="w-3 h-3" /> {item.answeredBy || ANSWERED_BY[audienceOf(item)]}</span>
                       <span>{item.answeredAt ? new Date(item.answeredAt).toLocaleString() : ''}</span>
                     </div>
                     <p className="text-xs">"{item.answer}"</p>
                   </div>
                 ) : (
-                  <p className="text-slate-500 italic">Open doubt — pending BU resolution.</p>
+                  <p className="text-slate-500 italic">Open — waiting for the {AUDIENCE_LABEL[audienceOf(item)]}.</p>
                 )}
               </div>
-            ))}
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
           </div>
         </div>
       )}
@@ -500,9 +502,9 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                   <HelpCircle className="w-5 h-5 text-amber-400" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold">Proactive BU Clarifications & Pre-BRD Audit Trail</h2>
+                  <h2 className="text-base font-semibold">Clarifications for the {AUDIENCE_LABEL[audienceTab]}</h2>
                   <p className="text-xs text-slate-400">
-                    {clarifications.length} total items • {openCount} open • {answeredCount} answered & logged
+                    {AUDIENCE_HINT[audienceTab]} • {tabItems.length} questions • {tabOpen} open • {tabAnswered} answered
                   </p>
                 </div>
               </div>
@@ -512,6 +514,21 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* Audience Tabs: each team sees and exports only its own questions */}
+            <div className="px-6 pt-3 bg-slate-900 flex items-end gap-1 text-xs">
+              {(['BU', 'TECH'] as Audience[]).map((aud) => (
+                <button
+                  key={aud}
+                  onClick={() => { setAudienceTab(aud); setCopied(false); }}
+                  className={`px-4 py-2 rounded-t-lg font-semibold cursor-pointer transition-colors ${
+                    audienceTab === aud ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {aud === 'BU' ? '1. ' : '2. '}{AUDIENCE_LABEL[aud]} ({byAudience(aud).length})
+                </button>
+              ))}
             </div>
 
             {/* Filter Tabs */}
@@ -525,7 +542,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                   filterTab === 'all' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700'
                 }`}
               >
-                All ({clarifications.length})
+                All ({tabItems.length})
               </button>
               <button
                 onClick={() => setFilterTab('open')}
@@ -533,7 +550,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                   filterTab === 'open' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700'
                 }`}
               >
-                Open Gaps ({openCount})
+                Open ({tabOpen})
               </button>
               <button
                 onClick={() => setFilterTab('answered')}
@@ -541,7 +558,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                   filterTab === 'answered' ? 'bg-emerald-500 text-slate-950 shadow-xs' : 'text-slate-300 hover:text-white hover:bg-slate-700'
                 }`}
               >
-                Resolved Audit Trail ({answeredCount})
+                Answered ({tabAnswered})
               </button>
             </div>
 
@@ -604,13 +621,13 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                       {item.status === 'OPEN' ? (
                         <div className="pt-2 space-y-2 border-t border-slate-100">
                           <label className="block text-[11px] font-semibold text-slate-700">
-                            Submit Business Unit / Product Lead Decision:
+                            Answer from the {ANSWERED_BY[audienceOf(item)]}:
                           </label>
                           <textarea
                             rows={2}
                             value={draftAnswers[item.id] || ''}
                             onChange={(e) => handleDraftChange(item.id, e.target.value)}
-                            placeholder="Type BU decision, business rule clarification, or approval response..."
+                            placeholder={audienceOf(item) === 'BU' ? 'Type the business decision or rule...' : 'Type the technical decision, constraint or design choice...'}
                             className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900 transition-all outline-hidden"
                           />
                           <div className="flex justify-end">
@@ -630,7 +647,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                           <div className="flex items-center justify-between text-[11px] text-emerald-800 font-bold border-b border-emerald-200/60 pb-1">
                             <span className="flex items-center gap-1">
                               <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              Answered by {item.answeredBy || 'Business Unit / Product Lead'}
+                              Answered by {item.answeredBy || ANSWERED_BY[audienceOf(item)]}
                             </span>
                             <span className="font-mono text-[10px] text-emerald-700">
                               {item.answeredAt ? new Date(item.answeredAt).toLocaleString() : ''}
@@ -667,18 +684,18 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
               
               <button
                 onClick={handleCopyToEmail}
-                disabled={isAnalyzingGaps || clarifications.length === 0}
+                disabled={isAnalyzingGaps || tabItems.length === 0}
                 className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
               >
                 {copied ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-300" />
-                    <span>Copied Audit Report to Clipboard!</span>
+                    <span>Copied {AUDIENCE_LABEL[audienceTab]} questions!</span>
                   </>
                 ) : (
                   <>
                     <Copy className="w-4 h-4" />
-                    <span>Export Audit Report for BU Email</span>
+                    <span>Copy {AUDIENCE_LABEL[audienceTab]} questions for email</span>
                   </>
                 )}
               </button>

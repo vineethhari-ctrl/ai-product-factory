@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ProductDefinition, ConfidenceStatus } from '../types';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
+import { AUDIENCE_HINT, AUDIENCE_LABEL, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { 
   CheckCircle, 
@@ -1258,18 +1259,28 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
 
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Outstanding Business Questions ({definition.openQuestions.length})
+                Outstanding Questions ({definition.openQuestions.length})
               </h4>
-              <div className="space-y-2.5">
-                {definition.openQuestions.map(q => (
-                  <div key={q.id} className="p-3 rounded-lg border border-rose-200 bg-rose-50/50 text-xs text-rose-900">
-                    <p className="font-medium">{q.question}</p>
-                    <div className="text-[10px] text-rose-700 mt-1 font-mono">
-                      Urgency: {q.urgency}
+              {(['BU', 'TECH'] as const).map((audience, n) => {
+                const items = forAudience(definition.openQuestions, audience, q => q.question);
+                return (
+                  <section key={audience} className="space-y-2">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-bold text-slate-800">{n + 1}. {AUDIENCE_LABEL[audience]} ({items.length})</span>
+                      <span className="text-[10px] text-slate-500">{AUDIENCE_HINT[audience]}</span>
                     </div>
-                  </div>
-                ))}
-              </div>
+                    {items.length === 0 && <p className="text-[11px] text-slate-400">None open.</p>}
+                    {items.map(q => (
+                      <div key={q.id} className="p-3 rounded-lg border border-rose-200 bg-rose-50/50 text-xs text-rose-900">
+                        <p className="font-medium">{q.question}</p>
+                        <div className="text-[10px] text-rose-700 mt-1 font-mono">
+                          Urgency: {q.urgency}
+                        </div>
+                      </div>
+                    ))}
+                  </section>
+                );
+              })}
             </div>
           </div>
         </div>

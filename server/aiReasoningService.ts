@@ -5,7 +5,9 @@ import {
   ChangeImpactAnalysis, 
   EngineeringPackage,
   ConfidenceStatus,
-  ClarificationItem 
+  ClarificationItem,
+  OpenQuestionItem,
+  Audience,
 } from "../src/types";
 import { callLLMJSON } from "./llmRouter";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
@@ -25,17 +27,30 @@ import {
 } from "./benchmark";
 import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, PrototypeUISchema } from "./aiSchemas";
 import { ensureScreenUI } from "./blueprint";
+import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
+import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
  * Guarantees strict evidence referencing and confidence status categorization.
  */
+/** Business understanding with every question labelled for the BU Team or the BA & Tech Team. */
 export async function analyzeBusinessMaterial(
   materials: UploadedMaterial[],
   productName: string,
   businessUnit: string,
   description: string = ""
+): Promise<BusinessUnderstanding> {
+  const u = await analyzeUnlabelled(materials, productName, businessUnit, description);
+  return withQuestionAudiences(u, questionContext(u, productName, businessUnit));
+}
+
+async function analyzeUnlabelled(
+  materials: UploadedMaterial[],
+  productName: string,
+  businessUnit: string,
+  description: string
 ): Promise<BusinessUnderstanding> {
   const materialsSummary = materials.map((m, idx) => 
     `[Source ${idx + 1}: ${m.filename} (${m.fileType})] \n${m.contentSnippet || 'Uploaded file content'}`
@@ -60,9 +75,8 @@ EVIDENCE & CONFIDENCE CATEGORIZATION RULES:
    - AMBIGUOUS (conflicting statements between sources)
    - MISSING (critical gaps essential for system architecture)
 2. Every item MUST cite source evidence (e.g., "Evidence: Q3_Fleet_Mobility_Modernization.pptx Slide 9" or "Transcript_Sync.txt").
-3. DEVELOPMENT PREREQUISITES & ARCHITECTURAL GAPS:
-   - In 'missingInformation', 'conflicts', and BU clarifications, extract and formulate DEEP, INTELLIGENT PREREQUISITES REQUIRED FOR DEVELOPMENT.
-   - Focus on missing technical specs, error turnaround SLAs, multi-tenant data isolation, security authentication handshakes, rate-limiting policies, and data retention windows that developers MUST resolve before writing production code.
+3. QUESTIONS FOR TWO AUDIENCES (every gap, conflict and clarification has an "audience"):
+${QUESTION_AUDIENCE_RULES}
 4. Flag real contradictions and genuine missing requirements clearly.
 
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — DO NOT SKIP):
@@ -165,16 +179,32 @@ Return ONLY a valid JSON object matching this schema:
       "title": "Requirement Contradiction Title",
       "description": "Detailed strategic analysis of conflicting specifications between sources and potential resolution strategy",
       "status": "AMBIGUOUS",
-      "evidenceReferences": ["Source A", "Source B"]
+      "evidenceReferences": ["Source A", "Source B"],
+      "audience": "BU" | "TECH"
     }
   ],
   "missingInformation": [
     {
       "id": "mi-1",
-      "title": "Architectural Gap Title",
+      "title": "Gap Title",
       "description": "Explicit identification of missing operational data or unstated business rules required for build",
       "status": "MISSING",
-      "evidenceReferences": ["Analysis of all sources"]
+      "evidenceReferences": ["Analysis of all sources"],
+      "audience": "BU" | "TECH"
+    }
+  ],
+  "clarifications": [
+    {
+      "audience": "BU",
+      "type": "BLOCKER: CONTRADICTION" | "HIGH: MISSING LOGIC" | "MEDIUM: PERMISSION GAP",
+      "question": "A plain business question about a flow, rule, journey or KPI",
+      "impactIfIgnored": "Business consequence, in plain words"
+    },
+    {
+      "audience": "TECH",
+      "type": "BLOCKER: CONTRADICTION" | "HIGH: MISSING LOGIC" | "MEDIUM: PERMISSION GAP",
+      "question": "A technical question about data design, interfaces, architecture or system limits",
+      "impactIfIgnored": "What cannot be designed or built without the answer"
     }
   ]
 }`;
@@ -182,8 +212,14 @@ Return ONLY a valid JSON object matching this schema:
   try {
     const parsed = await callLLMJSON("analyze-material", prompt, BusinessUnderstandingSchema);
     if (parsed) {
-      const { inferredIndustry, ...understanding } = parsed;
-      const result: BusinessUnderstanding = { ...understanding, extractedAt: new Date().toISOString() };
+      const { inferredIndustry, clarifications, ...understanding } = parsed;
+      const extractedAt = new Date().toISOString();
+      const result: BusinessUnderstanding = {
+        ...understanding,
+        extractedAt,
+        // Identity and status are the server's, not the model's.
+        clarifications: (clarifications ?? []).map((c, i) => ({ ...c, id: `clr-ai-${c.audience.toLowerCase()}-${i + 1}`, askedAt: extractedAt, status: "OPEN" as const })),
+      };
       if (!thinness.thin) return result;
 
       // Thin input: guarantee the inferred scope is tagged and put in front of the BU, whatever the model wrote.
@@ -330,11 +366,21 @@ function finalizeConstraints(definition: ProductDefinition): ProductDefinition {
   return { ...normalized, openQuestions: [constraintOpenQuestion(inferredCount), ...normalized.openQuestions] };
 }
 
+/** Product definition with every open question labelled for the BU Team or the BA & Tech Team. */
 export async function generateProductDefinition(
   understanding: BusinessUnderstanding,
   productName: string,
   businessUnit: string,
   version: string = "v1.0"
+): Promise<ProductDefinition> {
+  return definitionWithAudiences(await generateDefinitionUnlabelled(understanding, productName, businessUnit, version));
+}
+
+async function generateDefinitionUnlabelled(
+  understanding: BusinessUnderstanding,
+  productName: string,
+  businessUnit: string,
+  version: string
 ): Promise<ProductDefinition> {
   const thinness = assessUnderstandingThinness(understanding);
   const industry = understanding.benchmark?.industry || "the BU's industry";
@@ -360,6 +406,9 @@ AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
 - NOTIFICATIONS: Generate 4-8 event-driven notification rules (status changes, SLA breaches, assignments, approvals, escalations) with channels and recipients.
 - PERMISSIONS: Generate a complete RBAC matrix for every persona with specific constraints.
 - INTEGRATIONS: Predict 3-6 likely system integrations (SSO/auth, email gateway, payment, analytics, storage, CRM/ERP) based on the domain even if not mentioned.
+
+OPEN QUESTIONS FOR TWO AUDIENCES (every openQuestions entry has an "audience"):
+${QUESTION_AUDIENCE_RULES}
 
 REQUIREMENTS:
 Return ONLY a valid JSON object matching this schema:
@@ -508,9 +557,10 @@ Return ONLY a valid JSON object matching this schema:
   "openQuestions": [
     {
       "id": "oq-1",
-      "question": "Unanswered question that requires business sign-off",
+      "question": "Unanswered question that requires sign-off",
       "urgency": "blocking" | "important" | "nice-to-have",
-      "status": "open"
+      "status": "open",
+      "audience": "BU" | "TECH"
     }
   ],
   "evidenceMapping": {
@@ -792,7 +842,11 @@ function upgradeStaleDefinition(definition: ProductDefinition): ProductDefinitio
   return { ...finalized, openQuestions: finalized.openQuestions.filter((q) => !seen.has(q.id) && !!seen.add(q.id)) };
 }
 
-export async function generatePrototypeUI(
+export async function generatePrototypeUI(input: ProductDefinition): Promise<ProductDefinition> {
+  return definitionWithAudiences(await generatePrototypeUnlabelled(input));
+}
+
+async function generatePrototypeUnlabelled(
   input: ProductDefinition
 ): Promise<ProductDefinition> {
   const definition = upgradeStaleDefinition(input);
@@ -982,6 +1036,11 @@ function generateDeterministicPrototypeUI(definition: ProductDefinition): Produc
   return ensureScreenUI(definition);
 }
 
+function openQuestionLines(questions: OpenQuestionItem[], audience: Audience): string {
+  const lines = forAudience(questions, audience, (q) => q.question).map((q) => `- ${q.question} [Urgency: ${q.urgency}]`);
+  return lines.length ? lines.join("\n") : "- None open.";
+}
+
 export function generateEngineeringPackageData(
   productDefinition: ProductDefinition,
   changeHistory: ChangeImpactAnalysis[]
@@ -1069,8 +1128,11 @@ ${productDefinition.integrations.map(i => `
 #### Assumptions:
 ${productDefinition.assumptions.map(a => `- ${a.statement} (Risk: ${a.riskLevel}, Status: ${a.status})`).join("\n")}
 
-#### Open Questions:
-${productDefinition.openQuestions.map(q => `- ${q.question} [Urgency: ${q.urgency}]`).join("\n")}
+#### Open Questions for the BU Team (business flows, rules, journeys, KPIs):
+${openQuestionLines(productDefinition.openQuestions, "BU")}
+
+#### Open Questions for the BA & Tech Team (data design, interfaces, architecture, system limits):
+${openQuestionLines(productDefinition.openQuestions, "TECH")}
 
 ### 7. Change History
 ${changeHistory.length === 0 ? "No changes applied yet. Baseline release." : changeHistory.map(ch => `
@@ -1382,7 +1444,8 @@ function generateDeterministicUnderstanding(
       question: `Development Prerequisite - High-Availability & Fallback Protocol: What is the mandatory circuit-breaker SLA and retry policy when downstream integrations for ${modules[0]?.title || 'Core Module'} experience 5xx errors or network timeouts during peak operations?`,
       impactIfIgnored: `Evidence source ${primarySource}. Developers cannot construct backend retry middleware without explicit timeout boundaries.`,
       askedAt: now,
-      status: 'OPEN'
+      status: 'OPEN',
+      audience: 'TECH'
     },
     {
       id: 'clr-dev-2',
@@ -1390,7 +1453,8 @@ function generateDeterministicUnderstanding(
       question: `Development Prerequisite - Data Isolation & Multi-Tenancy: Are database queries for ${dataEntities[0]?.title || 'Core Data Asset'} strictly partitioned by tenant organization key, or is cross-account read access permitted for ${personas[0]?.title || 'System Lead'} audit logging?`,
       impactIfIgnored: `Source document ${secondarySource}. Required for database schema partitioning and row-level security (RLS) policies.`,
       askedAt: now,
-      status: 'OPEN'
+      status: 'OPEN',
+      audience: 'TECH'
     },
     {
       id: 'clr-dev-3',
@@ -1398,7 +1462,8 @@ function generateDeterministicUnderstanding(
       question: `Development Prerequisite - Authentication & Digital Attestation: Does the operational override workflow in ${modules[0]?.title || 'Core Module'} require federated SAML/OIDC tokens with secondary Multi-Factor Authentication (MFA) signature?`,
       impactIfIgnored: `Impacts identity gateway integration and OAuth2 scope validation for ${personas[0]?.title || 'Primary User'}.`,
       askedAt: now,
-      status: 'OPEN'
+      status: 'OPEN',
+      audience: 'TECH'
     },
     {
       id: 'clr-dev-4',
@@ -1406,7 +1471,8 @@ function generateDeterministicUnderstanding(
       question: `Development Prerequisite - Compliance Retention Window: What is the exact retention and purging schedule for immutable audit logs generated by ${productName || 'System Product'}?`,
       impactIfIgnored: `Required for automated database retention cron jobs and regulatory data governance compliance.`,
       askedAt: now,
-      status: 'OPEN'
+      status: 'OPEN',
+      audience: 'TECH'
     }
   ];
 

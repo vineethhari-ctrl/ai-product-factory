@@ -15,7 +15,8 @@
     "check:thin": "tsx scripts/thin-input.check.ts",
     "check:usage": "tsx scripts/usage.check.ts",
     "check:routing": "tsx scripts/routing.check.ts",
-    "check:materials": "tsx scripts/materials.check.ts"
+    "check:materials": "tsx scripts/materials.check.ts",
+    "check:questions": "tsx scripts/questions.check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

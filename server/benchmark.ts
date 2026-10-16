@@ -132,5 +132,6 @@ export function benchmarkOpenQuestion(industry: string, inferredCount: number): 
     question: `${inferredCount} requirement(s), screen(s) and rule(s) were predicted from ${industry} industry patterns because the BU input was limited. Please review every item marked "${BENCHMARK_TAG}" and confirm, correct or remove it before sign-off.`,
     urgency: "blocking",
     status: "open",
+    audience: "BU",
   };
 }

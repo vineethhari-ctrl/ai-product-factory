@@ -26,6 +26,9 @@ export interface UploadedMaterial {
   extraction?: MaterialExtraction;
 }
 
+/** Who a question is for: the BU Team (business only) or the BA & Tech Team (src/services/questionAudience.ts). */
+export type Audience = 'BU' | 'TECH';
+
 export interface EvidenceItem {
   id: string;
   title: string;
@@ -41,6 +44,8 @@ export interface EvidenceItem {
   evidenceRef?: string;
   /** Field specifications carried by data-entity evidence items (used by the deterministic engine). */
   fields?: DataFieldDefinition[];
+  /** For gaps and conflicts: which team must answer. */
+  audience?: Audience;
 }
 
 export interface ClarificationItem {
@@ -53,6 +58,8 @@ export interface ClarificationItem {
   answer?: string;
   answeredAt?: string; // Timestamp when user submits answer
   answeredBy?: string; // Default: 'Business Unit / Product Lead'
+  /** Which team must answer; older saved items are labelled on the fly. */
+  audience?: Audience;
 }
 
 /** Structure the local engine reads from the BU's own words when no LLM is available (server/briefParser.ts). */
@@ -290,6 +297,8 @@ export interface OpenQuestionItem {
   urgency: 'blocking' | 'important' | 'nice-to-have';
   assignedTo?: string;
   status: 'open' | 'answered';
+  /** Which team must answer; older saved items are labelled on the fly. */
+  audience?: Audience;
 }
 
 export interface ProductDefinition {

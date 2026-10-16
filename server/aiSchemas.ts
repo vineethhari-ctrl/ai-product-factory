@@ -22,6 +22,18 @@ const EvidenceItemSchema = z.object({
   evidenceReferences: z.array(z.string()),
 });
 
+const Audience = z.enum(["BU", "TECH"]);
+
+/** Gaps and conflicts also say which team must resolve them (optional: the server labels unlabelled ones). */
+const GapItemSchema = EvidenceItemSchema.extend({ audience: Audience.optional() });
+
+const ClarificationSchema = z.object({
+  audience: Audience,
+  type: z.enum(["BLOCKER: CONTRADICTION", "HIGH: MISSING LOGIC", "MEDIUM: PERMISSION GAP"]),
+  question: z.string(),
+  impactIfIgnored: z.string(),
+});
+
 export const BusinessUnderstandingSchema = z.object({
   inferredIndustry: z.string(),
   overallSummary: z.string(),
@@ -34,8 +46,10 @@ export const BusinessUnderstandingSchema = z.object({
   dataEntities: z.array(EvidenceItemSchema),
   integrations: z.array(EvidenceItemSchema),
   uiObservations: z.array(EvidenceItemSchema),
-  conflicts: z.array(EvidenceItemSchema),
-  missingInformation: z.array(EvidenceItemSchema),
+  conflicts: z.array(GapItemSchema),
+  missingInformation: z.array(GapItemSchema),
+  /** Optional so a model that omits it is not rejected; the server then adds the standard questions. */
+  clarifications: z.array(ClarificationSchema).optional(),
 });
 
 /** Field constraints are flat here (easier for a model to produce); the server folds them into DataFieldDefinition.constraints. */
@@ -237,6 +251,7 @@ export const ProductDefinitionSchema = z.object({
       question: z.string(),
       urgency: z.enum(["blocking", "important", "nice-to-have"]),
       status: z.enum(["open", "answered"]),
+      audience: Audience.optional(),
     })
   ),
   evidenceMapping: z.array(
