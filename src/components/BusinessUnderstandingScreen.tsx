@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BusinessUnderstanding, UploadedMaterial, EvidenceItem, ClarificationItem, Audience } from '../types';
-import { ANSWERED_BY, AUDIENCE_HINT, AUDIENCE_LABEL, labelClarification, withQuestionAudiences } from '../services/questionAudience';
+import { ANSWERED_BY, AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, labelClarification, withQuestionAudiences } from '../services/questionAudience';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { 
@@ -309,7 +309,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900">
-                        {aud === 'BU' ? '1. ' : '2. '}{AUDIENCE_LABEL[aud]} <span className="text-slate-500 font-semibold">({items.filter(c => c.status === 'ANSWERED').length}/{items.length} answered)</span>
+                        {aud === 'BU' ? '1. ' : '2. '}{SECTION_TITLE[aud]} <span className="text-slate-500 font-semibold">({items.filter(c => c.status === 'ANSWERED').length}/{items.length} answered)</span>
                       </h3>
                       <p className="text-[11px] text-slate-500">{AUDIENCE_HINT[aud]}{aud === 'BU' ? ' — plain business language, no technical terms' : ''}</p>
                     </div>
@@ -526,7 +526,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                     audienceTab === aud ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  {aud === 'BU' ? '1. ' : '2. '}{AUDIENCE_LABEL[aud]} ({byAudience(aud).length})
+                  {aud === 'BU' ? '1. ' : '2. '}{SECTION_TITLE[aud]} ({byAudience(aud).length})
                 </button>
               ))}
             </div>

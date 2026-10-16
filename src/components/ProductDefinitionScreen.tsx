@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ProductDefinition, ConfidenceStatus } from '../types';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
-import { AUDIENCE_HINT, AUDIENCE_LABEL, forAudience } from '../services/questionAudience';
+import { AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { 
   CheckCircle, 
@@ -1266,7 +1266,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                 return (
                   <section key={audience} className="space-y-2">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-bold text-slate-800">{n + 1}. {AUDIENCE_LABEL[audience]} ({items.length})</span>
+                      <span className="text-xs font-bold text-slate-800">{n + 1}. {SECTION_TITLE[audience]} ({items.length})</span>
                       <span className="text-[10px] text-slate-500">{AUDIENCE_HINT[audience]}</span>
                     </div>
                     {items.length === 0 && <p className="text-[11px] text-slate-400">None open.</p>}

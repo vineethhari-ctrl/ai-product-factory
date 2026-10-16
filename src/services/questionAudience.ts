@@ -12,6 +12,8 @@ import type { Audience, BusinessUnderstanding, ClarificationItem, EvidenceItem, 
  */
 
 export const AUDIENCE_LABEL: Record<Audience, string> = { BU: 'BU Team', TECH: 'BA & Tech Team' };
+/** Heading of the technical section on screens. */
+export const SECTION_TITLE: Record<Audience, string> = { BU: 'BU Clarifications', TECH: 'BA & Tech Team Concerns' };
 export const AUDIENCE_HINT: Record<Audience, string> = {
   BU: 'Business flows, rules, user journeys and KPIs',
   TECH: 'Data design, interfaces, architecture and system limits',
@@ -113,26 +115,23 @@ export function defaultBUClarifications(ctx: QuestionContext): ClarificationItem
   ];
 }
 
-/** Technical prerequisites the BA & Tech Team must settle before build. */
+/**
+ * Neutral concerns for the BA & Tech Team, built only from the BU's own nouns. No fixed technology, protocol or
+ * policy is assumed: each item asks the team to decide, it never presupposes an answer.
+ */
 export function defaultTechClarifications(ctx: QuestionContext & { module: string; productName: string }): ClarificationItem[] {
   const item = (id: string, type: ClarificationItem['type'], question: string, impactIfIgnored: string): ClarificationItem =>
     ({ id, type, question, impactIfIgnored, askedAt: ctx.askedAt, status: 'OPEN', audience: 'TECH' });
   return [
-    item('clr-dev-1', 'BLOCKER: CONTRADICTION',
-      `High availability and fallback: what retry policy, timeouts and circuit-breaker limits apply when downstream integrations for ${ctx.module} return 5xx errors or time out at peak load?`,
-      'Developers cannot build backend retry middleware without explicit timeout boundaries.'),
-    item('clr-dev-2', 'HIGH: MISSING LOGIC',
-      `Data isolation: are database records for ${ctx.subject} partitioned by tenant organisation key, or is cross-tenant read access allowed for audit roles?`,
-      'Needed for schema partitioning and row-level security policies.'),
-    item('clr-dev-3', 'HIGH: MISSING LOGIC',
-      `Authentication: do override actions in ${ctx.module} require federated SSO (SAML/OIDC) with MFA, and which OAuth2 scopes does each role get?`,
-      'Needed for identity gateway integration and token scope validation.'),
-    item('clr-dev-4', 'MEDIUM: PERMISSION GAP',
-      `Retention: what is the retention and purge schedule for audit logs and attachments in ${ctx.productName}, and must the audit records in the database be immutable?`,
-      'Needed for scheduled retention jobs and data-governance compliance.'),
-    item('clr-dev-5', 'HIGH: MISSING LOGIC',
+    item('clr-dev-1', 'HIGH: MISSING LOGIC',
       `Interfaces: which external systems exchange ${ctx.subject} data, through which API or file interface, in which direction and how often?`,
       'Needed to design integration contracts, error handling and data ownership.'),
+    item('clr-dev-2', 'HIGH: MISSING LOGIC',
+      `Data: which system is the source of truth for ${ctx.subject} records, and what data model, volumes and history must ${ctx.productName} hold in its database?`,
+      'Needed to size and design the data model.'),
+    item('clr-dev-3', 'MEDIUM: PERMISSION GAP',
+      `Access: how are users authenticated (for example SSO) and mapped to the roles agreed with the BU Team, and does ${ctx.module} need any extra approval or audit trail?`,
+      'Needed to design sign-in and role mapping.'),
   ];
 }
 
