@@ -8,6 +8,16 @@ const PROJECT_KEY = 'apf.projectId';
 
 export const AI_NOTICE_EVENT = 'apf:ai-notice';
 export const USAGE_CHANGED_EVENT = 'apf:usage-changed';
+export const AI_STATUS_EVENT = 'apf:ai-status';
+
+/** Who answered an AI button (server/usage.ts `AIStatus`), sent by the server in X-AI-Status. */
+export interface AIStatus {
+  task: 'analyze-material' | 'generate-definition' | 'generate-prototype-ui' | 'analyze-change';
+  button: string;
+  outcome: 'ai' | 'cache' | 'offline-no-key' | 'offline-limit' | 'offline-failed';
+  model?: string;
+  failures?: Array<{ provider: string; model: string; kind: string; message: string }>;
+}
 
 const read = (key: string) => {
   try { return localStorage.getItem(key) ?? ''; } catch { return ''; }
@@ -58,6 +68,12 @@ export function installAiSession() {
     headers.set('X-User', getUser() || 'anonymous');
     headers.set('X-Project-Id', getProjectId());
     const response = await original(input, { ...init, headers });
+    const status = response.headers.get('X-AI-Status');
+    if (status) {
+      try {
+        window.dispatchEvent(new CustomEvent<AIStatus>(AI_STATUS_EVENT, { detail: JSON.parse(decodeURIComponent(status)) }));
+      } catch { /* malformed header: ignore */ }
+    }
     const notice = response.headers.get('X-AI-Notice');
     if (notice) {
       window.dispatchEvent(new CustomEvent(AI_NOTICE_EVENT, { detail: decodeURIComponent(notice) }));

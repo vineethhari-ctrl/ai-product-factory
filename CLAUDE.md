@@ -23,7 +23,7 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 - Each task has its own provider order: the provider suited to the task first, the other as failover, then the
   local deterministic engine. A provider without a key is skipped, so one key alone runs every task on it.
 - Per-task overrides in `.env`, no code change: `AI_ORDER_<TASK>=claude,gemini`, `AI_CLAUDE_MODEL_<TASK>=…`,
-  `AI_GEMINI_MODEL_<TASK>=…` (`<TASK>` = task name upper-cased, `-` -> `_`). `claudeRoute` sets parameters by model
+  `AI_GEMINI_MODEL_<TASK>=…`, `AI_GEMINI_FALLBACK_<TASK>=…|none` (`<TASK>` = task name upper-cased, `-` -> `_`). `claudeRoute` sets parameters by model
   family (Haiku: temperature, no effort, max 64k output; Sonnet/Opus 5.5: effort, no temperature), so a swap never
   sends a rejected parameter.
 - The server logs the resolved chain per task at start-up (`[AI Routing] …`). `npm run check:routing` covers it.
@@ -53,11 +53,19 @@ was written). Logs print `output N of ceiling` per call and warn when a response
 the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
-- Gemini: 429/503 retried 3x with backoff; a cut-off (`MAX_TOKENS`), empty or schema-invalid response
-  ends the attempt and passes to the task's next provider.
+- Gemini: 429/503 retried 3x with backoff per model. Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
+  schema-invalid response, the **second Gemini model** is tried (`geminiModels`: Pro -> Flash, Flash -> Pro;
+  `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
+  skips the second model.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
   the attempt and passes to the next provider. After the last one, the local engine serves the request.
-- A missing key skips that provider.
+- A missing key skips that provider. A key still set to the `.env.example` placeholder (`MY_GEMINI_API_KEY`) counts
+  as missing (`providerKey`, routing.ts).
+- **AI status** (`setAIStatus`, usage.ts): every AI call records who answered (`ai` + model, `cache`,
+  `offline-no-key`, `offline-limit`, `offline-failed` + each model's failure in plain words: busy, quota, model
+  not available, key rejected, cut off, bad answer, refused, network). Sent as the `X-AI-Status` header; the
+  browser shows `AIStatusBanner` under the header with the reasons, advice and **Retry with AI** (re-runs
+  Understand Business, the BRD or Build Prototype).
 
 ## Industry-benchmark inference (thin BU input)
 
@@ -193,10 +201,20 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
+
+**Build Prototype is AI-designed** (`server/prototypePrompt.ts`): the AI gets the BU's process (stages in order and
+who does each, from `blueprintBrief`), users, journeys, records with status values (system fields hidden), rules and
+every screen's job, and designs each screen for that job in the BU's own words. Optional **reference screen**
+(`PrototypeDesignBar`: upload, shrunk to 1400 px JPEG in the browser, `referenceImage` on `/api/generate-prototype`,
+checked by `server/referenceImage.ts`, max 4 MB, part of the cache key): the AI copies its layout, never its words or
+data. The prompt names no company, product or industry; `inspiredBy` is a generic pattern name.
+- `ui.origin = 'AI'` marks AI designs (definition and prototype). Build Prototype reuses a prototype only when every
+  screen is AI-designed, so offline designs (from an AI outage or no key) always go back to the AI. "Design / Redesign
+  with AI" forces a new design. Screens the AI skips keep an offline design. `npm run check:prototype` covers it.
 
 Each screen carries a `ui` blueprint (`ScreenUISpec`: kpis, filters, sample table, detailPanels,
 primaryActions, benchmarkNote) generated on every run, not only in benchmark mode. `ScreenCanvas.tsx`

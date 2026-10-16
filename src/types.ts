@@ -134,6 +134,8 @@ export interface ScreenUISpec {
   entity?: string;
   /** Why this layout was chosen, e.g. which industry pattern it mirrors. */
   benchmarkNote?: string;
+  /** Who designed it: an AI model ('AI') or the offline engine (absent or 'OFFLINE'). Build Prototype reuses only AI designs. */
+  origin?: 'AI' | 'OFFLINE';
 }
 
 export interface ScreenDefinition {

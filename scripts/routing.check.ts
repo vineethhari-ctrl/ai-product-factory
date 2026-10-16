@@ -7,11 +7,13 @@ import { z } from "zod";
 const dir = mkdtempSync(path.join(tmpdir(), "apf-routing-"));
 process.env.DATA_DIR = dir;
 process.env.AI_MONTHLY_BUDGET_USD = "0";
-for (const k of Object.keys(process.env)) if (/^AI_(ORDER|CLAUDE_MODEL|GEMINI_MODEL)_/.test(k)) delete process.env[k];
+for (const k of Object.keys(process.env)) if (/^AI_(ORDER|CLAUDE_MODEL|GEMINI_MODEL|GEMINI_FALLBACK)_/.test(k)) delete process.env[k];
+delete process.env.GEMINI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
 
-const { providerOrder, claudeRoute, geminiRoute, describeRouting } = await import("../server/routing");
+const { providerOrder, claudeRoute, geminiRoute, geminiModels, hasProviderKey, describeRouting } = await import("../server/routing");
 const { callLLMJSON, setProviderForTests } = await import("../server/llmRouter");
-const { runWithUsageContext, usageReport } = await import("../server/usage");
+const { runWithUsageContext, usageReport, currentAIStatus } = await import("../server/usage");
+const { callGeminiJSON, classifyGeminiError, setGeminiClientForTests } = await import("../server/geminiClient");
 
 let pass = 0, fail = 0;
 const t = (name: string, ok: boolean, extra = "") => { ok ? pass++ : fail++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${ok ? "" : "  " + extra}`); };
@@ -79,9 +81,84 @@ restore.forEach((r) => r());
 // Start-up log
 process.env.ANTHROPIC_API_KEY = "c";
 const lines = describeRouting();
-t("start-up log names the models and marks missing keys", lines.some((l) => l === "generate-definition: claude-sonnet-5-5 -> (gemini-3.1-pro-preview: no key) -> offline engine"), lines.join(" | "));
+t("start-up log names the models and marks missing keys", lines.some((l) => l === "generate-definition: claude-sonnet-5-5 -> (gemini-3.1-pro-preview: no key) -> (gemini-3.6-flash: no key) -> offline engine"), lines.join(" | "));
 t("calls that billed no tokens are not counted", usageReport("tester", "P0").team.monthClicks === 0); // stubs report no tokens
 delete process.env.ANTHROPIC_API_KEY;
+
+// Placeholder keys copied from .env.example count as no key
+process.env.GEMINI_API_KEY = "MY_GEMINI_API_KEY";
+t("placeholder Gemini key is treated as no key", !hasProviderKey("gemini"));
+process.env.GEMINI_API_KEY = '"AIzaReal123"';
+t("a real key (even quoted) is used", hasProviderKey("gemini"));
+delete process.env.GEMINI_API_KEY;
+
+// Second Gemini model
+t("Pro routes fall back to Flash", geminiModels("generate-prototype-ui").join() === "gemini-3.1-pro-preview,gemini-3.6-flash");
+t("Flash route falls back to Pro", geminiModels("analyze-change").join() === "gemini-3.6-flash,gemini-3.1-pro-preview");
+process.env.AI_GEMINI_MODEL_ANALYZE_MATERIAL = "gemini-3.6-flash";
+t("an overridden model is not tried twice", geminiModels("analyze-material").join() === "gemini-3.6-flash");
+delete process.env.AI_GEMINI_MODEL_ANALYZE_MATERIAL;
+process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION = "none";
+t("fallback can be switched off", geminiModels("generate-definition").join() === "gemini-3.1-pro-preview");
+process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION = "gemini-a, gemini-b";
+t("fallback override", geminiModels("generate-definition").join() === "gemini-3.1-pro-preview,gemini-a,gemini-b");
+delete process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION;
+
+t("503 is classed as busy", classifyGeminiError({ status: 503, message: "The model is overloaded" }) === "busy");
+t("429 is classed as quota", classifyGeminiError({ message: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}' }) === "quota");
+t("404 is classed as model not available", classifyGeminiError({ status: 404, message: "models/x is not found" }) === "unavailable-model");
+t("bad key is classed as key", classifyGeminiError({ status: 400, message: "API key not valid. Please pass a valid API key." }) === "key");
+
+// Gemini client with a stand-in SDK: Pro busy -> Flash answers; the failures are recorded for the BA
+const tried: string[] = [];
+const fakeGemini = (answer: (model: string) => unknown) => ({ models: { generateContent: async ({ model }: { model: string }) => { tried.push(model); return answer(model); } } });
+const ok = (model: string) => ({ text: JSON.stringify({ by: model }), candidates: [{ finishReason: "STOP" }], usageMetadata: {} });
+const busy = () => { throw Object.assign(new Error("503 UNAVAILABLE: The model is overloaded."), { status: 503 }); };
+const realTimeout = globalThis.setTimeout;
+(globalThis as any).setTimeout = (fn: () => void) => realTimeout(fn, 0); // skip the retry backoff
+process.env.GEMINI_API_KEY = "g";
+
+let restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("pro") ? busy() : ok(m))));
+const viaFlash = await runWithUsageContext("tester", "PF1", () => quiet(async () => ({ r: await callLLMJSON("generate-prototype-ui", "fallback prompt 1", schema), s: currentAIStatus() })));
+t("Pro busy (3 tries) -> Flash answers", viaFlash.r?.by === "gemini-3.6-flash" && tried.join() === "gemini-3.1-pro-preview,gemini-3.1-pro-preview,gemini-3.1-pro-preview,gemini-3.6-flash", tried.join());
+t("status says the AI answered, with the model", viaFlash.s?.outcome === "ai" && viaFlash.s.model === "gemini-3.6-flash", JSON.stringify(viaFlash.s));
+restoreClient();
+
+tried.length = 0;
+restoreClient = setGeminiClientForTests(fakeGemini(() => busy()));
+const allBusy = await runWithUsageContext("tester", "PF2", () => quiet(async () => ({ r: await callLLMJSON("generate-prototype-ui", "fallback prompt 2", schema), s: currentAIStatus() })));
+t("both models busy: offline engine, status explains why", allBusy.r === null && allBusy.s?.outcome === "offline-failed" && allBusy.s.failures?.length === 2 && allBusy.s.failures.every((f) => f.kind === "busy"), JSON.stringify(allBusy.s));
+t("status names the button", allBusy.s?.button === "Build Prototype");
+restoreClient();
+
+tried.length = 0;
+restoreClient = setGeminiClientForTests(fakeGemini(() => { throw Object.assign(new Error("API key not valid"), { status: 400 }); }));
+const badKey = await runWithUsageContext("tester", "PF3", () => quiet(() => callGeminiJSON("generate-prototype-ui", "p", schema)));
+t("rejected key: the second model is not tried", badKey === null && tried.length === 1);
+restoreClient();
+
+tried.length = 0;
+restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("pro") ? { text: "", candidates: [{ finishReason: "MAX_TOKENS" }], usageMetadata: {} } : ok(m))));
+const cut = await runWithUsageContext("tester", "PF4", () => quiet(() => callGeminiJSON("generate-prototype-ui", "p", schema)));
+t("cut-off answer: the second model is tried", cut?.by === "gemini-3.6-flash" && tried.length === 2);
+restoreClient();
+
+tried.length = 0;
+let seenContents: unknown;
+restoreClient = setGeminiClientForTests({ models: { generateContent: async (req: { model: string; contents: unknown }) => { seenContents = req.contents; return ok(req.model); } } });
+await runWithUsageContext("tester", "PF5", () => quiet(() => callLLMJSON("generate-prototype-ui", "with image", schema, undefined, { images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }] })));
+const parts = (seenContents as any)?.[0]?.parts;
+t("reference image is sent to Gemini before the prompt", Array.isArray(parts) && parts[0]?.inlineData?.mimeType === "image/png" && parts[1]?.text === "with image");
+restoreClient();
+
+const statusOf = async (prompt: string) => runWithUsageContext("tester", "PF6", () => quiet(async () => { await callLLMJSON("generate-prototype-ui", prompt, schema); return currentAIStatus(); }));
+restoreClient = setGeminiClientForTests(fakeGemini(ok));
+await statusOf("cached prompt");
+t("same request again: status says saved answer", (await statusOf("cached prompt"))?.outcome === "cache");
+restoreClient();
+delete process.env.GEMINI_API_KEY;
+t("no key: status says no key", (await statusOf("no key prompt"))?.outcome === "offline-no-key");
+(globalThis as any).setTimeout = realTimeout;
 
 rmSync(dir, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);

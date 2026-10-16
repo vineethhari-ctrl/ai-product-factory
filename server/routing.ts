@@ -7,6 +7,7 @@
  *   AI_ORDER_<TASK>=claude,gemini        e.g. AI_ORDER_GENERATE_DEFINITION=gemini,claude
  *   AI_CLAUDE_MODEL_<TASK>=<model id>    e.g. AI_CLAUDE_MODEL_GENERATE_DEFINITION=claude-opus-5-5
  *   AI_GEMINI_MODEL_<TASK>=<model id>
+ *   AI_GEMINI_FALLBACK_<TASK>=<model id>[,<model id>] or "none"
  * (<TASK> is the task name upper-cased with "-" as "_".)
  *
  * The matrix as specified named models that no longer exist for this setup, so
@@ -124,6 +125,39 @@ export function geminiRoute(task: AITask): GeminiRoute {
   return model ? { ...base, model } : base;
 }
 
+/**
+ * Second Gemini model per route, tried when the first is busy (503), out of quota, not available to
+ * the key, or gives an unusable answer. Pro falls back to Flash (faster, rarely overloaded at the
+ * same time); Flash falls back to Pro.
+ */
+const GEMINI_FALLBACK: Record<RouteClass, string[]> = {
+  "benchmark-analytics": [GEMINI_FLASH],
+  "ui-prototyping": [GEMINI_FLASH],
+  "fast-general": [GEMINI_PRO],
+};
+
+/** Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK> or the default. */
+export function geminiModels(task: AITask): string[] {
+  const raw = process.env[envKey("AI_GEMINI_FALLBACK", task)]?.trim();
+  const fallbacks = raw === undefined || raw === ""
+    ? GEMINI_FALLBACK[TASK_ROUTE[task]]
+    : /^none$/i.test(raw) ? [] : raw.split(",").map((m) => m.trim()).filter(Boolean);
+  return [...new Set([geminiRoute(task).model, ...fallbacks])];
+}
+
+const KEY_ENV: Record<Provider, string> = { gemini: "GEMINI_API_KEY", claude: "ANTHROPIC_API_KEY" };
+
+/** Values copied from .env.example and never replaced; treated as no key, so no call is wasted on them. */
+const PLACEHOLDER_KEY = /^(MY_[A-Z_]*|your[-_ ].*|<.*>|x+|changeme|placeholder)$/i;
+
+/** The provider's API key, or "" when it is missing or still the .env.example placeholder. */
+export function providerKey(provider: Provider): string {
+  const value = (process.env[KEY_ENV[provider]] || "").trim().replace(/^["']|["']$/g, "");
+  return PLACEHOLDER_KEY.test(value) ? "" : value;
+}
+
+export const hasProviderKey = (provider: Provider) => providerKey(provider) !== "";
+
 /** Haiku 4.5's output ceiling. */
 const HAIKU_MAX_OUTPUT = 64_000;
 
@@ -143,11 +177,11 @@ export function claudeRoute(task: AITask): ClaudeRoute {
 
 /** One line per task for the start-up log: which models run, in order, and which are skipped for lack of a key. */
 export function describeRouting(): string[] {
-  const keys: Record<Provider, boolean> = { gemini: !!process.env.GEMINI_API_KEY?.trim(), claude: !!process.env.ANTHROPIC_API_KEY?.trim() };
+  const keys: Record<Provider, boolean> = { gemini: hasProviderKey("gemini"), claude: hasProviderKey("claude") };
   return (Object.keys(TASK_ROUTE) as AITask[]).map((task) => {
-    const steps = providerOrder(task).map((p) => {
-      const model = p === "gemini" ? geminiRoute(task).model : claudeRoute(task).model;
-      return keys[p] ? model : `(${model}: no key)`;
+    const steps = providerOrder(task).flatMap((p) => {
+      const models = p === "gemini" ? geminiModels(task) : [claudeRoute(task).model];
+      return models.map((model) => (keys[p] ? model : `(${model}: no key)`));
     });
     return `${task}: ${[...steps, "offline engine"].join(" -> ")}`;
   });

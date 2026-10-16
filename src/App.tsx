@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AI_NOTICE_EVENT, newProjectId } from './services/aiSession';
+import { AI_NOTICE_EVENT, AI_STATUS_EVENT, type AIStatus, newProjectId } from './services/aiSession';
+import { AIStatusBanner } from './components/AIStatusBanner';
 import { IdentityPrompt } from './components/UsagePanel';
 import { 
   ActiveScreen, 
@@ -44,6 +45,8 @@ interface PersistedState {
   businessUnderstanding: BusinessUnderstanding | null;
   productDefinition: ProductDefinition | null;
   engineeringPackage: EngineeringPackage | null;
+  /** Optional reference screen for Build Prototype (shrunk JPEG data URL). */
+  referenceImage?: string | null;
 }
 
 /** Returns true if the saved state contains meaningful data worth restoring. */
@@ -109,6 +112,10 @@ export default function App() {
     saved?.engineeringPackage ?? null
   );
 
+  const [referenceImage, setReferenceImage] = useState<string | null>(saved?.referenceImage ?? null);
+  // Set when the offline engine had to stand in for the AI; drives the banner with Retry.
+  const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingDefinition, setIsGeneratingDefinition] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -141,10 +148,16 @@ export default function App() {
         businessUnderstanding,
         productDefinition,
         engineeringPackage,
+        referenceImage,
       };
       // Only persist if there is meaningful data; otherwise clear storage
       if (isStateMeaningful(state)) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch {
+          // Storage full: keep the project, drop only the reference screenshot from the saved copy.
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, referenceImage: null }));
+        }
       } else {
         try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
       }
@@ -160,6 +173,7 @@ export default function App() {
     businessUnderstanding,
     productDefinition,
     engineeringPackage,
+    referenceImage,
   ]);
 
   // ── AI usage notices from the server (tokens used, saved result reused, limit reached) ──
@@ -168,6 +182,21 @@ export default function App() {
     window.addEventListener(AI_NOTICE_EVENT, onNotice);
     return () => window.removeEventListener(AI_NOTICE_EVENT, onNotice);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Who answered each AI button: keep a banner while the offline engine stood in for the AI ──
+  useEffect(() => {
+    const onStatus = (e: Event) => {
+      const status = (e as CustomEvent<AIStatus>).detail;
+      if (status.outcome === 'offline-failed' || status.outcome === 'offline-no-key') {
+        setAiStatus(status);
+        // The banner sits under the header: bring it into view so the BA sees why the result looks generic.
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      else if (status.outcome === 'ai' || status.outcome === 'cache') setAiStatus((prev) => (prev?.task === status.task ? null : prev));
+    };
+    window.addEventListener(AI_STATUS_EVENT, onStatus);
+    return () => window.removeEventListener(AI_STATUS_EVENT, onStatus);
   }, []);
 
   // ── Show 'Session restored' toast once on mount if saved state was found ──
@@ -200,7 +229,7 @@ export default function App() {
       setProductDefinition(null);
       setEngineeringPackage(null);
       setActiveScreen('understanding');
-      showToast('Business understanding reconstructed from multi-format materials.');
+      showToast('Business understanding ready for review.');
     } catch (err: any) {
       console.error("Analysis Error:", err);
       setApiError(err.message || "An unknown error occurred while analyzing materials.");
@@ -228,7 +257,7 @@ export default function App() {
         const data = await response.json();
         setProductDefinition(data);
         setEngineeringPackage(null);
-        showToast('Formal Product Definition structured and ready for review.');
+        showToast('Product Definition ready for review.');
       } else {
         const errData = await response.json().catch(() => ({}));
         setApiError(errData.error || 'Failed to generate product definition from business understanding.');
@@ -261,7 +290,7 @@ export default function App() {
         const data = await response.json();
         setProductDefinition(data);
         setEngineeringPackage(null);
-        showToast('Product Definition regenerated with fresh AI synthesis.');
+        showToast('Product Definition regenerated.');
       } else {
         const errData = await response.json().catch(() => ({}));
         setApiError(errData.error || 'Regeneration failed on backend.');
@@ -279,21 +308,18 @@ export default function App() {
     showToast('Product Definition approved! Prototype construction unlocked.');
   };
 
-  // Step 4: Build Prototype — calls the AI Advanced Thinking endpoint to generate
-  // rich, domain-adaptive UI blueprints for every screen, referencing real products.
-  const handleBuildPrototype = async () => {
+  // Step 4: Build Prototype — the AI designs every screen from the BU's process, users and rules,
+  // optionally following the reference screen. `force` redesigns even when the AI already did.
+  const handleBuildPrototype = async (force = false) => {
     setActiveScreen('prototype');
     if (!productDefinition) return;
 
-    // Skip regeneration if screens already have AI-enriched UI specs
-    // Placeholder screens and pre-blueprint UI are rebuilt by the server, never reused.
-    const allHaveUI = productDefinition.screens.length > 0 &&
-      productDefinition.screens.every(s =>
-        s.confidence !== 'MISSING' &&
-        s.ui?.benchmarkNote &&
-        !s.ui.benchmarkNote.startsWith('Generic enterprise workbench pattern'));
-    if (allHaveUI) {
-      showToast('Interactive prototype loaded with AI-generated UI.');
+    // Reuse only screens the AI designed. Offline designs, placeholder screens and pre-blueprint UI
+    // are always sent back to the AI, so an earlier AI outage never sticks.
+    const allDesignedByAI = productDefinition.screens.length > 0 &&
+      productDefinition.screens.every(s => s.confidence !== 'MISSING' && s.ui?.origin === 'AI');
+    if (allDesignedByAI && !force) {
+      showToast('Prototype loaded: every screen was designed by the AI.');
       return;
     }
 
@@ -302,25 +328,39 @@ export default function App() {
       const response = await fetch('/api/generate-prototype', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productDefinition }),
+        body: JSON.stringify({ productDefinition, ...(referenceImage ? { referenceImage } : {}) }),
       });
 
       if (response.ok) {
-        const enrichedDefinition = await response.json();
+        const enrichedDefinition: ProductDefinition = await response.json();
         setProductDefinition(enrichedDefinition);
-        showToast('AI prototype generated with advanced thinking — each screen inspired by leading products.');
+        const byAI = enrichedDefinition.screens.filter(s => s.ui?.origin === 'AI').length;
+        showToast(byAI > 0
+          ? `The AI designed ${byAI} of ${enrichedDefinition.screens.length} screens${referenceImage ? ', following your reference screen' : ''}.`
+          : 'Prototype built by the offline engine.');
       } else {
         const errData = await response.json().catch(() => ({}));
         console.warn('Prototype generation API error:', errData);
-        showToast('Prototype loaded with standard layout. AI generation will retry on next build.');
+        showToast(errData.error || 'The prototype could not be built. Try again.');
       }
     } catch (err) {
       console.error('Error generating prototype:', err);
-      showToast('Prototype loaded with standard layout.');
+      showToast('The prototype could not be built: the server did not answer.');
     } finally {
       setIsGeneratingPrototype(false);
     }
   };
+
+  // Retry for the banner: re-run the AI step that fell back to the offline engine.
+  const retryFor = (status: AIStatus): (() => void) | undefined => {
+    switch (status.task) {
+      case 'analyze-material': return () => { setAiStatus(null); handleAnalyzeMaterials(); };
+      case 'generate-definition': return businessUnderstanding ? () => { setAiStatus(null); handleRegenerateDefinition(); } : undefined;
+      case 'generate-prototype-ui': return productDefinition ? () => { setAiStatus(null); handleBuildPrototype(true); } : undefined;
+      default: return undefined; // Change Impact: run the analysis again from the change window.
+    }
+  };
+  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype;
 
   // Step 6: Change Impact Analysis
   const handleAnalyzeChange = async (changeRequest: string): Promise<ChangeImpactAnalysis> => {
@@ -630,6 +670,15 @@ export default function App() {
         onResetAll={handleClearAll}
       />
 
+      {aiStatus && (
+        <AIStatusBanner
+          status={aiStatus}
+          onRetry={retryFor(aiStatus)}
+          isRetrying={isRetrying}
+          onDismiss={() => setAiStatus(null)}
+        />
+      )}
+
       {apiError && (
         <div className="bg-red-900 border border-red-500 text-red-100 px-4 py-3 m-4 rounded relative shadow-lg" role="alert">
           <strong className="font-bold mr-2">LLM API Error:</strong>
@@ -678,7 +727,7 @@ export default function App() {
               onApproveDefinition={handleApproveDefinition}
               onRegenerate={handleRegenerateDefinition}
               isRegenerating={isRegenerating}
-              onBuildPrototype={handleBuildPrototype}
+              onBuildPrototype={() => handleBuildPrototype()}
               onNavigateToQASuite={() => setActiveScreen('qasuite')}
             />
           ) : (
@@ -723,6 +772,9 @@ export default function App() {
             onProceedToEngineering={handlePrepareEngineering}
             onAnalyzeChange={handleAnalyzeChange}
             onApplyChange={handleApplyChange}
+            referenceImage={referenceImage}
+            setReferenceImage={setReferenceImage}
+            onRedesign={() => handleBuildPrototype(true)}
           />
         )}
 

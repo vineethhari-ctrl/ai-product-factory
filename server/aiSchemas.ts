@@ -285,6 +285,8 @@ export const PrototypeUISchema = z.object({
       layoutType: z.enum(["dashboard", "table-detail", "form-wizard", "split-view", "profile-360"]),
       ui: ScreenUISchema.extend({
         benchmarkNote: z.string(),
+        /** Record a form-wizard screen creates or completes; "" for other layouts. */
+        entity: z.string(),
       }),
     })
   ),

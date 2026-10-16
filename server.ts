@@ -12,7 +12,8 @@ import {
 } from "./server/aiReasoningService";
 import { validateRecordHandler } from "./server/recordRoute";
 import { describeRouting } from "./server/routing";
-import { currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
+import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
+import { parseReferenceImage } from "./server/referenceImage";
 
 async function startServer() {
   const app = express();
@@ -23,12 +24,15 @@ async function startServer() {
 
   // Every API request knows its BA (X-User) and project (X-Project-Id) for AI usage metering.
   app.use("/api", usageContext);
-  // AI endpoints report what happened (tokens used, cache reuse, limit reached) in X-AI-Notice.
+  // AI endpoints report what happened (tokens used, cache reuse, limit reached) in X-AI-Notice, and who
+  // answered (an AI model, a saved answer, or the offline engine and why) in X-AI-Status.
   app.use("/api", (_req, res, next) => {
     const json = res.json.bind(res);
     res.json = (body: unknown) => {
       const notices = currentNotices();
       if (notices.length && !res.headersSent) res.setHeader("X-AI-Notice", encodeURIComponent(notices.join("\n")));
+      const status = currentAIStatus();
+      if (status && !res.headersSent) res.setHeader("X-AI-Status", encodeURIComponent(JSON.stringify(status)));
       return json(body);
     };
     next();
@@ -149,8 +153,11 @@ async function startServer() {
       if (!productDefinition) {
         return res.status(400).json({ error: "Missing product definition." });
       }
+      // Optional reference screen: the AI follows its look and layout, never its data.
+      const reference = parseReferenceImage(req.body.referenceImage);
+      if (reference && "error" in reference) return res.status(400).json({ error: reference.error });
 
-      const enriched = await generatePrototypeUI(productDefinition);
+      const enriched = await generatePrototypeUI(productDefinition, reference ?? undefined);
       return res.json(enriched);
     } catch (err: any) {
       console.error("Error generating prototype UI:", err);

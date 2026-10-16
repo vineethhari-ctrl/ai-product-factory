@@ -132,6 +132,36 @@ interface UsageContext {
   project: string;
   notices: string[];
   click?: ClickRecord;
+  /** Why each provider model failed during this request, in the order tried. */
+  failures?: ProviderFailure[];
+  /** The model whose answer was used, set by the provider client. */
+  servedModel?: string;
+  /** Who answered the AI step of this request; sent to the browser as X-AI-Status. */
+  status?: AIStatus;
+}
+
+/** What went wrong with one provider model, in plain language for the BA. */
+export interface ProviderFailure {
+  provider: string;
+  model: string;
+  kind: "busy" | "quota" | "unavailable-model" | "key" | "cut-off" | "bad-answer" | "refused" | "network";
+  message: string;
+}
+
+/**
+ * Who produced the AI part of a response:
+ *  ai              - a provider model answered
+ *  cache           - a saved AI answer to the same request
+ *  offline-no-key  - no key for this task's providers
+ *  offline-limit   - a usage limit applied
+ *  offline-failed  - every provider model was tried and failed (see failures)
+ */
+export interface AIStatus {
+  task: AITask;
+  button: string;
+  outcome: "ai" | "cache" | "offline-no-key" | "offline-limit" | "offline-failed";
+  model?: string;
+  failures?: ProviderFailure[];
 }
 
 const als = new AsyncLocalStorage<UsageContext>();
@@ -163,6 +193,37 @@ export function currentNotices(): string[] {
 
 function note(message: string) {
   als.getStore()?.notices.push(message);
+}
+
+/** Called by the provider clients when a model call fails, so the BA can be told why. */
+export function recordProviderFailure(failure: ProviderFailure) {
+  const ctx = als.getStore();
+  if (ctx) (ctx.failures ??= []).push(failure);
+}
+
+/** Called by the provider clients when a model's answer is used. */
+export function recordServedModel(model: string) {
+  const ctx = als.getStore();
+  if (ctx) ctx.servedModel = model;
+}
+
+export function currentServedModel(): string | undefined {
+  return als.getStore()?.servedModel;
+}
+
+/** Failures recorded so far in this request. */
+export function currentFailures(): ProviderFailure[] {
+  return als.getStore()?.failures ?? [];
+}
+
+export function setAIStatus(status: Omit<AIStatus, "button">) {
+  const ctx = als.getStore();
+  if (ctx) ctx.status = { ...status, button: AI_BUTTONS[status.task] };
+}
+
+/** The AI status of the current request, if it made an AI step. */
+export function currentAIStatus(): AIStatus | undefined {
+  return als.getStore()?.status;
 }
 
 // ─── Allowance ────────────────────────────────────────────────────────────

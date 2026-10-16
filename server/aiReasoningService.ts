@@ -9,7 +9,8 @@ import {
   OpenQuestionItem,
   Audience,
 } from "../src/types";
-import { callLLMJSON } from "./llmRouter";
+import { type AIImage, callLLMJSON } from "./llmRouter";
+import { buildPrototypePrompt } from "./prototypePrompt";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
 import { entityToSQL } from "../src/services/validationEngine";
 import {
@@ -586,7 +587,7 @@ Return ONLY a valid JSON object matching this schema:
       const built: ProductDefinition = {
         ...rest,
         // Table rows must match their column count or the prototype table breaks.
-        screens: rest.screens.map((s) => ({ ...s, ui: normalizeUISpec(s.ui) })),
+        screens: rest.screens.map((s) => ({ ...s, ui: { ...normalizeUISpec(s.ui), origin: "AI" as const } })),
         // Identity fields are owned by the server, not the model.
         id: `prod-def-${Date.now()}`,
         version,
@@ -816,11 +817,10 @@ export function applyChangeToDefinition(
 /**
  * Advanced Thinking Prototype Generator.
  *
- * Takes a product definition and uses the Pro model with high effort to generate
- * rich, domain-adaptive ScreenUISpec blueprints for every screen — each one
- * referencing real-world products as inspiration (e.g. "Inspired by Salesforce
- * Service Cloud queue pattern"). Returns an updated ProductDefinition with all
- * screens populated with UI specs.
+ * The AI designs a ScreenUISpec for every screen from the BU's own process, journeys,
+ * records and rules (server/prototypePrompt.ts), optionally following the look of a
+ * reference screen. AI designs are marked origin "AI"; screens it skipped, or the whole
+ * prototype when no AI answered, get the offline blueprint design.
  */
 /** UI written by the pre-blueprint fallback; regenerated rather than reused. */
 const LEGACY_UI_NOTE = /^Generic enterprise workbench pattern/;
@@ -842,110 +842,40 @@ function upgradeStaleDefinition(definition: ProductDefinition): ProductDefinitio
   return { ...finalized, openQuestions: finalized.openQuestions.filter((q) => !seen.has(q.id) && !!seen.add(q.id)) };
 }
 
-export async function generatePrototypeUI(input: ProductDefinition): Promise<ProductDefinition> {
-  return definitionWithAudiences(await generatePrototypeUnlabelled(input));
+export async function generatePrototypeUI(input: ProductDefinition, reference?: AIImage): Promise<ProductDefinition> {
+  return definitionWithAudiences(await generatePrototypeUnlabelled(input, reference));
 }
 
 async function generatePrototypeUnlabelled(
-  input: ProductDefinition
+  input: ProductDefinition,
+  reference?: AIImage
 ): Promise<ProductDefinition> {
   const definition = upgradeStaleDefinition(input);
-  const screenSummary = definition.screens.map((s, idx) => (
-    `Screen ${idx + 1}: id="${s.id}", name="${s.name}", module="${s.module}", layoutType="${s.layoutType}", purpose="${s.purpose}", components=[${s.components.join(", ")}]`
-  )).join("\n");
-
-  const entitySummary = definition.dataEntities.map(e =>
-    `Entity: "${e.name}" — fields: ${e.fields.map(f => `${f.name}(${f.type})`).join(", ")}`
-  ).join("\n");
-
-  const ruleSummary = definition.businessRules.slice(0, 8).map(r =>
-    `[${r.code}] ${r.rule}`
-  ).join("\n");
-
-  const personaSummary = definition.personas.map(p =>
-    `${p.name} (${p.role}): ${p.keyGoals.slice(0, 3).join("; ")}`
-  ).join("\n");
-
-  const prompt = `COGNITIVE ROLE: You are a Senior UX Product Architect who has studied and memorized the UI patterns of every major SaaS product, enterprise platform, and industry-leading application in the world. You have deep knowledge of Salesforce, ServiceNow, Workday, SAP, Jira, HubSpot, Zendesk, Uber Fleet, DoorDash Merchant, Shopify Admin, Toast POS, Epic EHR, Veeva CRM, Bloomberg Terminal, Stripe Dashboard, Linear, Notion, Figma Admin, and hundreds more.
-
-TASK: Generate rich, visually compelling UI blueprints for a prototype of "${definition.productName}" (${definition.businessUnit}).
-
-PRODUCT CONTEXT:
-Objective: ${definition.objective}
-
-PERSONAS:
-${personaSummary}
-
-SCREENS TO DESIGN:
-${screenSummary}
-
-DATA ENTITIES:
-${entitySummary}
-
-BUSINESS RULES:
-${ruleSummary}
-
-CRITICAL INSTRUCTIONS:
-1. REAL-WORLD PRODUCT INSPIRATION: For each screen, identify the SPECIFIC real-world product whose UI pattern best fits this screen's job. Name it explicitly in "inspiredBy" (e.g. "Salesforce Service Cloud — Case Queue", "Jira Board — Sprint View", "Stripe Dashboard — Payments Overview", "Uber Fleet — Live Dispatch Map"). This is the most important field. Be specific — name the product AND the specific feature/view.
-
-2. LAYOUT TYPE SELECTION: Choose the optimal layoutType for each screen based on its purpose:
-   - "dashboard": Monitoring, KPIs, high-level overviews (like Stripe Dashboard, Datadog)
-   - "table-detail": Managing records with detail panels (like Salesforce, Zendesk tickets)
-   - "form-wizard": Multi-step processes (like Typeform, loan applications)
-   - "split-view": Triage queues with side details (like email clients, Intercom inbox)
-   - "profile-360": Complete entity view (like HubSpot contact page, patient charts)
-
-3. DOMAIN-SPECIFIC KPIs: Generate 3-4 KPIs with realistic sample values. Use domain terminology — NOT generic "Total Records". For a healthcare product, use "Pending Lab Results" not "Pending Items". For logistics, use "On-Time Delivery Rate" not "SLA %".
-
-4. RICH SAMPLE DATA: Generate 5-7 table rows with realistic, domain-specific sample data. Column names should use real domain terminology. Every row must have exactly as many cells as columns. Include a status-like column.
-
-5. FILTERS: 3-5 domain-specific filter chips that a real user of this screen would actually use.
-
-6. DETAIL PANELS: 2-3 panels showing contextual information about a selected record.
-
-7. PRIMARY ACTIONS: 2-4 action verbs that match the domain (not generic "Edit" / "Delete").
-
-8. BENCHMARK NOTE: One sentence explaining which real-world product pattern this layout mirrors and WHY it was chosen for this screen.
-
-Return ONLY a valid JSON matching this schema:
-{
-  "screens": [
-    {
-      "screenId": "the screen id from the definition",
-      "inspiredBy": "Product Name — Specific Feature/View (e.g. 'Zendesk — Ticket Queue & Triage View')",
-      "layoutType": "dashboard" | "table-detail" | "form-wizard" | "split-view" | "profile-360",
-      "ui": {
-        "kpis": [{"label": "Domain KPI Name", "value": "128", "trend": "up" | "down" | "flat", "delta": "+4.2% vs last week"}],
-        "filters": ["All", "Domain Filter 1", "Domain Filter 2"],
-        "table": {
-          "title": "Domain Table Title",
-          "columns": ["Col1", "Col2", "Status", "Col4"],
-          "rows": [["val1", "val2", "Active", "val4"]]
-        },
-        "detailPanels": [{"title": "Panel Title", "items": [{"label": "Field", "value": "Value"}]}],
-        "primaryActions": ["Domain Action 1", "Domain Action 2"],
-        "benchmarkNote": "Mirrors the [specific pattern] from [Product Name], chosen because [reason]"
-      }
-    }
-  ]
-}`;
+  const prompt = buildPrototypePrompt(definition, !!reference);
 
   try {
-    const parsed = await callLLMJSON("generate-prototype-ui", prompt, PrototypeUISchema);
+    const parsed = await callLLMJSON("generate-prototype-ui", prompt, PrototypeUISchema, undefined, reference ? { images: [reference] } : undefined);
     if (parsed && parsed.screens.length > 0) {
       const updated = JSON.parse(JSON.stringify(definition)) as ProductDefinition;
+      const entityNames = new Set(updated.dataEntities.map((e) => e.name));
+      let designed = 0;
       for (const generated of parsed.screens) {
         const screenIdx = updated.screens.findIndex(s => s.id === generated.screenId);
-        if (screenIdx !== -1) {
-          updated.screens[screenIdx].layoutType = generated.layoutType;
-          updated.screens[screenIdx].ui = normalizeUISpec({
-            ...generated.ui,
-            benchmarkNote: `✨ Inspired by ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
-          });
-        }
+        if (screenIdx === -1) continue;
+        const { entity, ...ui } = generated.ui;
+        updated.screens[screenIdx].layoutType = generated.layoutType;
+        updated.screens[screenIdx].ui = {
+          ...normalizeUISpec(ui),
+          // Only a record that exists can drive the form; anything else falls back to the screen text.
+          ...(entity && entityNames.has(entity) ? { entity } : {}),
+          benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
+          origin: "AI",
+        };
+        designed++;
       }
-      console.log(`[AI Engine] generate-prototype-ui: enriched ${parsed.screens.length} screens with AI-generated UI blueprints.`);
-      return updated;
+      console.log(`[AI Engine] generate-prototype-ui: AI designed ${designed} of ${updated.screens.length} screens${reference ? " following the reference screen" : ""}.`);
+      // Screens the AI skipped keep (or get) an offline design.
+      return ensureScreenUI(updated);
     }
   } catch (err) {
     console.warn("[AI Engine] LLM providers unavailable during prototype generation, using deterministic fallback:", err);

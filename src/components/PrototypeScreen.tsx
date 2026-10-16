@@ -25,6 +25,7 @@ import {
 
 import { ChangeImpactAnalysis, ScreenDefinition, ScreenUISpec } from '../types';
 import { ScreenCanvas } from './ScreenCanvas';
+import { PrototypeDesignBar } from './PrototypeDesignBar';
 
 interface PrototypeScreenProps {
   definition: ProductDefinition;
@@ -33,6 +34,11 @@ interface PrototypeScreenProps {
   onProceedToEngineering: () => void;
   onAnalyzeChange?: (changeRequest: string) => Promise<ChangeImpactAnalysis>;
   onApplyChange?: (analysis: ChangeImpactAnalysis) => void;
+  /** Optional screenshot the AI follows for layout (data URL). */
+  referenceImage?: string | null;
+  setReferenceImage?: (dataUrl: string | null) => void;
+  /** Has the AI design every screen again (with the reference screen, if any). */
+  onRedesign?: () => void;
 }
 
 /** Icon set for screen tabs — cycles through these for visual variety. */
@@ -45,6 +51,9 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   onProceedToEngineering,
   onAnalyzeChange,
   onApplyChange,
+  referenceImage = null,
+  setReferenceImage,
+  onRedesign,
 }) => {
   const [activeProtoScreenIdx, setActiveProtoScreenIdx] = useState<number>(0);
   const [selectedRoleIdx, setSelectedRoleIdx] = useState<number>(0);
@@ -279,7 +288,16 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
 
       {/* Main Container */}
       <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
-        
+        {onRedesign && setReferenceImage && (
+          <PrototypeDesignBar
+            definition={definition}
+            referenceImage={referenceImage}
+            setReferenceImage={setReferenceImage}
+            onRedesign={onRedesign}
+            isGenerating={isGeneratingPrototype}
+          />
+        )}
+
         {/* BU Guidance Banner with Instant UI Prompt Bar */}
         <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 rounded-2xl p-4 flex flex-col gap-3 text-xs text-indigo-950 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -298,7 +316,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
                   {isGeneratingPrototype
                     ? `The AI is analyzing "${definition.productName}" requirements and studying leading products to generate domain-specific UI prototypes with advanced thinking...`
                     : viewMode === 'visual'
-                    ? `Below is the live visual application screen for "${definition.productName}". Each screen is inspired by leading real-world products. Type any UI change request below to instantly update the UI.`
+                    ? `Below is the live visual application screen for "${definition.productName}". Each screen is designed for its job in your process. Type any UI change request below to instantly update the UI.`
                     : `Below is the schema & database record breakdown for business Analysts and system engineers.`}
                 </p>
               </div>
