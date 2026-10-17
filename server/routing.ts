@@ -60,6 +60,7 @@ export interface RouteRule {
   spec: { geminiModel: string; claudeModel: string; temperature: number; maxTokens: number };
 }
 
+const GEMINI_ARGON = "gemini-4-argon";
 const GEMINI_PRO = "gemini-3.1-pro-preview";
 const GEMINI_FLASH = "gemini-3.6-flash";
 const CLAUDE_SONNET = "claude-sonnet-5-5";
@@ -69,21 +70,21 @@ export const ROUTING_MATRIX: Record<RouteClass, RouteRule> = {
   "benchmark-analytics": {
     // MAX_TOKENS: spec 4,096. The analysis JSON (about 50 items with descriptions and evidence) is
     // estimated to need more than that, so it is raised. Estimate, not measured: see CLAUDE.md.
-    gemini: { model: GEMINI_PRO, temperature: 0.2, maxTokens: 16_384 },
+    gemini: { model: GEMINI_ARGON, temperature: 0.2, maxTokens: 16_384 },
     claude: { model: CLAUDE_SONNET, maxTokens: 16_384, effort: "medium" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.2, maxTokens: 4096 },
   },
   "ui-prototyping": {
     // MAX_TOKENS: spec 8,192. A full definition with per-screen UI blueprints is estimated at
     // roughly 10k-25k tokens, so 8,192 would cut the JSON off. Raised.
-    gemini: { model: GEMINI_PRO, temperature: 0.4, maxTokens: 32_768 },
+    gemini: { model: GEMINI_ARGON, temperature: 0.4, maxTokens: 32_768 },
     claude: { model: CLAUDE_SONNET, maxTokens: 32_768, effort: "high" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.4, maxTokens: 8192 },
   },
   "design-research": {
     // Not in the original matrix. A short JSON brief (comparable apps, patterns, visual direction) written
     // after searching the web; Gemini 3.x counts thinking in the ceiling, hence the headroom.
-    gemini: { model: GEMINI_PRO, temperature: 0.4, maxTokens: 16_384 },
+    gemini: { model: GEMINI_ARGON, temperature: 0.4, maxTokens: 16_384 },
     claude: { model: CLAUDE_SONNET, maxTokens: 16_000, effort: "medium" },
     spec: { geminiModel: GEMINI_PRO, claudeModel: CLAUDE_SONNET, temperature: 0.4, maxTokens: 16_384 },
   },
@@ -136,16 +137,19 @@ export function geminiRoute(task: AITask): GeminiRoute {
   return model ? { ...base, model } : base;
 }
 
+/** The Gemini model tried when `model` fails: Argon -> Pro, Pro -> Flash, Flash -> Pro, anything else -> Flash. */
+const nextGeminiModel = (model: string) => (model === GEMINI_ARGON || model === GEMINI_FLASH ? GEMINI_PRO : GEMINI_FLASH);
+
 /**
- * Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK>, else the other
- * Gemini model (Pro <-> Flash) so a busy or unavailable one never leaves the task with a single try, even when
+ * Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK>, else the next one
+ * in the chain above, so a busy or unavailable model never leaves the task with a single try, even when
  * AI_GEMINI_MODEL_<TASK> already points at the usual fallback.
  */
 export function geminiModels(task: AITask): string[] {
   const primary = geminiRoute(task).model;
   const raw = process.env[envKey("AI_GEMINI_FALLBACK", task)]?.trim();
   const fallbacks = raw === undefined || raw === ""
-    ? [primary === GEMINI_FLASH ? GEMINI_PRO : GEMINI_FLASH]
+    ? [nextGeminiModel(primary)]
     : /^none$/i.test(raw) ? [] : raw.split(",").map((m) => m.trim()).filter(Boolean);
   return [...new Set([primary, ...fallbacks])];
 }
@@ -155,13 +159,52 @@ const KEY_ENV: Record<Provider, string> = { gemini: "GEMINI_API_KEY", claude: "A
 /** Values copied from .env.example and never replaced; treated as no key, so no call is wasted on them. */
 const PLACEHOLDER_KEY = /^(MY_[A-Z_]*|your[-_ ].*|<.*>|x+|changeme|placeholder)$/i;
 
-/** The provider's API key, or "" when it is missing or still the .env.example placeholder. */
-export function providerKey(provider: Provider): string {
-  const value = (process.env[KEY_ENV[provider]] || "").trim().replace(/^["']|["']$/g, "");
-  return PLACEHOLDER_KEY.test(value) ? "" : value;
+const clean = (v: string | undefined) => (v || "").trim().replace(/^["']|["']$/g, "");
+const usable = (v: string) => (PLACEHOLDER_KEY.test(v) ? "" : v);
+
+/**
+ * Which Gemini service the app calls: the regular Gemini API (key from AI Studio or a Google Cloud project) or
+ * Vertex AI. Google's own variable GOOGLE_GENAI_USE_VERTEXAI picks Vertex; AI_GEMINI_BACKEND=api|vertex overrides
+ * it, so a Google setting on the PC cannot silently switch the app.
+ */
+export type GeminiBackend = "api" | "vertex";
+export function geminiBackend(): GeminiBackend {
+  const override = clean(process.env.AI_GEMINI_BACKEND).toLowerCase();
+  if (override === "api" || override === "vertex") return override;
+  return /^(1|true|yes)$/i.test(clean(process.env.GOOGLE_GENAI_USE_VERTEXAI)) ? "vertex" : "api";
 }
 
-export const hasProviderKey = (provider: Provider) => providerKey(provider) !== "";
+/** How the Gemini client signs in: a key, or (Vertex only) a Google Cloud project with the PC's sign-in. */
+export interface GeminiAuth {
+  backend: GeminiBackend;
+  apiKey?: string;
+  project?: string;
+  location?: string;
+}
+
+/** Gemini sign-in details for the current settings, or null when nothing usable is set. */
+export function geminiAuth(): GeminiAuth | null {
+  if (geminiBackend() === "api") {
+    const apiKey = usable(clean(process.env.GEMINI_API_KEY));
+    return apiKey ? { backend: "api", apiKey } : null;
+  }
+  // Vertex: an API key (express mode: GOOGLE_API_KEY, or GEMINI_API_KEY as a fallback), else project + location
+  // with the Google sign-in already on the machine (gcloud auth application-default login).
+  const apiKey = usable(clean(process.env.GOOGLE_API_KEY)) || usable(clean(process.env.GEMINI_API_KEY));
+  if (apiKey) return { backend: "vertex", apiKey };
+  const project = usable(clean(process.env.GOOGLE_CLOUD_PROJECT));
+  if (project) return { backend: "vertex", project, location: clean(process.env.GOOGLE_CLOUD_LOCATION) || "global" };
+  return null;
+}
+
+/** The provider's API key, or "" when it is missing or still the .env.example placeholder. */
+export function providerKey(provider: Provider): string {
+  if (provider === "gemini") return geminiAuth()?.apiKey ?? "";
+  return usable(clean(process.env[KEY_ENV[provider]]));
+}
+
+/** True when the provider can be called: a key, or for Gemini on Vertex a project to sign in to. */
+export const hasProviderKey = (provider: Provider) => (provider === "gemini" ? geminiAuth() !== null : providerKey(provider) !== "");
 
 /** Haiku 4.5's output ceiling. */
 const HAIKU_MAX_OUTPUT = 64_000;

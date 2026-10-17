@@ -18,7 +18,7 @@ for (const k of ["AI_PROJECT_BUTTON_LIMIT", "AI_USER_BUTTON_LIMIT", "AI_USER_DAI
 process.env.AI_OFFLINE_ON_FAILURE = "false";
 await import("dotenv/config");
 
-const { describeRouting, hasProviderKey } = await import("../server/routing");
+const { describeRouting, hasProviderKey, geminiBackend, geminiAuth } = await import("../server/routing");
 const { analyzeBusinessMaterial, generateProductDefinition, generatePrototypeUI } = await import("../server/aiReasoningService");
 const { AIUnavailableError } = await import("../server/llmRouter");
 const { runWithUsageContext, currentAICalls, usageReport } = await import("../server/usage");
@@ -74,6 +74,7 @@ let problems = 0;
 out(`# Live check report`);
 out(`${new Date().toISOString().replace("T", " ").slice(0, 16)} UTC. Products: ${products.map((p) => p[0]).join(", ")}.`);
 out("");
+out(`Gemini service: ${geminiAuth() ? (geminiBackend() === "vertex" ? "Vertex AI" : "regular Gemini API") : "not configured"}.`);
 out("Routing used:");
 for (const l of describeRouting()) out(`- ${l}`);
 

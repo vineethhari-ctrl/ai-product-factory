@@ -81,7 +81,7 @@ restore.forEach((r) => r());
 // Start-up log
 process.env.ANTHROPIC_API_KEY = "c";
 const lines = describeRouting();
-t("start-up log names the models and marks missing keys", lines.some((l) => l === "generate-definition: claude-sonnet-5-5 -> (gemini-3.1-pro-preview: no key) -> (gemini-3.6-flash: no key) -> offline engine"), lines.join(" | "));
+t("start-up log names the models and marks missing keys", lines.some((l) => l === "generate-definition: claude-sonnet-5-5 -> (gemini-4-argon: no key) -> (gemini-3.1-pro-preview: no key) -> offline engine"), lines.join(" | "));
 t("calls that billed no tokens are not counted", usageReport("tester", "P0").team.monthClicks === 0); // stubs report no tokens
 delete process.env.ANTHROPIC_API_KEY;
 
@@ -93,16 +93,19 @@ t("a real key (even quoted) is used", hasProviderKey("gemini"));
 delete process.env.GEMINI_API_KEY;
 
 // Second Gemini model
-t("Pro routes fall back to Flash", geminiModels("generate-prototype-ui").join() === "gemini-3.1-pro-preview,gemini-3.6-flash");
+t("Gemini 4 Argon is the main Gemini model for the heavy steps, Pro is its backup", geminiModels("generate-prototype-ui").join() === "gemini-4-argon,gemini-3.1-pro-preview" && geminiModels("research-prototype")[0] === "gemini-4-argon");
+process.env.AI_GEMINI_MODEL_GENERATE_PROTOTYPE_UI = "gemini-3.1-pro-preview";
+t("Pro falls back to Flash", geminiModels("generate-prototype-ui").join() === "gemini-3.1-pro-preview,gemini-3.6-flash");
+delete process.env.AI_GEMINI_MODEL_GENERATE_PROTOTYPE_UI;
 t("Flash route falls back to Pro", geminiModels("analyze-change").join() === "gemini-3.6-flash,gemini-3.1-pro-preview");
 process.env.AI_GEMINI_MODEL_ANALYZE_MATERIAL = "gemini-3.6-flash";
 t("an override to Flash still gets Pro as the second model", geminiModels("analyze-material").join() === "gemini-3.6-flash,gemini-3.1-pro-preview");
 t("a model is never listed twice", new Set(geminiModels("analyze-material")).size === geminiModels("analyze-material").length);
 delete process.env.AI_GEMINI_MODEL_ANALYZE_MATERIAL;
 process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION = "none";
-t("fallback can be switched off", geminiModels("generate-definition").join() === "gemini-3.1-pro-preview");
+t("fallback can be switched off", geminiModels("generate-definition").join() === "gemini-4-argon");
 process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION = "gemini-a, gemini-b";
-t("fallback override", geminiModels("generate-definition").join() === "gemini-3.1-pro-preview,gemini-a,gemini-b");
+t("fallback override", geminiModels("generate-definition").join() === "gemini-4-argon,gemini-a,gemini-b");
 delete process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION;
 
 t("503 is classed as busy", classifyGeminiError({ status: 503, message: "The model is overloaded" }) === "busy");
@@ -119,10 +122,10 @@ const realTimeout = globalThis.setTimeout;
 (globalThis as any).setTimeout = (fn: () => void) => realTimeout(fn, 0); // skip the retry backoff
 process.env.GEMINI_API_KEY = "g";
 
-let restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("pro") ? busy() : ok(m))));
+let restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("argon") ? busy() : ok(m))));
 const viaFlash = await runWithUsageContext("tester", "PF1", () => quiet(async () => ({ r: await callLLMJSON("generate-prototype-ui", "fallback prompt 1", schema), s: currentAIStatus() })));
-t("Pro busy (3 tries) -> Flash answers", viaFlash.r?.by === "gemini-3.6-flash" && tried.join() === "gemini-3.1-pro-preview,gemini-3.1-pro-preview,gemini-3.1-pro-preview,gemini-3.6-flash", tried.join());
-t("status says the AI answered, with the model", viaFlash.s?.outcome === "ai" && viaFlash.s.model === "gemini-3.6-flash", JSON.stringify(viaFlash.s));
+t("Argon busy (3 tries) -> Pro answers", viaFlash.r?.by === "gemini-3.1-pro-preview" && tried.join() === "gemini-4-argon,gemini-4-argon,gemini-4-argon,gemini-3.1-pro-preview", tried.join());
+t("status says the AI answered, with the model", viaFlash.s?.outcome === "ai" && viaFlash.s.model === "gemini-3.1-pro-preview", JSON.stringify(viaFlash.s));
 restoreClient();
 
 tried.length = 0;
@@ -149,9 +152,9 @@ t("rejected key: the second model is not tried", badKey === null && tried.length
 restoreClient();
 
 tried.length = 0;
-restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("pro") ? { text: "", candidates: [{ finishReason: "MAX_TOKENS" }], usageMetadata: {} } : ok(m))));
+restoreClient = setGeminiClientForTests(fakeGemini((m) => (m.includes("argon") ? { text: "", candidates: [{ finishReason: "MAX_TOKENS" }], usageMetadata: {} } : ok(m))));
 const cut = await runWithUsageContext("tester", "PF4", () => quiet(() => callGeminiJSON("generate-prototype-ui", "p", schema)));
-t("cut-off answer: the second model is tried", cut?.by === "gemini-3.6-flash" && tried.length === 2);
+t("cut-off answer: the second model is tried", cut?.by === "gemini-3.1-pro-preview" && tried.length === 2);
 restoreClient();
 
 tried.length = 0;
@@ -170,7 +173,7 @@ restoreClient = setGeminiClientForTests({ models: { generateContent: async (req:
 } } });
 const researched = await runWithUsageContext("tester", "PF7", () => quiet(() => callLLMJSON("research-prototype", "research prompt", z.object({ by: z.string(), sources: z.array(z.object({ title: z.string(), url: z.string() })).optional() }), undefined, { webSearch: true })));
 t("web search: Google Search tool on, no JSON mode", Array.isArray(seenConfig?.tools) && "googleSearch" in seenConfig.tools[0] && seenConfig.responseMimeType === undefined);
-t("web search: JSON read from prose, pages read added as sources", researched?.by === "gemini-3.1-pro-preview" && researched?.sources?.[0]?.url === "https://example.com/a", JSON.stringify(researched));
+t("web search: JSON read from prose, pages read added as sources", researched?.by === "gemini-4-argon" && researched?.sources?.[0]?.url === "https://example.com/a", JSON.stringify(researched));
 t("research has its own route: Gemini first, then Claude", providerOrder("research-prototype").join() === "gemini,claude");
 restoreClient();
 
@@ -184,5 +187,39 @@ t("no key: status says no key", (await statusOf("no key prompt"))?.outcome === "
 (globalThis as any).setTimeout = realTimeout;
 
 rmSync(dir, { recursive: true, force: true });
+
+// Gemini service: regular API or Vertex, chosen by Google's own variable unless the app's setting overrides it
+{
+  const saved: Record<string, string | undefined> = {};
+  const names = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_GENAI_USE_VERTEXAI", "AI_GEMINI_BACKEND"];
+  for (const n of names) { saved[n] = process.env[n]; delete process.env[n]; }
+  const { geminiBackend, geminiAuth } = await import("../server/routing");
+  process.env.GEMINI_API_KEY = "g1";
+  t("default: the regular Gemini API with GEMINI_API_KEY", geminiBackend() === "api" && geminiAuth()?.apiKey === "g1" && geminiAuth()?.backend === "api");
+  process.env.GOOGLE_GENAI_USE_VERTEXAI = "true";
+  process.env.GOOGLE_API_KEY = "v1";
+  process.env.GOOGLE_CLOUD_PROJECT = "proj-1";
+  process.env.GOOGLE_CLOUD_LOCATION = "global";
+  t("Google's variable switches to Vertex and uses the Vertex key", geminiBackend() === "vertex" && geminiAuth()?.backend === "vertex" && geminiAuth()?.apiKey === "v1");
+  process.env.AI_GEMINI_BACKEND = "api";
+  t("AI_GEMINI_BACKEND=api keeps the regular API even when the PC variable says Vertex", geminiBackend() === "api" && geminiAuth()?.apiKey === "g1");
+  delete process.env.AI_GEMINI_BACKEND;
+  delete process.env.GOOGLE_API_KEY; delete process.env.GEMINI_API_KEY;
+  t("Vertex without a key signs in to the project with the PC's Google sign-in", JSON.stringify(geminiAuth()) === JSON.stringify({ backend: "vertex", project: "proj-1", location: "global" }), JSON.stringify(geminiAuth()));
+  t("Vertex counts as configured with only a project", hasProviderKey("gemini"));
+  const { geminiClientOptions } = await import("../server/geminiClient");
+  const { GoogleGenAI } = await import("@google/genai");
+  const vertexProject = geminiClientOptions(geminiAuth()!);
+  t("client options: Vertex project mode", JSON.stringify(vertexProject) === JSON.stringify({ vertexai: true, project: "proj-1", location: "global" }));
+  t("client options: the regular API says so explicitly", geminiClientOptions({ backend: "api", apiKey: "k" }).vertexai === false);
+  const built = [vertexProject, geminiClientOptions({ backend: "vertex", apiKey: "k" }), geminiClientOptions({ backend: "api", apiKey: "k" })].map((o) => { try { return new GoogleGenAI(o as any); } catch (e) { return String(e); } });
+  t("the Google library accepts every option set (a PC-wide Vertex variable does not break the regular API)", built.every((b) => typeof b !== "string") && (built[2] as any).vertexai === false && (built[1] as any).vertexai === true, built.filter((b) => typeof b === "string").join("; "));
+  delete process.env.GOOGLE_CLOUD_PROJECT;
+  t("Vertex with nothing to sign in with is not configured", geminiAuth() === null && !hasProviderKey("gemini"));
+  process.env.GOOGLE_API_KEY = "MY_GOOGLE_API_KEY";
+  t("a placeholder Vertex key is ignored", geminiAuth() === null);
+  for (const n of names) { if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n]; }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

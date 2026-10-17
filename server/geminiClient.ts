@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { AITask, geminiModels, geminiRoute, providerKey } from "./routing";
+import { AITask, type GeminiAuth, geminiAuth, geminiModels, geminiRoute } from "./routing";
 import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
 import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
 import type { AIImage } from "./llmRouter";
@@ -26,19 +26,28 @@ export function setGeminiClientForTests(client: unknown): () => void {
   return () => { testClient = null; };
 }
 
+/** SDK options for the chosen service. `vertexai` is always explicit, so a PC-wide Google variable cannot flip it. */
+export function geminiClientOptions(auth: GeminiAuth) {
+  if (auth.backend === "api") return { vertexai: false, apiKey: auth.apiKey };
+  return auth.apiKey ? { vertexai: true, apiKey: auth.apiKey } : { vertexai: true, project: auth.project, location: auth.location };
+}
+
 function getClient(): GoogleGenAI | null {
   if (testClient) return testClient;
-  const apiKey = providerKey("gemini");
-  if (cachedClient && cachedKey === apiKey) return cachedClient;
-  if (!apiKey) {
+  const auth = geminiAuth();
+  if (!auth) {
     if (!warnedMissingKey) {
-      console.warn("[AI Engine] GEMINI_API_KEY is not set (or is still the .env.example placeholder) - skipping Gemini.");
+      console.warn("[AI Engine] No usable Gemini sign-in (GEMINI_API_KEY, or GOOGLE_API_KEY / GOOGLE_CLOUD_PROJECT for Vertex; a placeholder counts as unset) - skipping Gemini.");
       warnedMissingKey = true;
     }
     return null;
   }
-  cachedClient = new GoogleGenAI({ apiKey });
-  cachedKey = apiKey;
+  // `vertexai` is always passed, so a Google variable on the PC can never switch the service behind the app's back.
+  const signature = JSON.stringify(auth);
+  if (cachedClient && cachedKey === signature) return cachedClient;
+  cachedClient = new GoogleGenAI(geminiClientOptions(auth));
+  cachedKey = signature;
+  console.log(`[AI Engine] Gemini via ${auth.backend === "vertex" ? `Vertex AI (${auth.apiKey ? "API key" : `project ${auth.project}, ${auth.location}`})` : "the Gemini API"}.`);
   return cachedClient;
 }
 

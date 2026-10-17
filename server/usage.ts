@@ -52,6 +52,7 @@ const DEFAULT_PRICES: Array<[RegExp, number, number]> = [
   // Anthropic first-party list prices: Haiku 4.5 $1/$5, Opus 5.5 $4/$20, Sonnet 5.5 $2/$10.
   [/claude.*haiku/i, 1, 5],
   [/claude-opus-5-5/i, 4, 20],
+  [/gemini-4/i, 2, 10], // introductory price reported at launch; set AI_PRICE_GEMINI_4_ARGON if it changes
   [/claude.*opus/i, 5, 25],
   [/claude-sonnet-5/i, 2, 10],
   [/claude/i, 3, 15],

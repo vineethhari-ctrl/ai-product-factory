@@ -11,6 +11,13 @@ provider key is exposed to it.
 - `npm install` works plainly: `.npmrc` sets `legacy-peer-deps=true` (existing esbuild/vite peer conflict)
 
 ## Environment (server-side only, never `VITE_`-prefixed)
+- **Gemini service** (`geminiBackend` / `geminiAuth`, routing.ts): the regular Gemini API with `GEMINI_API_KEY`, or
+  **Vertex AI** when `GOOGLE_GENAI_USE_VERTEXAI=true` (Google's own variable, also read from the PC environment):
+  `GOOGLE_API_KEY` (a Vertex key) is used, else `GOOGLE_CLOUD_PROJECT` + `GOOGLE_CLOUD_LOCATION` (default `global`)
+  with the machine's Google sign-in. `AI_GEMINI_BACKEND=api|vertex` overrides the switch. `geminiClientOptions`
+  always passes `vertexai` explicitly, because the SDK would otherwise follow a PC-wide Google variable and send a
+  regular Gemini key to Vertex. Default Gemini model for the heavy steps is **gemini-4-argon** (released Oct 2026;
+  intro price $2/$10 per million tokens, estimated in `usage.ts`); a key without access to it fails over to Pro.
 - `GEMINI_API_KEY` – Gemini provider. If unset, Gemini is skipped.
 - `ANTHROPIC_API_KEY` – Claude provider. If unset, Claude is skipped.
 - With neither key, every endpoint serves the deterministic local engine.
@@ -30,11 +37,11 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 
 | Task (button) | Endpoint | First | Failover | Why | Max tokens (applied) |
 |---|---|---|---|---|---|
-| `analyze-material` (Understand Business) | `/api/analyze-material` | gemini-3.1-pro-preview (temp 0.2) | claude-sonnet-5-5 (effort medium) | Gemini reads large mixed material well | 16,384 |
-| `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Most quality-critical; long structured reasoning | 32,768 |
-| `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 32,768 |
+| `analyze-material` (Understand Business) | `/api/analyze-material` | gemini-4-argon (temp 0.2) | claude-sonnet-5-5 (effort medium) | Gemini reads large mixed material well | 16,384 |
+| `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Most quality-critical; long structured reasoning | 32,768 |
+| `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 32,768 |
 | `analyze-change` (Change Impact) | `/api/analyze-change` | claude-haiku-4-5 (temp 0.5) | gemini-3.6-flash (temp 0.5) | Small and frequent: cheapest model with guaranteed valid output | 2,048 |
-| `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-3.1-pro-preview + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
+| `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-4-argon + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call.
 
@@ -55,7 +62,7 @@ the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
 - Gemini: 429/503 retried 3x with backoff per model. Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
-  schema-invalid response, the **second Gemini model** is tried (`geminiModels`: always the other of Pro/Flash, also when `AI_GEMINI_MODEL_<TASK>` is set;
+  schema-invalid response, the **second Gemini model** is tried (`geminiModels`: Argon -> Pro, Pro -> Flash, Flash -> Pro, also when `AI_GEMINI_MODEL_<TASK>` is set;
   `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
   skips the second model.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
