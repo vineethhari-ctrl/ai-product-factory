@@ -7,6 +7,7 @@ import { z } from "zod";
 const dir = mkdtempSync(path.join(tmpdir(), "apf-repair-"));
 process.env.DATA_DIR = dir;
 process.env.AI_MONTHLY_BUDGET_USD = "0";
+for (const k of ["AI_PROJECT_BUTTON_LIMIT", "AI_USER_BUTTON_LIMIT", "AI_USER_DAILY_TOKENS"]) process.env[k] = "0"; // the test makes more calls than one BA is allowed a day
 for (const k of Object.keys(process.env)) if (/^AI_(ORDER|CLAUDE_MODEL|GEMINI_MODEL|GEMINI_FALLBACK)_/.test(k)) delete process.env[k];
 delete process.env.GEMINI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
 
@@ -115,6 +116,42 @@ try {
   restore();
   t("Gemini: unusable twice on each model -> the AI-unavailable error, nothing invented", failed.r === null && failed.err instanceof AIUnavailableError, String(failed.err));
   t("Gemini: one correction per model, no endless retrying", calls.length === 4, JSON.stringify(calls));
+
+  // A long answer arrives as a stream (so the HTTP client never waits silently for minutes)
+  const streaming = (pieces: string[], extra: Record<string, unknown> = {}) => ({
+    models: {
+      generateContentStream: async () => (async function* () {
+        yield { candidates: [{ content: { parts: [{ text: "thinking about it", thought: true }] } }] };
+        for (const piece of pieces) yield { candidates: [{ content: { parts: [{ text: piece }] } }] };
+        yield { candidates: [{ finishReason: "STOP", content: { parts: [] } }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 9 }, ...extra };
+      })(),
+    },
+  });
+  restore = setGeminiClientForTests(streaming(['{"title": "Str', 'eam", "status"', ': "OPEN"}']));
+  const streamed = await run("S1", "prompt stream");
+  restore();
+  t("Gemini: a streamed answer is put back together (thinking text left out)", streamed.r?.title === "Stream" && streamed.r.status === "OPEN", JSON.stringify(streamed.r));
+  t("Gemini: a streamed answer reports its tokens", streamed.s?.outcome === "ai");
+
+  let drops = 0;
+  const droppy = {
+    models: {
+      generateContentStream: async () => {
+        if (drops++ < 1) throw Object.assign(new TypeError("fetch failed"), { cause: new Error("socket hang up") });
+        return (async function* () { yield { candidates: [{ finishReason: "STOP", content: { parts: [{ text: '{"title": "Back", "status": "CLOSED"}' }] } }] }; })();
+      },
+    },
+  };
+  restore = setGeminiClientForTests(droppy);
+  const reconnected = await run("S2", "prompt dropped");
+  restore();
+  t("Gemini: a dropped connection is retried and then answers", reconnected.r?.title === "Back" && drops === 2, `${drops} ${JSON.stringify(reconnected.r)}`);
+
+  let noSignIn = 0;
+  restore = setGeminiClientForTests({ models: { generateContentStream: async () => { noSignIn++; throw new Error("Could not load the default credentials."); } } });
+  const unauthenticated = await run("S3", "prompt no sign-in");
+  restore();
+  t("Gemini: a missing Google sign-in is not retried as if it were a dropped connection", unauthenticated.err instanceof AIUnavailableError && noSignIn === 2, String(noSignIn));
   (globalThis as any).setTimeout = realTimeout;
   delete process.env.GEMINI_API_KEY;
 } finally {

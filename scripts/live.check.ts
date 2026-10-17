@@ -68,6 +68,11 @@ async function step<T>(name: string, fn: () => Promise<T>, check: (r: T) => Arra
 }
 
 const lines: string[] = [];
+process.on("SIGINT", () => {
+  writeFileSync("live-check-report.md", lines.join("\n") + "\n\n(stopped early with Ctrl+C)\n");
+  console.log("\nStopped. What was finished is saved in live-check-report.md.");
+  process.exit(1);
+});
 const out = (s = "") => { lines.push(s); };
 let problems = 0;
 
@@ -137,6 +142,7 @@ for (const [i, [name, bu]] of products.entries()) {
     for (const x of repairs.slice(0, 25)) out(`- Fixed: ${x}`);
     if (repairs.length > 25) out(`- ... ${repairs.length - 25} more fixes`);
   }
+  writeFileSync("live-check-report.md", lines.join("\n") + "\n\n(partial: the run is still going)\n");
   if (i < products.length - 1) await pause(8000);
 }
 

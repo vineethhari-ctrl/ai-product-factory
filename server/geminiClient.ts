@@ -121,6 +121,37 @@ function logServed(task: AITask, model: string, started: number, usage: any, max
   }
 }
 
+/** What a Gemini answer looks like to the rest of this file, whether it arrived whole or as a stream. */
+interface GeminiAnswer {
+  text?: string;
+  candidates?: Array<{ finishReason?: string; groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> } }>;
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+}
+
+/**
+ * One request to a model. The answer is read as a STREAM: a long answer (a thinking model writing a large JSON for
+ * several minutes) would otherwise sit silent past the HTTP client's 5-minute wait for the first byte and fail with
+ * "fetch failed" even though Google was still working. Streaming keeps bytes flowing from the first second.
+ * A stand-in client without streaming (tests) is answered with the plain call.
+ */
+async function generate(ai: GoogleGenAI, params: Parameters<GoogleGenAI["models"]["generateContent"]>[0]): Promise<GeminiAnswer> {
+  const models = ai.models as unknown as { generateContentStream?: (p: unknown) => Promise<AsyncIterable<any>> };
+  if (typeof models.generateContentStream !== "function") return (await ai.models.generateContent(params)) as GeminiAnswer;
+  let text = "";
+  let finishReason: string | undefined;
+  let usage: GeminiAnswer["usageMetadata"];
+  const grounding: Array<{ web?: { uri?: string; title?: string } }> = [];
+  for await (const chunk of await models.generateContentStream(params)) {
+    const candidate = chunk?.candidates?.[0];
+    // Answer text only: thinking summaries are marked `thought` and are not part of the JSON.
+    for (const part of candidate?.content?.parts ?? []) if (typeof part?.text === "string" && !part.thought) text += part.text;
+    if (candidate?.finishReason) finishReason = candidate.finishReason;
+    if (chunk?.usageMetadata) usage = chunk.usageMetadata;
+    for (const g of candidate?.groundingMetadata?.groundingChunks ?? []) grounding.push(g);
+  }
+  return { text, candidates: [{ finishReason, groundingMetadata: grounding.length ? { groundingChunks: grounding } : undefined }], usageMetadata: usage };
+}
+
 /** One corrective turn: the original request, the model's answer, and the list of problems. Text, or null. */
 async function askForCorrection(
   ai: GoogleGenAI,
@@ -134,7 +165,7 @@ async function askForCorrection(
 ): Promise<string | null> {
   const userTurn = typeof contents === "string" ? { role: "user", parts: [{ text: contents }] } : contents[0];
   try {
-    const response = await ai.models.generateContent({
+    const response = await generate(ai, {
       model,
       contents: [userTurn, { role: "model", parts: [{ text: previous }] }, { role: "user", parts: [{ text: correctionPrompt(problems) }] }] as any,
       config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
@@ -168,7 +199,7 @@ async function callModel<S extends z.ZodType>(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const started = Date.now();
     try {
-      const response = await ai.models.generateContent({
+      const response = await generate(ai, {
         model,
         contents,
         // Google Search grounding cannot be combined with JSON mode on every model, so a searching call
@@ -218,7 +249,9 @@ async function callModel<S extends z.ZodType>(
       return { kind: "bad-answer" };
     } catch (err: any) {
       const kind = classifyGeminiError(err);
-      if (isTransient(kind) && attempt < MAX_ATTEMPTS) {
+      // A dropped connection is worth another try; a missing sign-in is not.
+      const dropped = kind === "network" && /fetch failed|terminated|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket|other side closed|UND_ERR/i.test(errorText(err));
+      if ((isTransient(kind) || dropped) && attempt < MAX_ATTEMPTS) {
         const delay = attempt * 1500;
         console.warn(`[AI Engine] ${task}: ${model} ${kind} on attempt ${attempt}; retrying in ${delay}ms.`);
         await new Promise((resolve) => setTimeout(resolve, delay));

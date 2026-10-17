@@ -82,6 +82,10 @@ the numbers can be tightened toward the spec once real usage is visible.
   usage log) and writes `live-check-report.md` (gitignored): per step the outcome, model, time, fixes, failures and
   simple output checks. Use it to find all real-model problems in one pass. The BRD is still one request; split it
   only if the report shows cut-offs or repeated unrepairable answers (splitting triples the AI calls per click).
+- **Streaming** (`generate` in geminiClient.ts): Gemini answers are read as a stream. A long answer from a thinking model
+  (minutes) otherwise exceeds the HTTP client's 5-minute wait for the first byte and fails with `fetch failed`. A dropped
+  connection (`fetch failed`, reset, socket) is retried like a busy model; a missing Google sign-in is not. The live check
+  saves a partial `live-check-report.md` after each product and on Ctrl+C.
 - **The AI drives; offline only without a key.** When keys are set and every provider fails, `callLLMJSON` throws
   `AIUnavailableError`; the endpoint answers 503 `{error, aiUnavailable}`, the browser keeps the previous result and
   the banner offers Retry. The local engine answers only when no key is set (or a usage limit applies).
