@@ -137,24 +137,17 @@ export function geminiRoute(task: AITask): GeminiRoute {
 }
 
 /**
- * Second Gemini model per route, tried when the first is busy (503), out of quota, not available to
- * the key, or gives an unusable answer. Pro falls back to Flash (faster, rarely overloaded at the
- * same time); Flash falls back to Pro.
+ * Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK>, else the other
+ * Gemini model (Pro <-> Flash) so a busy or unavailable one never leaves the task with a single try, even when
+ * AI_GEMINI_MODEL_<TASK> already points at the usual fallback.
  */
-const GEMINI_FALLBACK: Record<RouteClass, string[]> = {
-  "benchmark-analytics": [GEMINI_FLASH],
-  "ui-prototyping": [GEMINI_FLASH],
-  "fast-general": [GEMINI_PRO],
-  "design-research": [GEMINI_FLASH],
-};
-
-/** Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK> or the default. */
 export function geminiModels(task: AITask): string[] {
+  const primary = geminiRoute(task).model;
   const raw = process.env[envKey("AI_GEMINI_FALLBACK", task)]?.trim();
   const fallbacks = raw === undefined || raw === ""
-    ? GEMINI_FALLBACK[TASK_ROUTE[task]]
+    ? [primary === GEMINI_FLASH ? GEMINI_PRO : GEMINI_FLASH]
     : /^none$/i.test(raw) ? [] : raw.split(",").map((m) => m.trim()).filter(Boolean);
-  return [...new Set([geminiRoute(task).model, ...fallbacks])];
+  return [...new Set([primary, ...fallbacks])];
 }
 
 const KEY_ENV: Record<Provider, string> = { gemini: "GEMINI_API_KEY", claude: "ANTHROPIC_API_KEY" };

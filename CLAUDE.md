@@ -55,7 +55,7 @@ the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
 - Gemini: 429/503 retried 3x with backoff per model. Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
-  schema-invalid response, the **second Gemini model** is tried (`geminiModels`: Pro -> Flash, Flash -> Pro;
+  schema-invalid response, the **second Gemini model** is tried (`geminiModels`: always the other of Pro/Flash, also when `AI_GEMINI_MODEL_<TASK>` is set;
   `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
   skips the second model.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
