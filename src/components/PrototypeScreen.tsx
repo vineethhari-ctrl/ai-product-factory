@@ -28,6 +28,7 @@ import { ChangeImpactAnalysis, ScreenDefinition, ScreenUISpec } from '../types';
 import { ScreenCanvas } from './ScreenCanvas';
 import { PrototypeDesignBar } from './PrototypeDesignBar';
 import { AppShell, ShellNavItem } from './AppShell';
+import { themeFor } from './UIBlocks';
 
 interface PrototypeScreenProps {
   definition: ProductDefinition;
@@ -175,7 +176,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   );
   // A sample person for the signed-in user: the prototype is not about the BA using the factory.
   const userDisplayName = ['Priya Raman', 'Marcus Chen', 'Elena García', 'Samuel Okafor', 'Hannah Weber', 'Diego Alvarez'][selectedRoleIdx % 6];
-  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' ? benchmarkScreen.ui.primaryActions[0] : undefined;
+  // Form and phone screens carry their own main button; the page header would repeat it.
+  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' && benchmarkScreen.ui.device !== 'phone' ? benchmarkScreen.ui.primaryActions[0] : undefined;
   React.useEffect(() => {
     if (!actionToast) return;
     const t = setTimeout(() => setActionToast(null), 3000);
@@ -386,7 +388,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
             <div className="w-full max-w-md space-y-3">
               {[
                 { icon: Search, label: 'Analyzing product domain & business rules', delay: '0s' },
-                { icon: Globe, label: 'Referencing leading industry product patterns', delay: '0.3s' },
+                { icon: Globe, label: referenceImage ? 'Following your reference screen' : 'Researching similar applications on the web', delay: '0.3s' },
                 { icon: Layers, label: 'Generating UI blueprints for each screen', delay: '0.6s' },
                 { icon: Rocket, label: 'Composing interactive prototype components', delay: '0.9s' },
               ].map((step, idx) => (
@@ -403,7 +405,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500 font-mono">
-              Using Gemini Pro with Advanced Thinking • This may take 15–30 seconds
+              Research, then design · this may take 30–90 seconds
             </p>
           </div>
         )}
@@ -433,6 +435,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
               title={activeScreenObj.name}
               subtitle={activeScreenObj.purpose}
               badge={isReadOnlyRole ? 'View only' : undefined}
+              theme={themeFor(definition.productName, definition.uiTheme)}
               primaryAction={
                 shellAction
                   ? { label: shellAction, disabled: isReadOnlyRole, onClick: () => setActionToast(`${shellAction} (simulated)`) }
@@ -456,6 +459,47 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
                 </div>
               )}
             </AppShell>
+
+            {definition.designResearch && (
+              <div className="bg-white border border-slate-200 rounded-xl px-5 py-4 text-xs text-slate-700 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-indigo-600" /> How the AI designed this prototype
+                  </h3>
+                  {definition.designResearch.model && <span className="text-[11px] text-slate-500">Research by {definition.designResearch.model}</span>}
+                </div>
+                {definition.designResearch.comparableApps.length > 0 ? (
+                  <div>
+                    <div className="font-semibold text-slate-800 mb-1.5">Similar applications it studied first</div>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {definition.designResearch.comparableApps.map((a) => (
+                        <div key={a.name} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="font-bold text-slate-900">{a.name}</div>
+                          <div className="text-[11px] text-slate-500 mb-1.5">{a.category}</div>
+                          <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                            {a.whatToBorrow.slice(0, 3).map((w) => <li key={w}>{w}</li>)}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p>No comparable application was found, so the design follows the best general-purpose business applications.</p>
+                )}
+                <p><span className="font-semibold text-slate-800">Design direction:</span> {definition.designResearch.designDirection}</p>
+                {definition.designResearch.sources.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer font-semibold text-slate-800">Pages it read ({definition.designResearch.sources.length})</summary>
+                    <ul className="mt-1.5 space-y-0.5">
+                      {definition.designResearch.sources.map((src) => (
+                        <li key={src.url}><a href={src.url} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline break-all">{src.title}</a></li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                <p className="text-[11px] text-slate-500">Only layout and interaction patterns are borrowed: never another product's name, logo, wording or data.</p>
+              </div>
+            )}
 
             <details className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-600">
               <summary className="cursor-pointer font-semibold text-slate-700">

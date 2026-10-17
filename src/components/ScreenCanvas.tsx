@@ -6,12 +6,12 @@ import {
   Lock,
   Minus,
   Search,
-  Sparkles,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
 import { DataEntityDefinition, ScreenDefinition, ScreenUISpec } from '../types';
 import { EntityForm } from './EntityForm';
+import { BoardView, ChartCard, PhoneCanvas, StatusOrText, TimelineCard } from './UIBlocks';
 
 interface ScreenCanvasProps {
   screen: ScreenDefinition & { ui: ScreenUISpec };
@@ -35,40 +35,6 @@ function resolveEntity(screen: ScreenDefinition, ui: ScreenUISpec, entities: Dat
   const haystack = normName(`${screen.name} ${screen.module} ${screen.purpose}`);
   return entities.find((e) => normName(e.name).length >= 4 && haystack.includes(normName(e.name))) ?? null;
 }
-
-const BENCHMARK_TAG = 'Industry benchmark';
-
-/** Colour a cell that looks like a status. Returns null for ordinary text. */
-function statusStyle(value: string): string | null {
-  if (/^(active|completed|approved|resolved|healthy|online|paid|delivered|confirmed|passed|open)$/i.test(value.trim())) {
-    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  }
-  if (/^(pending|scheduled|in progress|in review|review|new|processing|awaiting.*|draft)$/i.test(value.trim())) {
-    return 'bg-amber-50 text-amber-700 border-amber-200';
-  }
-  if (/^(overdue|blocked|failed|critical|rejected|offline|breached|escalated|late|expired)$/i.test(value.trim())) {
-    return 'bg-rose-50 text-rose-700 border-rose-200';
-  }
-  if (/^(submitted|on hold|queued|assigned|high)$/i.test(value.trim())) {
-    return 'bg-sky-50 text-sky-700 border-sky-200';
-  }
-  if (/^(closed|archived|cancelled|canceled|inactive)$/i.test(value.trim())) {
-    return 'bg-slate-100 text-slate-600 border-slate-200';
-  }
-  if (/^on track$/i.test(value.trim())) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (/^at risk$/i.test(value.trim())) return 'bg-amber-50 text-amber-700 border-amber-200';
-  return null;
-}
-
-/** `chip` marks a status column: values that are not a known status (e.g. a lifecycle stage) still render as a chip. */
-const StatusOrText: React.FC<{ value: string; chip?: boolean }> = ({ value, chip }) => {
-  const style = statusStyle(value) ?? (chip && value && value !== '—' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : null);
-  return style ? (
-    <span className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold ${style}`}>{value}</span>
-  ) : (
-    <span>{value}</span>
-  );
-};
 
 const PERSON_COLUMN = /owner|party|assign|advisor|supervisor|agent|requester|approver|manager|engineer|technician|handler|customer|member|\bby\b|\buser\b/i;
 const AVATAR_COLORS = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500', 'bg-violet-500'];
@@ -105,8 +71,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     return () => clearTimeout(t);
   }, [feedback]);
 
-  const isBenchmark =
-    screen.confidence === 'INFERRED' || (screen.evidence ?? []).some((e) => e.startsWith(BENCHMARK_TAG));
+  const [view, setView] = useState<'list' | 'board'>(ui.board ? 'board' : 'list');
 
   const filterLabel = ui.filters[activeFilter] ?? '';
   const rows = useMemo(() => {
@@ -124,8 +89,19 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
 
   // Stages in order: the filter chips, minus "All" and side states, counted over every sample row.
   const stages = ui.filters.filter((f) => !/^all\b/i.test(f) && !/^(on hold|cancell?ed|closed|archived)$/i.test(f.trim()));
+  // Counts per stage: a "per stage" panel or a chart over the stages when the design has one (real volumes),
+  // else the sample rows.
+  const countPanel = ui.detailPanels.find((p) => /per stage|by stage/i.test(p.title));
+  const countFrom = (labels: string[], values: string[]) => (st: string) => {
+    const i = labels.findIndex((l) => l.toLowerCase() === st.toLowerCase());
+    const n = i >= 0 ? Number(String(values[i]).replace(/[^0-9.]/g, '')) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const fromPanel = countPanel ? countFrom(countPanel.items.map((it) => it.label), countPanel.items.map((it) => it.value)) : undefined;
+  const fromChart = ui.chart && ui.chart.kind !== 'line' ? countFrom(ui.chart.labels, ui.chart.values.map(String)) : undefined;
   const stageCounts = stages.map((st) =>
-    statusColIdx >= 0 ? ui.table.rows.filter((r) => (r[statusColIdx] ?? '').toLowerCase() === st.toLowerCase()).length : 0,
+    fromPanel?.(st) ?? fromChart?.(st) ??
+    (statusColIdx >= 0 ? ui.table.rows.filter((r) => (r[statusColIdx] ?? '').toLowerCase() === st.toLowerCase()).length : 0),
   );
   const maxCount = Math.max(1, ...stageCounts);
   const currentStage = selected && statusColIdx >= 0 ? stages.findIndex((st) => st.toLowerCase() === (selected[statusColIdx] ?? '').toLowerCase()) : -1;
@@ -144,7 +120,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             <button
               key={st}
               onClick={() => { setActiveFilter(on ? 0 : fi); setSelectedIdx(0); }}
-              className={`text-left rounded-lg border p-3 cursor-pointer transition-colors ${on ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300'}`}
+              className={`text-left rounded-lg border p-3 cursor-pointer transition-colors ${on ? 'border-[var(--brand)] bg-[color-mix(in_srgb,var(--brand)_7%,white)]' : 'border-slate-200 hover:border-[color-mix(in_srgb,var(--brand)_45%,white)]'}`}
             >
               <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                 <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[9px] flex items-center justify-center">{i + 1}</span>
@@ -152,7 +128,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               </div>
               <div className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{stageCounts[i]}</div>
               <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${(stageCounts[i] / maxCount) * 100}%` }} />
+                <div className="h-full rounded-full bg-[var(--brand)]" style={{ width: `${(stageCounts[i] / maxCount) * 100}%` }} />
               </div>
             </button>
           );
@@ -165,8 +141,8 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     <ol className="flex items-center gap-1">
       {stages.map((st, i) => (
         <li key={st} className="flex-1 min-w-0">
-          <div className={`h-1.5 rounded-full ${i < currentStage ? 'bg-emerald-500' : i === currentStage ? 'bg-indigo-600' : 'bg-slate-200'}`} />
-          <div className={`mt-1 text-[10px] truncate ${i === currentStage ? 'font-bold text-indigo-700' : 'text-slate-400'}`}>{st}</div>
+          <div className={`h-1.5 rounded-full ${i < currentStage ? 'bg-emerald-500' : i === currentStage ? 'bg-[var(--brand)]' : 'bg-slate-200'}`} />
+          <div className={`mt-1 text-[10px] truncate ${i === currentStage ? 'font-bold text-[var(--brand)]' : 'text-slate-400'}`}>{st}</div>
         </li>
       ))}
     </ol>
@@ -193,6 +169,20 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     </div>
   );
 
+  // List or board: screens the AI gave a board open on it, with a switch back to the list.
+  const viewSwitch = ui.board && (
+    <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-semibold">
+      {(['board', 'list'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => setView(v)}
+          className={`px-3 py-1 rounded-md cursor-pointer ${view === v ? 'bg-[var(--brand)] text-white' : 'text-slate-600 hover:text-slate-900'}`}
+        >
+          {v === 'board' ? 'Board' : 'List'}
+        </button>
+      ))}
+    </div>
+  );
   const toolbar = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -205,14 +195,16 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             }}
             className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
               i === activeFilter
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700'
+                ? 'bg-[var(--brand)] text-white border-[var(--brand)]'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-[color-mix(in_srgb,var(--brand)_45%,white)] hover:text-[var(--brand)]'
             }`}
           >
             {f}
           </button>
         ))}
       </div>
+      <div className="flex items-center gap-2">
+      {viewSwitch}
       <div className="relative">
         <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
         <input
@@ -222,8 +214,9 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             setSelectedIdx(0);
           }}
           placeholder={`Search ${ui.table.title.toLowerCase()}...`}
-          className="pl-8 pr-3 py-1.5 w-56 max-w-full rounded-lg border border-slate-200 bg-white text-xs focus:outline-hidden focus:border-indigo-400"
+          className="pl-8 pr-3 py-1.5 w-56 max-w-full rounded-lg border border-slate-200 bg-white text-xs focus:outline-hidden focus:border-[var(--brand)]"
         />
+      </div>
       </div>
     </div>
   );
@@ -241,7 +234,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             readOnly
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
               : i === 0
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-xs'
+                ? 'bg-[var(--brand)] hover:brightness-110 text-white cursor-pointer shadow-xs'
                 : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 cursor-pointer'
           }`}
         >
@@ -273,7 +266,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
                 key={`${row[0]}-${ri}`}
                 onClick={() => setSelectedIdx(ri)}
                 className={`border-t border-slate-100 cursor-pointer transition-colors ${
-                  ri === selectedIdx ? 'bg-indigo-50/70' : 'hover:bg-slate-50'
+                  ri === selectedIdx ? 'bg-[color-mix(in_srgb,var(--brand)_7%,white)]' : 'hover:bg-slate-50'
                 }`}
               >
                 {row.map((cell, ci) => (
@@ -339,6 +332,25 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     </div>
   );
 
+  const openCard = (title: string) => {
+    const i = rows.findIndex((r) => r[0] === title);
+    if (i >= 0) setSelectedIdx(i);
+    setView('list');
+  };
+  const records = ui.board && view === 'board' ? <BoardView board={ui.board} onOpen={openCard} /> : table;
+
+  const timeline = ui.timeline && ui.timeline.length > 0 && <TimelineCard events={ui.timeline} />;
+  const chartRow = (ui.chart || timeline) && (
+    <div className={`grid gap-4 ${ui.chart && timeline ? 'lg:grid-cols-3' : ''}`}>
+      {ui.chart && <div className={timeline ? 'lg:col-span-2' : ''}><ChartCard chart={ui.chart} /></div>}
+      {timeline}
+    </div>
+  );
+
+  if (ui.device === 'phone') {
+    return <PhoneCanvas title={screen.name} ui={ui} readOnly={readOnly} />;
+  }
+
   // ── Layouts ───────────────────────────────────────────────────────────────
   let body: React.ReactNode;
   switch (screen.layoutType) {
@@ -346,15 +358,29 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
       body = (
         <>
           {pipeline}
+          {ui.chart && <ChartCard chart={ui.chart} />}
           {toolbar}
-          <div className="grid gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-4">{table}</div>
-            <div className="space-y-4">
-              {selectedRecord}
-              {actionsBar}
-              {panels('grid-cols-1')}
+          {ui.board && view === 'board' ? (
+            // A board needs the full width; the selected record and its panels sit below it.
+            <>
+              {records}
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="space-y-4">{selectedRecord}{actionsBar}</div>
+                <div>{timeline}</div>
+                <div>{panels('grid-cols-1')}</div>
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="lg:col-span-2 space-y-4">{records}</div>
+              <div className="space-y-4">
+                {selectedRecord}
+                {actionsBar}
+                {timeline}
+                {panels('grid-cols-1')}
+              </div>
             </div>
-          </div>
+          )}
         </>
       );
       break;
@@ -372,7 +398,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
                     <button
                       onClick={() => setSelectedIdx(ri)}
                       className={`w-full text-left px-4 py-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                        ri === selectedIdx ? 'bg-indigo-50/70' : 'hover:bg-slate-50'
+                        ri === selectedIdx ? 'bg-[color-mix(in_srgb,var(--brand)_7%,white)]' : 'hover:bg-slate-50'
                       }`}
                     >
                       <div className="min-w-0">
@@ -389,6 +415,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             <div className="lg:col-span-3 space-y-4">
               {selectedRecord}
               {actionsBar}
+              {timeline}
               {panels('sm:grid-cols-2')}
             </div>
           </div>
@@ -423,7 +450,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               <li key={s.title} className="flex items-center gap-2">
                 <span
                   className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center ${
-                    i < wizardStep ? 'bg-emerald-500 text-white' : i === wizardStep ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                    i < wizardStep ? 'bg-emerald-500 text-white' : i === wizardStep ? 'bg-[var(--brand)] text-white' : 'bg-slate-200 text-slate-500'
                   }`}
                 >
                   {i < wizardStep ? <Check className="w-3.5 h-3.5" /> : i + 1}
@@ -442,7 +469,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
                   <input
                     defaultValue={it.value}
                     disabled={readOnly}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-400 disabled:bg-slate-50"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-[var(--brand)] disabled:bg-slate-50"
                   />
                 </label>
               ))}
@@ -458,7 +485,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               <button
                 onClick={() => (isLast ? runAction(ui.primaryActions[0] ?? 'Submit') : setWizardStep((s) => s + 1))}
                 disabled={isLast && readOnly}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-slate-100 disabled:text-slate-400 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-[var(--brand)] hover:brightness-110 text-white disabled:bg-slate-100 disabled:text-slate-400 cursor-pointer"
               >
                 {isLast ? ui.primaryActions[0] ?? 'Submit' : 'Next'} {!isLast && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
@@ -481,7 +508,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
         <>
           {toolbar}
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs flex flex-wrap items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-lg font-bold">
+            <div className="w-14 h-14 rounded-2xl bg-[var(--brand)] text-white flex items-center justify-center text-lg font-bold">
               {initials || '—'}
             </div>
             <div className="min-w-0 flex-1">
@@ -491,8 +518,10 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
             {statusColIdx >= 0 && selected && <StatusOrText value={selected[statusColIdx] ?? ''} chip />}
             {actionsBar}
           </div>
+          {stageProgress && <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-2xs">{stageProgress}</div>}
+          {chartRow}
           {panels('md:grid-cols-2 xl:grid-cols-3')}
-          {table}
+          {records}
         </>
       );
       break;
@@ -503,8 +532,9 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
       body = (
         <>
           {pipeline}
+          {chartRow}
           {toolbar}
-          {table}
+          {records}
           {actionsBar}
           {panels('md:grid-cols-2 xl:grid-cols-3')}
         </>

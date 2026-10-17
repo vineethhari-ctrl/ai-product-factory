@@ -91,7 +91,8 @@ async function callModel<S extends z.ZodType>(
   prompt: string,
   schema: S,
   coerce: ((raw: unknown) => unknown) | undefined,
-  images: AIImage[] | undefined
+  images: AIImage[] | undefined,
+  webSearch = false
 ): Promise<{ data: z.infer<S> } | { kind: ProviderFailure["kind"] }> {
   const { temperature, maxTokens } = geminiRoute(task);
   const contents = images?.length
@@ -104,7 +105,11 @@ async function callModel<S extends z.ZodType>(
       const response = await ai.models.generateContent({
         model,
         contents,
-        config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
+        // Google Search grounding cannot be combined with JSON mode on every model, so a searching call
+        // asks for JSON in the prompt and is validated below like any other answer.
+        config: webSearch
+          ? { tools: [{ googleSearch: {} }], temperature, maxOutputTokens: maxTokens }
+          : { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
       });
 
       // Billed whether or not the answer is usable; thinking tokens are billed as output.
@@ -131,6 +136,13 @@ async function callModel<S extends z.ZodType>(
       } catch {
         fail(model, "bad-answer", task, "the answer was not valid JSON");
         return { kind: "bad-answer" };
+      }
+      if (webSearch && raw && typeof raw === "object") {
+        // The pages Google Search returned, so the BA can see what the research read.
+        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+        const found = chunks.flatMap((c) => (c.web?.uri ? [{ title: c.web.title || c.web.uri, url: c.web.uri }] : []));
+        const obj = raw as { sources?: unknown };
+        if (found.length && !Array.isArray(obj.sources)) obj.sources = found;
       }
       const result = schema.safeParse(coerce ? coerce(raw) : raw);
       if (!result.success) {
@@ -161,14 +173,15 @@ export async function callGeminiJSON<S extends z.ZodType>(
   prompt: string,
   schema: S,
   coerce?: (raw: unknown) => unknown,
-  images?: AIImage[]
+  images?: AIImage[],
+  webSearch = false
 ): Promise<z.infer<S> | null> {
   const ai = getClient();
   if (!ai) return null;
 
   const models = geminiModels(task);
   for (const [i, model] of models.entries()) {
-    const outcome = await callModel(ai, task, model, prompt, schema, coerce, images);
+    const outcome = await callModel(ai, task, model, prompt, schema, coerce, images, webSearch);
     if ("data" in outcome) {
       recordServedModel(model);
       return outcome.data;

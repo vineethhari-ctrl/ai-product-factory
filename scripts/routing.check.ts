@@ -11,7 +11,7 @@ for (const k of Object.keys(process.env)) if (/^AI_(ORDER|CLAUDE_MODEL|GEMINI_MO
 delete process.env.GEMINI_API_KEY; delete process.env.ANTHROPIC_API_KEY;
 
 const { providerOrder, claudeRoute, geminiRoute, geminiModels, hasProviderKey, describeRouting } = await import("../server/routing");
-const { callLLMJSON, setProviderForTests } = await import("../server/llmRouter");
+const { callLLMJSON, setProviderForTests, AIUnavailableError } = await import("../server/llmRouter");
 const { runWithUsageContext, usageReport, currentAIStatus } = await import("../server/usage");
 const { callGeminiJSON, classifyGeminiError, setGeminiClientForTests } = await import("../server/geminiClient");
 
@@ -126,9 +126,19 @@ restoreClient();
 
 tried.length = 0;
 restoreClient = setGeminiClientForTests(fakeGemini(() => busy()));
-const allBusy = await runWithUsageContext("tester", "PF2", () => quiet(async () => ({ r: await callLLMJSON("generate-prototype-ui", "fallback prompt 2", schema), s: currentAIStatus() })));
-t("both models busy: offline engine, status explains why", allBusy.r === null && allBusy.s?.outcome === "offline-failed" && allBusy.s.failures?.length === 2 && allBusy.s.failures.every((f) => f.kind === "busy"), JSON.stringify(allBusy.s));
+const callCatching = (project: string, prompt: string) => runWithUsageContext("tester", project, () => quiet(async () => {
+  let r: unknown = null, err: unknown = null;
+  try { r = await callLLMJSON("generate-prototype-ui", prompt, schema); } catch (e) { err = e; }
+  return { r, err, s: currentAIStatus() };
+}));
+const allBusy = await callCatching("PF2", "fallback prompt 2");
+t("both models busy with a key set: an error, not a silent offline answer", allBusy.r === null && allBusy.err instanceof AIUnavailableError && allBusy.s?.outcome === "failed", JSON.stringify(allBusy.s));
+t("the error and status say why, per model", allBusy.s?.failures?.length === 2 && allBusy.s.failures.every((f) => f.kind === "busy") && /overloaded/.test((allBusy.err as Error)?.message ?? ""));
 t("status names the button", allBusy.s?.button === "Build Prototype");
+process.env.AI_OFFLINE_ON_FAILURE = "true";
+const optIn = await callCatching("PF2b", "fallback prompt 2b");
+t("AI_OFFLINE_ON_FAILURE=true: old behaviour, null for the offline engine", optIn.r === null && optIn.err === null && optIn.s?.outcome === "offline-failed", JSON.stringify(optIn.s));
+delete process.env.AI_OFFLINE_ON_FAILURE;
 restoreClient();
 
 tried.length = 0;
@@ -149,6 +159,18 @@ restoreClient = setGeminiClientForTests({ models: { generateContent: async (req:
 await runWithUsageContext("tester", "PF5", () => quiet(() => callLLMJSON("generate-prototype-ui", "with image", schema, undefined, { images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }] })));
 const parts = (seenContents as any)?.[0]?.parts;
 t("reference image is sent to Gemini before the prompt", Array.isArray(parts) && parts[0]?.inlineData?.mimeType === "image/png" && parts[1]?.text === "with image");
+restoreClient();
+
+// Research call: Google Search grounding, JSON in text (no JSON mode), pages read become sources
+let seenConfig: any;
+restoreClient = setGeminiClientForTests({ models: { generateContent: async (req: { model: string; config: unknown }) => {
+  seenConfig = req.config;
+  return { text: "Here is the brief:\n```json\n" + JSON.stringify({ by: req.model }) + "\n```", candidates: [{ finishReason: "STOP", groundingMetadata: { groundingChunks: [{ web: { uri: "https://example.com/a", title: "A" } }] } }], usageMetadata: {} };
+} } });
+const researched = await runWithUsageContext("tester", "PF7", () => quiet(() => callLLMJSON("research-prototype", "research prompt", z.object({ by: z.string(), sources: z.array(z.object({ title: z.string(), url: z.string() })).optional() }), undefined, { webSearch: true })));
+t("web search: Google Search tool on, no JSON mode", Array.isArray(seenConfig?.tools) && "googleSearch" in seenConfig.tools[0] && seenConfig.responseMimeType === undefined);
+t("web search: JSON read from prose, pages read added as sources", researched?.by === "gemini-3.1-pro-preview" && researched?.sources?.[0]?.url === "https://example.com/a", JSON.stringify(researched));
+t("research has its own route: Gemini first, then Claude", providerOrder("research-prototype").join() === "gemini,claude");
 restoreClient();
 
 const statusOf = async (prompt: string) => runWithUsageContext("tester", "PF6", () => quiet(async () => { await callLLMJSON("generate-prototype-ui", prompt, schema); return currentAIStatus(); }));

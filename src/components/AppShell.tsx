@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Bell, ChevronDown, ChevronRight, HelpCircle, Layers, LogOut, Menu, Search, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { UITheme } from '../types';
+import { themeVars } from './UIBlocks';
 
 export interface ShellNavItem {
   id: string;
@@ -26,8 +28,29 @@ interface AppShellProps {
   primaryAction?: { label: string; disabled?: boolean; onClick: () => void };
   /** Small amber chip next to the title when something is read-only or locked. */
   badge?: string;
+  /** Colours and sidebar style of the application (AI-chosen, or derived offline from the product name). */
+  theme: UITheme;
   children: React.ReactNode;
 }
+
+/** Sidebar classes per theme style. Colours come from --brand. */
+const SIDEBAR = {
+  dark: {
+    root: 'bg-slate-900 text-slate-300', divider: 'border-slate-800', logo: 'bg-[var(--brand)] text-white', name: 'text-white',
+    muted: 'text-slate-400', group: 'text-slate-500', active: 'bg-white/10 text-white font-semibold', idle: 'hover:bg-white/5 hover:text-white',
+    iconActive: 'text-[var(--brand-accent)]', icon: 'text-slate-500', avatar: 'bg-slate-700 text-white',
+  },
+  brand: {
+    root: 'bg-[var(--brand)] text-white/80', divider: 'border-white/15', logo: 'bg-white text-[var(--brand)]', name: 'text-white',
+    muted: 'text-white/70', group: 'text-white/60', active: 'bg-white/20 text-white font-semibold', idle: 'hover:bg-white/10 hover:text-white',
+    iconActive: 'text-white', icon: 'text-white/60', avatar: 'bg-white/20 text-white',
+  },
+  light: {
+    root: 'bg-white text-slate-600 border-r border-slate-200', divider: 'border-slate-200', logo: 'bg-[var(--brand)] text-white', name: 'text-slate-900',
+    muted: 'text-slate-500', group: 'text-slate-400', active: 'bg-[color-mix(in_srgb,var(--brand)_10%,white)] text-[var(--brand)] font-semibold',
+    idle: 'hover:bg-slate-100 hover:text-slate-900', iconActive: 'text-[var(--brand)]', icon: 'text-slate-400', avatar: 'bg-slate-200 text-slate-700',
+  },
+} as const;
 
 const initialsOf = (s: string) =>
   s.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
@@ -37,11 +60,12 @@ const initialsOf = (s: string) =>
  * a top bar with search, notifications and the signed-in user, then the screen. No factory controls in here.
  */
 export const AppShell: React.FC<AppShellProps> = ({
-  productName, tagline, nav, activeId, onNavigate, userName, userRole, title, subtitle, groupLabel, primaryAction, badge, children,
+  productName, tagline, nav, activeId, onNavigate, userName, userRole, title, subtitle, groupLabel, primaryAction, badge, theme, children,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const sb = SIDEBAR[theme.sidebarStyle] ?? SIDEBAR.dark;
 
   const groups = useMemo(() => {
     const out: Array<{ name: string; items: ShellNavItem[] }> = [];
@@ -61,14 +85,14 @@ export const AppShell: React.FC<AppShellProps> = ({
     : [];
 
   const sidebar = (
-    <div className="h-full flex flex-col bg-slate-900 text-slate-300">
-      <div className="px-4 py-4 flex items-center gap-3 border-b border-slate-800">
-        <div className="w-9 h-9 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-bold shrink-0">
+    <div className={`h-full flex flex-col ${sb.root}`}>
+      <div className={`px-4 py-4 flex items-center gap-3 border-b ${sb.divider}`}>
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${sb.logo}`}>
           {initialsOf(productName).slice(0, 1) || <Layers className="w-4 h-4" />}
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-bold text-white truncate">{productName}</div>
-          {tagline && <div className="text-[11px] text-slate-400 truncate">{tagline}</div>}
+          <div className={`text-sm font-bold truncate ${sb.name}`}>{productName}</div>
+          {tagline && <div className={`text-[11px] truncate ${sb.muted}`}>{tagline}</div>}
         </div>
       </div>
 
@@ -76,7 +100,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         {groups.map((g) => (
           <div key={g.name}>
             {showGroups && (
-              <div className="px-2.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">{g.name}</div>
+              <div className={`px-2.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider truncate ${sb.group}`}>{g.name}</div>
             )}
             <ul className="space-y-0.5">
               {g.items.map((it) => {
@@ -87,12 +111,12 @@ export const AppShell: React.FC<AppShellProps> = ({
                     <button
                       onClick={() => { onNavigate(it.id); setMenuOpen(false); }}
                       className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-left transition-colors cursor-pointer ${
-                        active ? 'bg-indigo-500/20 text-white font-semibold' : 'hover:bg-slate-800 hover:text-white'
+                        active ? sb.active : sb.idle
                       }`}
                     >
-                      <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-indigo-300' : 'text-slate-500'}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${active ? sb.iconActive : sb.icon}`} />
                       <span className="truncate">{it.label}</span>
-                      {active && <ChevronRight className="w-3.5 h-3.5 ml-auto text-indigo-300" />}
+                      {active && <ChevronRight className={`w-3.5 h-3.5 ml-auto ${sb.iconActive}`} />}
                     </button>
                   </li>
                 );
@@ -102,20 +126,20 @@ export const AppShell: React.FC<AppShellProps> = ({
         ))}
       </nav>
 
-      <div className="px-3 py-3 border-t border-slate-800 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-full bg-slate-700 text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+      <div className={`px-3 py-3 border-t flex items-center gap-2.5 ${sb.divider}`}>
+        <div className={`w-8 h-8 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ${sb.avatar}`}>
           {initialsOf(userName)}
         </div>
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-white truncate">{userName}</div>
-          <div className="text-[11px] text-slate-400 truncate">{userRole}</div>
+          <div className={`text-xs font-semibold truncate ${sb.name}`}>{userName}</div>
+          <div className={`text-[11px] truncate ${sb.muted}`}>{userRole}</div>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="flex bg-white rounded-xl border border-slate-300 shadow-xl overflow-hidden min-h-[720px]">
+    <div style={themeVars(theme)} className="flex bg-white rounded-xl border border-slate-300 shadow-xl overflow-hidden min-h-[720px]">
       <aside className="hidden lg:block w-64 shrink-0">{sidebar}</aside>
 
       {menuOpen && (
@@ -136,7 +160,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search screens and records"
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-slate-100 border border-transparent text-xs focus:outline-hidden focus:bg-white focus:border-indigo-300"
+              className="w-full pl-9 pr-8 py-2 rounded-lg bg-slate-100 border border-transparent text-xs focus:outline-hidden focus:bg-white focus:border-[var(--brand)]"
             />
             {query && (
               <button className="absolute right-2.5 top-2.5 cursor-pointer" onClick={() => setQuery('')} aria-label="Clear search">
@@ -169,7 +193,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 onClick={() => setUserOpen((o) => !o)}
                 className="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
-                <span className="w-7 h-7 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">{initialsOf(userName)}</span>
+                <span className="w-7 h-7 rounded-full bg-[var(--brand)] text-white text-[11px] font-bold flex items-center justify-center">{initialsOf(userName)}</span>
                 <span className="hidden sm:block text-left leading-tight">
                   <span className="block text-xs font-semibold text-slate-800">{userName}</span>
                   <span className="block text-[10px] text-slate-500">{userRole}</span>
@@ -202,7 +226,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               <button
                 onClick={primaryAction.onClick}
                 disabled={primaryAction.disabled}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-xs disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[var(--brand)] hover:brightness-110 text-white text-sm font-semibold shadow-xs disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
               >
                 {primaryAction.label}
               </button>

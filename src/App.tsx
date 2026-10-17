@@ -188,7 +188,9 @@ export default function App() {
   useEffect(() => {
     const onStatus = (e: Event) => {
       const status = (e as CustomEvent<AIStatus>).detail;
-      if (status.outcome === 'offline-failed' || status.outcome === 'offline-no-key') {
+      // The research step's status is followed by the design step's own; only the design step decides the banner.
+      if (status.task === 'research-prototype') return;
+      if (status.outcome === 'failed' || status.outcome === 'offline-failed' || status.outcome === 'offline-no-key') {
         setAiStatus(status);
         // The banner sits under the header: bring it into view so the BA sees why the result looks generic.
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -378,9 +380,15 @@ export default function App() {
         if (response.ok) {
           return await response.json();
         }
+        // The AI is set up but could not answer: say so instead of inventing an analysis.
+        if (response.status === 503) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || 'The AI could not answer. Try again in a minute.');
+        }
       }
     } catch (err) {
       console.error('Failed to call analyze-change API:', err);
+      if (err instanceof Error && /AI could not answer/.test(err.message)) throw err;
     }
 
     const currentScreens = (productDefinition?.screens || []).map(s => s.name);

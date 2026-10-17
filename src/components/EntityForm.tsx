@@ -191,7 +191,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({ entity, readOnly, stepTi
       onBlur: () => touch(field.name),
     };
     const border = `w-full rounded-lg border px-3 py-2 text-xs text-slate-800 focus:outline-hidden disabled:bg-slate-50 ${
-      err ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-indigo-400'
+      err ? 'border-rose-400 focus:border-rose-500' : 'border-slate-200 focus:border-[var(--brand,#4f46e5)]'
     }`;
 
     let control: React.ReactNode;
@@ -279,7 +279,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({ entity, readOnly, stepTi
           {Array.from({ length: stepCount }, (_, i) => (
             <li key={i} className="flex items-center gap-2">
               <span className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center ${
-                i < safeStep ? 'bg-emerald-500 text-white' : i === safeStep ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                i < safeStep ? 'bg-emerald-500 text-white' : i === safeStep ? 'bg-[var(--brand,#4f46e5)] text-white' : 'bg-slate-200 text-slate-500'
               }`}>
                 {i < safeStep ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </span>
@@ -323,7 +323,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({ entity, readOnly, stepTi
               type="submit"
               disabled={readOnly || submitting || issues.length > 0}
               title={readOnly ? 'Your selected role has read-only access' : issues.length > 0 ? `${issues.length} issue(s) to fix first` : undefined}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-[var(--brand,#4f46e5)] hover:brightness-110 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
             >
               {readOnly && <Lock className="w-3 h-3" />}
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -333,7 +333,7 @@ export const EntityForm: React.FC<EntityFormProps> = ({ entity, readOnly, stepTi
             <button
               type="submit"
               disabled={stepHasIssue}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-[var(--brand,#4f46e5)] hover:brightness-110 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
             >
               Next <ArrowRight className="w-3.5 h-3.5" />
             </button>

@@ -8,9 +8,12 @@ import {
   ClarificationItem,
   OpenQuestionItem,
   Audience,
+  DesignResearch,
+  ScreenUISpec,
+  UITheme,
 } from "../src/types";
-import { type AIImage, callLLMJSON } from "./llmRouter";
-import { buildPrototypePrompt } from "./prototypePrompt";
+import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
+import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
 import { entityToSQL } from "../src/services/validationEngine";
 import {
@@ -26,7 +29,8 @@ import {
   tagInferredEvidence,
   tagInferredReferences,
 } from "./benchmark";
-import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, PrototypeUISchema } from "./aiSchemas";
+import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, DesignResearchSchema, PrototypeUISchema } from "./aiSchemas";
+import { currentServedModel } from "./usage";
 import { ensureScreenUI } from "./blueprint";
 import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
 import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
@@ -255,6 +259,8 @@ Return ONLY a valid JSON object matching this schema:
       };
     }
   } catch (err) {
+    // Keys are set but every provider failed: the endpoint reports it; the offline engine is not passed off as AI.
+    if (err instanceof AIUnavailableError) throw err;
     console.warn("[AI Engine] LLM providers unavailable, executing dynamic material synthesis fallback:", err);
   }
 
@@ -622,6 +628,8 @@ Return ONLY a valid JSON object matching this schema:
       };
     }
   } catch (err) {
+    // Keys are set but every provider failed: the endpoint reports it; the offline engine is not passed off as AI.
+    if (err instanceof AIUnavailableError) throw err;
     console.warn("[AI Engine] LLM providers unavailable during definition, executing dynamic definition fallback:", err);
   }
 
@@ -683,6 +691,8 @@ Analyze the requested change and return ONLY a valid JSON object matching this s
       };
     }
   } catch (err) {
+    // Keys are set but every provider failed: the endpoint reports it; the offline engine is not passed off as AI.
+    if (err instanceof AIUnavailableError) throw err;
     console.warn("[AI Engine] LLM providers unavailable during change analysis, executing dynamic change fallback:", err);
   }
 
@@ -851,7 +861,9 @@ async function generatePrototypeUnlabelled(
   reference?: AIImage
 ): Promise<ProductDefinition> {
   const definition = upgradeStaleDefinition(input);
-  const prompt = buildPrototypePrompt(definition, !!reference);
+  // No reference screen: the AI first studies comparable applications on the web, then designs from that brief.
+  const research = reference ? undefined : await researchComparableApps(definition);
+  const prompt = buildPrototypePrompt(definition, !!reference, research);
 
   try {
     const parsed = await callLLMJSON("generate-prototype-ui", prompt, PrototypeUISchema, undefined, reference ? { images: [reference] } : undefined);
@@ -862,27 +874,80 @@ async function generatePrototypeUnlabelled(
       for (const generated of parsed.screens) {
         const screenIdx = updated.screens.findIndex(s => s.id === generated.screenId);
         if (screenIdx === -1) continue;
-        const { entity, ...ui } = generated.ui;
+        const { entity, device, chart, board, timeline, ...ui } = generated.ui;
         updated.screens[screenIdx].layoutType = generated.layoutType;
         updated.screens[screenIdx].ui = {
           ...normalizeUISpec(ui),
           // Only a record that exists can drive the form; anything else falls back to the screen text.
           ...(entity && entityNames.has(entity) ? { entity } : {}),
+          ...cleanUIBlocks({ device, chart, board, timeline }),
           benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
           origin: "AI",
         };
         designed++;
       }
-      console.log(`[AI Engine] generate-prototype-ui: AI designed ${designed} of ${updated.screens.length} screens${reference ? " following the reference screen" : ""}.`);
+      const theme = cleanTheme(parsed.theme);
+      if (theme) updated.uiTheme = theme;
+      if (research) updated.designResearch = research;
+      else delete updated.designResearch;
+      console.log(`[AI Engine] generate-prototype-ui: AI designed ${designed} of ${updated.screens.length} screens${reference ? " following the reference screen" : research ? ` after studying ${research.comparableApps.length} comparable apps` : ""}.`);
       // Screens the AI skipped keep (or get) an offline design.
       return ensureScreenUI(updated);
     }
   } catch (err) {
+    if (err instanceof AIUnavailableError) throw err;
     console.warn("[AI Engine] LLM providers unavailable during prototype generation, using deterministic fallback:", err);
   }
 
-  // Deterministic fallback: generate basic UI specs for screens that don't have one
+  // No key for any provider (or a usage limit): the offline engine designs every screen.
   return generateDeterministicPrototypeUI(definition);
+}
+
+/**
+ * Research step of Build Prototype: the AI searches the web for well-built applications doing the same kind of
+ * work and returns a design brief. Optional: if it cannot be done (no key, limit, provider failure), the design
+ * step still runs, from the BU's definition alone.
+ */
+async function researchComparableApps(definition: ProductDefinition): Promise<DesignResearch | undefined> {
+  try {
+    const brief = await callLLMJSON("research-prototype", buildResearchPrompt(definition), DesignResearchSchema, undefined, { webSearch: true });
+    if (!brief) return undefined;
+    const screenIds = new Set(definition.screens.map((s) => s.id));
+    const model = currentServedModel();
+    return {
+      comparableApps: brief.comparableApps.slice(0, 5),
+      designDirection: brief.designDirection,
+      screenPatterns: brief.screenPatterns.filter((p) => screenIds.has(p.screenId)),
+      sources: (brief.sources ?? []).filter((src) => /^https?:\/\//i.test(src.url)).slice(0, 12),
+      ...(model ? { model: `${model}${/gemini/i.test(model) ? " with Google Search" : " with web search"}` } : {}),
+    };
+  } catch (err) {
+    console.warn("[AI Engine] research-prototype: no research, designing from the definition alone:", err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Keep the AI's theme only when its colours are usable hex codes. */
+function cleanTheme(theme: UITheme | undefined): UITheme | undefined {
+  if (!theme || !HEX.test(theme.primaryColor)) return undefined;
+  return { ...theme, accentColor: HEX.test(theme.accentColor) ? theme.accentColor : theme.primaryColor };
+}
+
+/** Optional screen blocks from the AI, trimmed to shapes the canvas can draw. */
+function cleanUIBlocks(b: Pick<ScreenUISpec, "device" | "chart" | "board" | "timeline">): Partial<ScreenUISpec> {
+  const out: Partial<ScreenUISpec> = {};
+  if (b.device === "phone") out.device = "phone";
+  if (b.chart) {
+    const n = Math.min(b.chart.labels.length, b.chart.values.length, 12);
+    const values = b.chart.values.slice(0, n).map((v) => (Number.isFinite(v) ? Math.max(0, v) : 0));
+    if (n >= 2 && values.some((v) => v > 0)) out.chart = { ...b.chart, labels: b.chart.labels.slice(0, n), values };
+  }
+  const columns = (b.board?.columns ?? []).filter((c) => c.title).slice(0, 8).map((c) => ({ ...c, cards: c.cards.slice(0, 6) }));
+  if (columns.length >= 2) out.board = { columns };
+  if (b.timeline?.length) out.timeline = b.timeline.slice(0, 8);
+  return out;
 }
 
 /**

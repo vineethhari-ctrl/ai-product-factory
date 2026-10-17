@@ -276,8 +276,35 @@ export const ChangeImpactSchema = z.object({
   potentialSideEffects: z.array(z.string()),
 });
 
+const ChartSchema = z.object({
+  title: z.string(),
+  kind: z.enum(["bar", "line", "donut"]),
+  labels: z.array(z.string()),
+  values: z.array(z.number()),
+});
+
+const BoardSchema = z.object({
+  columns: z.array(
+    z.object({
+      title: z.string(),
+      cards: z.array(z.object({ title: z.string(), subtitle: z.string(), tag: z.string() })),
+    })
+  ),
+});
+
+const TimelineSchema = z.array(z.object({ when: z.string(), who: z.string(), what: z.string() }));
+
+export const UIThemeSchema = z.object({
+  primaryColor: z.string(),
+  accentColor: z.string(),
+  sidebarStyle: z.enum(["dark", "light", "brand"]),
+  density: z.enum(["comfortable", "compact"]),
+});
+
 /** Schema for AI-generated prototype screen UI blueprints with real-world product inspiration. */
 export const PrototypeUISchema = z.object({
+  /** The application's look: colours chosen to suit this product and its users. */
+  theme: UIThemeSchema,
   screens: z.array(
     z.object({
       screenId: z.string(),
@@ -287,7 +314,23 @@ export const PrototypeUISchema = z.object({
         benchmarkNote: z.string(),
         /** Record a form-wizard screen creates or completes; "" for other layouts. */
         entity: z.string(),
+        device: z.enum(["desktop", "phone"]),
+        chart: ChartSchema.optional(),
+        board: BoardSchema.optional(),
+        timeline: TimelineSchema.optional(),
       }),
     })
   ),
+});
+
+/**
+ * Research done before designing the prototype: comparable, well-built applications for the same kind of
+ * work, what to borrow from each, and the visual direction. Answered as JSON in text (web search tools
+ * cannot be combined with enforced output formats), then validated here.
+ */
+export const DesignResearchSchema = z.object({
+  comparableApps: z.array(z.object({ name: z.string(), category: z.string(), whatToBorrow: z.array(z.string()) })),
+  designDirection: z.string(),
+  screenPatterns: z.array(z.object({ screenId: z.string(), pattern: z.string(), why: z.string() })),
+  sources: z.array(z.object({ title: z.string(), url: z.string() })).optional(),
 });

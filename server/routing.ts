@@ -19,9 +19,9 @@
  * Max-token ceilings for the two heavy routes are also raised; see MAX_TOKENS notes.
  */
 
-export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui";
+export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype";
 
-export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general";
+export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general" | "design-research";
 
 export type Provider = "gemini" | "claude";
 
@@ -31,6 +31,7 @@ export const TASK_ROUTE: Record<AITask, RouteClass> = {
   "generate-definition": "ui-prototyping", // screens + UI blueprints (interactive UI prototyping)
   "analyze-change": "fast-general", // fast general text & standard route intent
   "generate-prototype-ui": "ui-prototyping", // advanced thinking prototype generation
+  "research-prototype": "design-research", // web research on comparable apps before Build Prototype designs
 };
 
 export interface GeminiRoute {
@@ -79,6 +80,13 @@ export const ROUTING_MATRIX: Record<RouteClass, RouteRule> = {
     claude: { model: CLAUDE_SONNET, maxTokens: 32_768, effort: "high" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.4, maxTokens: 8192 },
   },
+  "design-research": {
+    // Not in the original matrix. A short JSON brief (comparable apps, patterns, visual direction) written
+    // after searching the web; Gemini 3.x counts thinking in the ceiling, hence the headroom.
+    gemini: { model: GEMINI_PRO, temperature: 0.4, maxTokens: 16_384 },
+    claude: { model: CLAUDE_SONNET, maxTokens: 16_000, effort: "medium" },
+    spec: { geminiModel: GEMINI_PRO, claudeModel: CLAUDE_SONNET, temperature: 0.4, maxTokens: 16_384 },
+  },
   "fast-general": {
     // Spec limits applied as written.
     gemini: { model: GEMINI_FLASH, temperature: 0.5, maxTokens: 2048 },
@@ -97,12 +105,15 @@ export function routeFor(task: AITask): RouteRule {
  * - generate-definition: the output BAs judge the product on; Claude's long structured reasoning.
  * - generate-prototype-ui: Claude's schema-enforced output means fewer unusable (still billed) answers.
  * - analyze-change: small and frequent; the cheapest model that still guarantees valid output (Haiku).
+ * - research-prototype: web research before Build Prototype designs; Gemini searches Google natively.
  */
 export const TASK_PROVIDER_ORDER: Record<AITask, Provider[]> = {
   "analyze-material": ["gemini", "claude"],
   "generate-definition": ["claude", "gemini"],
   "generate-prototype-ui": ["claude", "gemini"],
   "analyze-change": ["claude", "gemini"],
+  // Google Search grounding is native to Gemini and costs less per search than Claude's web search tool.
+  "research-prototype": ["gemini", "claude"],
 };
 
 const envKey = (prefix: string, task: AITask) => `${prefix}_${task.toUpperCase().replace(/-/g, "_")}`;
@@ -134,6 +145,7 @@ const GEMINI_FALLBACK: Record<RouteClass, string[]> = {
   "benchmark-analytics": [GEMINI_FLASH],
   "ui-prototyping": [GEMINI_FLASH],
   "fast-general": [GEMINI_PRO],
+  "design-research": [GEMINI_FLASH],
 };
 
 /** Gemini models to try for a task, in order: the routed model, then AI_GEMINI_FALLBACK_<TASK> or the default. */

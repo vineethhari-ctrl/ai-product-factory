@@ -34,6 +34,7 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Most quality-critical; long structured reasoning | 32,768 |
 | `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-3.1-pro-preview (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 32,768 |
 | `analyze-change` (Change Impact) | `/api/analyze-change` | claude-haiku-4-5 (temp 0.5) | gemini-3.6-flash (temp 0.5) | Small and frequent: cheapest model with guaranteed valid output | 2,048 |
+| `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-3.1-pro-preview + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call.
 
@@ -58,11 +59,15 @@ the numbers can be tightened toward the spec once real usage is visible.
   `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
   skips the second model.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
-  the attempt and passes to the next provider. After the last one, the local engine serves the request.
+  the attempt and passes to the next provider.
+- **The AI drives; offline only without a key.** When keys are set and every provider fails, `callLLMJSON` throws
+  `AIUnavailableError`; the endpoint answers 503 `{error, aiUnavailable}`, the browser keeps the previous result and
+  the banner offers Retry. The local engine answers only when no key is set (or a usage limit applies).
+  `AI_OFFLINE_ON_FAILURE=true` restores the old fall-back-to-offline behaviour.
 - A missing key skips that provider. A key still set to the `.env.example` placeholder (`MY_GEMINI_API_KEY`) counts
   as missing (`providerKey`, routing.ts).
 - **AI status** (`setAIStatus`, usage.ts): every AI call records who answered (`ai` + model, `cache`,
-  `offline-no-key`, `offline-limit`, `offline-failed` + each model's failure in plain words: busy, quota, model
+  `offline-no-key`, `offline-limit`, `failed` (nothing produced) or `offline-failed` (opt-in) + each model's failure in plain words: busy, quota, model
   not available, key rejected, cut off, bad answer, refused, network). Sent as the `X-AI-Status` header; the
   browser shows `AIStatusBanner` under the header with the reasons, advice and **Retry with AI** (re-runs
   Understand Business, the BRD or Build Prototype).
@@ -205,6 +210,27 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
+
+**Build Prototype = research, then design.** Without a reference screen, `research-prototype` runs first
+(`buildResearchPrompt`, web search: Gemini Google Search grounding / Claude `web_search_20260209`; JSON in text, validated
+by `DesignResearchSchema`, pages read become `sources`): the AI finds 3-4 real, well-regarded apps doing the same kind of
+work, what to borrow from each, the visual direction and a pattern per screen. The brief goes into the design prompt and
+is kept as `definition.designResearch`, shown under the app as "How the AI designed this prototype". If research fails
+the design still runs from the definition alone. With a reference screen there is no research: the screenshot wins.
+Research may name real comparable products it found (owner's decision, 17 Oct 2026); the prompt code itself names
+none, and only layout and interaction patterns are borrowed, never names, logos, wording or data.
+
+The design returns `theme` (`uiTheme`: primary/accent hex, sidebar dark/light/brand, density) and per screen `device`
+(`phone` for a screen an outside party uses on their own phone), optional `chart` (bar/line/donut), `board` (cards in
+stage/status columns) and `timeline` (record history), cleaned by `cleanTheme` / `cleanUIBlocks`. The offline engine
+fills the same blocks (trend and per-stage charts, status board, record history, phone screen for a stage owned by an
+outside-party role word) and a colour picked from the product name (`themeFor`).
+
+**The app frame** (`AppShell.tsx`): the prototype is shown as the finished application: left menu (screens grouped by
+module), top bar (search, bell, signed-in sample user for the selected role), page header with the main action, in the
+product's theme (CSS variables `--brand`, `--brand-accent`). Factory controls live in one slim bar above it ("Design
+tools" opens the reference-screen bar and the instant customizer); notes, rules and the research sit below it.
+Blocks are in `UIBlocks.tsx` (status chips, chart, board, timeline, phone frame).
 
 **Build Prototype is AI-designed** (`server/prototypePrompt.ts`): the AI gets the BU's process (stages in order and
 who does each, from `blueprintBrief`), users, journeys, records with status values (system fields hidden), rules and

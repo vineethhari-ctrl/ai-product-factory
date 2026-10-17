@@ -24,6 +24,7 @@ export const AI_BUTTONS: Record<AITask, string> = {
   "generate-definition": "Generate BRD",
   "generate-prototype-ui": "Build Prototype",
   "analyze-change": "Change Impact",
+  "research-prototype": "Research similar apps",
 };
 
 const num = (name: string, fallback: number) => {
@@ -154,12 +155,14 @@ export interface ProviderFailure {
  *  cache           - a saved AI answer to the same request
  *  offline-no-key  - no key for this task's providers
  *  offline-limit   - a usage limit applied
- *  offline-failed  - every provider model was tried and failed (see failures)
+ *  offline-failed  - every provider model was tried and failed, and AI_OFFLINE_ON_FAILURE let the local engine answer
+ *  failed          - every provider model was tried and failed; nothing was produced (the default: AI drives,
+ *                    the offline engine stands in only when no key is set)
  */
 export interface AIStatus {
   task: AITask;
   button: string;
-  outcome: "ai" | "cache" | "offline-no-key" | "offline-limit" | "offline-failed";
+  outcome: "ai" | "cache" | "offline-no-key" | "offline-limit" | "offline-failed" | "failed";
   model?: string;
   failures?: ProviderFailure[];
 }
@@ -315,7 +318,7 @@ export function endAICall(task: AITask, succeeded: boolean) {
     save();
     return;
   }
-  note(`${AI_BUTTONS[task]} used ${(click.inputTokens + click.outputTokens).toLocaleString("en-US")} AI tokens (about $${click.costUsd.toFixed(3)})${succeeded ? "" : "; the AI answer was unusable, so the offline result is shown"}.`);
+  note(`${AI_BUTTONS[task]} used ${(click.inputTokens + click.outputTokens).toLocaleString("en-US")} AI tokens (about $${click.costUsd.toFixed(3)})${succeeded ? "" : "; the AI answer was unusable"}.`);
 }
 
 // ─── Cache ────────────────────────────────────────────────────────────────

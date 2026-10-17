@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { AIUnavailableError } from "./server/llmRouter";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -68,6 +69,8 @@ async function startServer() {
       return res.json(understanding);
     } catch (err: any) {
       console.error("Error analyzing business material:", err);
+      // Keys are set but every AI provider failed: say so; the browser keeps the previous result and offers Retry.
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to analyze business material" });
     }
   });
@@ -91,6 +94,8 @@ async function startServer() {
       return res.json(definition);
     } catch (err: any) {
       console.error("Error generating product definition:", err);
+      // Keys are set but every AI provider failed: say so; the browser keeps the previous result and offers Retry.
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to generate product definition" });
     }
   });
@@ -108,6 +113,8 @@ async function startServer() {
       return res.json(impact);
     } catch (err: any) {
       console.error("Error analyzing change impact:", err);
+      // Keys are set but every AI provider failed: say so; the browser keeps the previous result and offers Retry.
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to analyze change impact" });
     }
   });
@@ -161,6 +168,8 @@ async function startServer() {
       return res.json(enriched);
     } catch (err: any) {
       console.error("Error generating prototype UI:", err);
+      // Keys are set but every AI provider failed: say so; the browser keeps the previous result and offers Retry.
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to generate prototype UI" });
     }
   });

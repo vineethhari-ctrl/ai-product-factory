@@ -136,6 +136,41 @@ export interface ScreenUISpec {
   benchmarkNote?: string;
   /** Who designed it: an AI model ('AI') or the offline engine (absent or 'OFFLINE'). Build Prototype reuses only AI designs. */
   origin?: 'AI' | 'OFFLINE';
+  /** 'phone' for screens an outside party uses on a mobile phone; shown in a phone frame. */
+  device?: 'desktop' | 'phone';
+  /** One chart for the screen's main trend or split. Values are sample numbers. */
+  chart?: ScreenChart;
+  /** Cards grouped in columns (usually one per stage or status), shown as a board. */
+  board?: { columns: Array<{ title: string; cards: Array<{ title: string; subtitle: string; tag: string }> }> };
+  /** Recent activity on the selected record or the whole screen, newest first. */
+  timeline?: Array<{ when: string; who: string; what: string }>;
+}
+
+export interface ScreenChart {
+  title: string;
+  kind: 'bar' | 'line' | 'donut';
+  labels: string[];
+  values: number[];
+}
+
+/** The application's look, chosen by the AI design step (or derived offline from the product name). */
+export interface UITheme {
+  /** Hex colours, e.g. "#2563eb". */
+  primaryColor: string;
+  accentColor: string;
+  sidebarStyle: 'dark' | 'light' | 'brand';
+  density: 'comfortable' | 'compact';
+}
+
+/** What the AI found before designing: comparable apps, what to borrow, and the visual direction. */
+export interface DesignResearch {
+  comparableApps: Array<{ name: string; category: string; whatToBorrow: string[] }>;
+  designDirection: string;
+  screenPatterns: Array<{ screenId: string; pattern: string; why: string }>;
+  /** Web pages the research read, when the provider searched the web. */
+  sources: Array<{ title: string; url: string }>;
+  /** Who did the research, e.g. "gemini-3.1-pro-preview with Google Search". */
+  model?: string;
 }
 
 export interface ScreenDefinition {
@@ -311,6 +346,10 @@ export interface ProductDefinition {
   blueprintBrief?: BlueprintBrief;
   /** Problems found while normalising inferred field constraints (dropped patterns, clamped ranges). */
   constraintWarnings?: string[];
+  /** Look of the prototype, set by the AI design step. */
+  uiTheme?: UITheme;
+  /** Research the AI did before designing the prototype (absent when a reference screen was given or offline). */
+  designResearch?: DesignResearch;
   id: string;
   version: string;
   productName: string;

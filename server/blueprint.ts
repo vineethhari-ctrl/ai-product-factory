@@ -142,7 +142,6 @@ export function rng(seed: string): () => number {
 /** Obviously fictional people and organisations; never real personal data. */
 export const PEOPLE = ["Priya Raman", "Marcus Chen", "Elena García", "Samuel Okafor", "Hannah Weber", "Diego Alvarez", "Aisha Khan", "Tomás Novak"];
 export const ORGS = ["Northwind Group", "Contoso Ltd", "Fabrikam Inc", "Tailspin Partners", "Litware Co", "Adventure Works", "Woodgrove Unit"];
-const QUALIFIERS = ["standard intake", "expedited", "renewal", "exception review", "follow-up", "annual cycle", "escalated"];
 
 const humanize = (name: string) =>
   name
@@ -216,7 +215,7 @@ function sampleValue(field: DataFieldDefinition, row: number, ctx: SampleContext
   }
   if (/(assignee|owner|agent|reviewer|approver|user|by$|name$|contact|requester|person)/.test(n)) return PEOPLE[(row * 3) % PEOPLE.length];
   if (/(org|company|account|customer|client|party|vendor|supplier|site|location|branch)/.test(n)) return ORGS[row % ORGS.length];
-  if (/(title|subject|summary|label|headline)/.test(n)) return `${ctx.subject} for ${ORGS[row % ORGS.length]} · ${QUALIFIERS[row % QUALIFIERS.length]}`;
+  if (/(title|subject|summary|label|headline)/.test(n)) return `${ctx.subject} for ${PEOPLE[(row * 5 + 1) % PEOPLE.length]}`;
   if (/(date|due|deadline|at$)/.test(n)) return fmtDate(ANCHOR + (row * 2 - 4) * DAY);
   if (/(amount|value|cost|price|total|fee|budget)/.test(n)) return (500 + r() * 24_500).toLocaleString("en-US", { maximumFractionDigits: 0 });
   if (/(count|qty|quantity|score)/.test(n)) return String(1 + Math.floor(r() * 40));
@@ -356,11 +355,37 @@ export function buildScreenUI(
       : screen.layoutType === "form-wizard" ? `Recently Submitted ${plural(subject)}`
       : plural(subject);
 
+  // Richer blocks, so an offline design still reads like a finished application.
+  const blocks: Partial<ScreenUISpec> = {};
+  if (screen.layoutType === "dashboard" && statuses.length >= 2) {
+    const weights = statuses.map((_, i) => 1 + ((i * 7 + 3) % 5));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    blocks.chart = { title: `Open ${plural(subject)} by status`, kind: "bar", labels: statuses, values: weights.map((w) => Math.round((open * w) / sum)) };
+  }
+  if (screen.layoutType === "table-detail" && statuses.length >= 2) {
+    blocks.board = {
+      columns: statuses.map((st) => ({
+        title: st,
+        cards: table.rows.filter((r) => r[statusIdx] === st).map((r) => ({ title: r[0], subtitle: r[1] ?? "", tag: r.find((v) => /^(high|critical|urgent|low|medium)$/i.test(v)) ?? "" })),
+      })),
+    };
+  }
+  if ((screen.layoutType === "split-view" || screen.layoutType === "profile-360") && selected.length) {
+    blocks.timeline = [
+      { when: "Today 09:40", who: people[0], what: `moved ${selected[0]} to ${selected[statusIdx] ?? "the next status"}` },
+      { when: "Yesterday 16:05", who: PEOPLE[3], what: "attached a supporting document" },
+      { when: fmtDate(ANCHOR - 2 * DAY), who: people[1], what: "was assigned as approver" },
+      { when: fmtDate(ANCHOR - 3 * DAY), who: PEOPLE[2], what: `created ${selected[0]}` },
+    ];
+    detailPanels = detailPanels.filter((p) => p.title !== "Recent Activity");
+  }
+
   return {
     kpis: screen.layoutType === "form-wizard" ? kpis.slice(0, 3) : kpis,
     filters: [...new Set(filters)],
     table: { title: tableTitle, ...table },
     detailPanels,
+    ...blocks,
     primaryActions: ACTIONS[screen.layoutType](subject),
     ...(screen.layoutType === "form-wizard" ? { entity: ent.name } : {}),
     benchmarkNote: PATTERN_NOTES[screen.layoutType],

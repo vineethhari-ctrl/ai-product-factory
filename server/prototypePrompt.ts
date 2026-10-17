@@ -1,4 +1,4 @@
-import type { ProductDefinition } from "../src/types";
+import type { DesignResearch, ProductDefinition } from "../src/types";
 
 /**
  * Prompt for Build Prototype: the AI designs every screen for its job in the BU's process, from the
@@ -8,6 +8,9 @@ import type { ProductDefinition } from "../src/types";
  * Domain-neutral by rule: no industry, company or product is named here. Every noun the AI uses
  * comes from the definition below. Patterns are described generically ("work queue with side detail").
  * No timestamps or ids beyond the definition's own, so identical requests hit the cache.
+ *
+ * Without a reference screen, a research step runs first (`buildResearchPrompt`, with web search): the AI looks
+ * at well-built applications for the same kind of work and its brief is passed into the design prompt.
  */
 
 const list = (items: string[], max = items.length) => items.slice(0, max).join("; ");
@@ -38,10 +41,70 @@ function entitySection(def: ProductDefinition): string {
   }).join("\n");
 }
 
-export function buildPrototypePrompt(def: ProductDefinition, hasReference: boolean): string {
-  const screens = def.screens.map((s, i) =>
+function screenList(def: ProductDefinition): string {
+  return def.screens.map((s, i) =>
     `${i + 1}. id="${s.id}" name="${s.name}" module="${s.module}" current layout="${s.layoutType}"\n   Job: ${s.purpose}${s.components.length ? `\n   Must show: ${list(s.components, 8)}` : ""}`
   ).join("\n");
+}
+
+/**
+ * Research step, run before the design when no reference screen was given: the AI searches the web for
+ * well-built applications that do the same kind of work and turns what it finds into a design brief.
+ * Like the design prompt, it names no industry or product itself; everything comes from the definition.
+ */
+export function buildResearchPrompt(def: ProductDefinition): string {
+  const personas = def.personas.map((p) => `- ${p.name} (${p.role})`).join("\n");
+  const process = processSection(def);
+  return `ROLE: You are a senior product designer doing competitive UI research before designing a new application.
+
+PRODUCT: "${def.productName}" for ${def.businessUnit}.
+Objective: ${def.objective}
+${process ? `\n${process}\n` : ""}
+USERS:
+${personas || "- (none listed)"}
+
+SCREENS TO BE DESIGNED:
+${screenList(def)}
+
+TASK:
+1. Search the web for 3-4 real, well-regarded applications that do the same kind of work for the same kinds of users
+   (product pages, UI galleries, design case studies, app store screenshots, help-centre pages with screenshots).
+   Prefer the products people in this line of work actually use and praise for being easy to use.
+2. For each, write what its UI does well that this product should borrow: navigation, how a record's progress is
+   shown, queues, boards, approvals, mobile screens for outside parties, dashboards. Describe layout and interaction
+   patterns only. Never copy names, logos, wording or data.
+3. Decide the visual direction for this product: the feel, colour palette (name the primary and accent colours as
+   hex codes that suit these users), light or dark navigation, density.
+4. For every screen above, name the pattern to use and why it fits that screen's job.
+5. If you find no comparable application, say so in designDirection and base the brief on the best general-purpose
+   business applications instead. Name only products you actually found; do not invent any.
+
+Return ONLY valid JSON, no prose before or after, in exactly this shape:
+{
+  "comparableApps": [{"name": "Real product name", "category": "What kind of app it is", "whatToBorrow": ["Pattern worth borrowing"]}],
+  "designDirection": "3-5 sentences: the feel, palette (with hex codes), navigation style and density, and why they suit these users",
+  "screenPatterns": [{"screenId": "the screen id above", "pattern": "Pattern to use", "why": "Why it fits the screen's job"}],
+  "sources": [{"title": "Page title", "url": "https://..."}]
+}`;
+}
+
+function researchSection(research: DesignResearch | undefined): string {
+  if (!research) return "";
+  const apps = research.comparableApps.map((a) => `- ${a.name} (${a.category}): borrow ${list(a.whatToBorrow, 4)}`).join("\n");
+  const patterns = research.screenPatterns.map((p) => `- ${p.screenId}: ${p.pattern} (${p.why})`).join("\n");
+  return `
+RESEARCH DONE BEFORE THIS DESIGN (follow it):
+Comparable applications studied:
+${apps || "- none found"}
+Visual direction: ${research.designDirection}
+Pattern per screen:
+${patterns || "- (none)"}
+Borrow layout and interaction patterns only. Never copy another product's name, logo, wording or data.
+`;
+}
+
+export function buildPrototypePrompt(def: ProductDefinition, hasReference: boolean, research?: DesignResearch): string {
+  const screens = screenList(def);
   const personas = def.personas.map((p) => `- ${p.name} (${p.role}): goals ${list(p.keyGoals, 3)}`).join("\n");
   const journeys = def.userJourneys.slice(0, 8).map((j) => `- ${j.name} (${j.persona}): ${j.steps.join(" -> ")} => ${j.outcome}`).join("\n");
   const rules = def.businessRules.slice(0, 12).map((r) => `- [${r.code}] ${r.rule}`).join("\n");
@@ -61,9 +124,11 @@ REFERENCE SCREEN (image attached): the BA uploaded a screen they like. Follow it
   return `ROLE: You are a senior product designer. You design working screens for business users from a written product
 definition. You design for the job each screen does in the process, for the people who use it.
 
-TASK: Design every screen of the prototype for "${def.productName}" (${def.businessUnit}).
+TASK: Design every screen of the prototype for "${def.productName}" (${def.businessUnit}). The BU must be able to
+look at it and say "yes, that is our application". Make it as attractive and polished as the best modern business
+software: clear hierarchy, realistic content, nothing generic.
 Objective: ${def.objective}
-${reference}
+${reference}${hasReference ? "" : researchSection(research)}
 ${process ? `${process}\n` : ""}
 USERS:
 ${personas || "- (none listed)"}
@@ -108,9 +173,25 @@ HOW TO DESIGN EACH SCREEN:
 10. inspiredBy: a short generic name for the pattern you used, e.g. "Work queue with side detail" or "Stage pipeline
     overview". Never name a company or product.
 11. benchmarkNote: one sentence for the BU on why this layout fits this screen's job in their process.
+12. device: "phone" for a screen used mainly by an outside party (someone who is not staff, e.g. the person the
+    record is for) who would open it on their own mobile phone, such as approving, confirming or tracking one record.
+    Design such a screen for one record at a time: short labels, 2 KPIs at most, big actions. Otherwise "desktop".
+13. chart (optional): on screens that watch performance or the whole process, one chart that answers the screen's
+    main question: "bar" for counts per stage or per party, "line" for a trend over 6-8 days or weeks, "donut" for a
+    split of 3-5 parts. 3-8 labels in the BU's words, one realistic number per label, consistent with the KPIs.
+14. board (optional): on screens where work moves between stages or statuses, a board with one column per stage or
+    status (3-6 columns, in order) and 1-4 cards per column. Card title = the record's reference or name, subtitle =
+    who or what it concerns, tag = priority, due time or amount. Use the same records as the table.
+15. timeline (optional): on screens about one record (split-view, profile-360), 4-6 events of the first table row,
+    newest first: when ("Today 09:40", "Yesterday"), who (a person or party), what happened (a stage done, an
+    approval, a note).
+16. theme (once, for the whole application): colours that suit this product and its users (follow the research
+    direction when there is one). primaryColor and accentColor as hex codes; avoid a default purple unless it truly
+    fits. sidebarStyle "dark", "light" or "brand"; density "comfortable" or "compact" (compact for data-heavy work).
 
 Return ONLY valid JSON in exactly this shape:
 {
+  "theme": {"primaryColor": "#hex", "accentColor": "#hex", "sidebarStyle": "dark" | "light" | "brand", "density": "comfortable" | "compact"},
   "screens": [
     {
       "screenId": "the screen id above",
@@ -123,7 +204,11 @@ Return ONLY valid JSON in exactly this shape:
         "table": { "title": "Table title", "columns": ["Ref", "Column", "Status"], "rows": [["R-1042", "value", "status value"]] },
         "detailPanels": [{"title": "Panel title", "items": [{"label": "Field", "value": "Value"}]}],
         "primaryActions": ["Verb in the BU's words"],
-        "benchmarkNote": "Why this layout fits this screen's job"
+        "benchmarkNote": "Why this layout fits this screen's job",
+        "device": "desktop" | "phone",
+        "chart": {"title": "Chart title", "kind": "bar" | "line" | "donut", "labels": ["Label"], "values": [12]},
+        "board": {"columns": [{"title": "Stage or status", "cards": [{"title": "R-1042", "subtitle": "Who or what", "tag": "High"}]}]},
+        "timeline": [{"when": "Today 09:40", "who": "Person or party", "what": "What happened"}]
       }
     }
   ]

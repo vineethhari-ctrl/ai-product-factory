@@ -22,7 +22,7 @@ const ADVICE: Record<string, string> = {
   network: 'The AI service could not be reached. Check the internet connection, then Retry.',
 };
 
-/** Shown under the header when the offline engine had to stand in for the AI, with a Retry button. */
+/** Shown under the header when the AI could not answer (or the offline engine stood in for it), with a Retry button. */
 export const AIStatusBanner: React.FC<AIStatusBannerProps> = ({ status, onRetry, isRetrying, onDismiss }) => {
   if (status.outcome === 'offline-no-key') {
     return (
@@ -47,10 +47,19 @@ export const AIStatusBanner: React.FC<AIStatusBannerProps> = ({ status, onRetry,
     <div className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3 shadow-xs" role="alert">
       <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
       <div className="flex-1 space-y-1.5 text-xs text-amber-950">
-        <p className="font-bold text-sm">
-          The AI was not available for "{status.button}", so the offline engine made this result.
-        </p>
-        <p>The offline result is a starting point only: it follows your wording but does not design like the AI.</p>
+        {status.outcome === 'failed' ? (
+          <>
+            <p className="font-bold text-sm">The AI could not answer "{status.button}". Nothing was changed.</p>
+            <p>Your previous result is kept. The offline engine is used only when no AI key is set up, so click Retry.</p>
+          </>
+        ) : (
+          <>
+            <p className="font-bold text-sm">
+              The AI was not available for "{status.button}", so the offline engine made this result.
+            </p>
+            <p>The offline result is a starting point only: it follows your wording but does not design like the AI.</p>
+          </>
+        )}
         {failures.length > 0 && (
           <ul className="list-disc pl-5 space-y-0.5">
             {failures.map((f, i) => <li key={i}>{f.message}.</li>)}

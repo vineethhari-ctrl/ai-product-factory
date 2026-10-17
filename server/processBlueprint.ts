@@ -230,6 +230,9 @@ function alignOwners(table: { columns: string[]; rows: string[][] }, ownerOf: (s
   return table;
 }
 
+/** Generic words for a party outside the organisation, who would use the product on their own phone. */
+const OUTSIDE_PARTY = /\b(customer|client|member|applicant|requester|guest|citizen|visitor|public|external)s?\b/i;
+
 function stageUI(subject: string, entity: DataEntityDefinition, group: string[], stages: string[], seed: string, layout: ScreenDefinition["layoutType"], owner?: string, ownerOf: (stage: string) => string | undefined = () => undefined): ScreenUISpec {
   const first = group[0], last = group[group.length - 1];
   const idx = stages.indexOf(last);
@@ -272,6 +275,14 @@ function stageUI(subject: string, entity: DataEntityDefinition, group: string[],
     ],
     primaryActions: [next ? `Complete ${last} → ${next}` : `Complete ${last}`, "Attach Evidence", "Put On Hold", "Reassign"],
     benchmarkNote: STAGE_NOTE(group.join(" / "), prev, next),
+    // The selected record's history: earlier stages, each by its owner.
+    timeline: [
+      { when: "Today 09:40", who: owner ?? PEOPLE[1], what: `opened ${sel[0]} at ${first}` },
+      ...(prev ? [{ when: `${fmtDate(ANCHOR - 2 * DAY)} 15:10`, who: ownerOf(prev) ?? PEOPLE[2], what: `completed ${prev} and handed it on` }] : []),
+      ...stages.slice(0, Math.max(0, stages.indexOf(first) - 1)).reverse().slice(0, 3).map((st, i) => ({ when: `${fmtDate(ANCHOR - (4 + i * 2) * DAY)} 11:2${i}`, who: ownerOf(st) ?? PEOPLE[i % PEOPLE.length], what: `completed ${st}` })),
+    ],
+    // A stage owned by an outside party is done on that party's phone.
+    ...(owner && OUTSIDE_PARTY.test(owner) && layout !== "form-wizard" ? { device: "phone" as const } : {}),
     ...(layout === "form-wizard" ? { entity: entity.name } : {}),
   };
 }
@@ -309,7 +320,13 @@ function processBlueprint(productName: string, subject: string, operator: string
       { title: "Records per Stage", items: stages.map((st, i) => ({ label: st, value: String(counts[i]) })) },
       { title: "Stage Owners", items: phases.map((p) => ({ label: phaseName(p), value: ownerOf(p[0]) ?? "Operations Lead" })) },
     ],
-    primaryActions: ["Review Stalled Records", "Export Pipeline", "Share Snapshot"],
+    primaryActions: [`Review Stalled ${S}`, "Export", "Share"],
+    chart: {
+      title: `${S} completed per week`,
+      kind: "line",
+      labels: Array.from({ length: 8 }, (_, i) => new Date(ANCHOR - (7 - i) * 7 * DAY).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })),
+      values: Array.from({ length: 8 }, (_, i) => 18 + Math.round(i * 2.5 + rand() * 9)),
+    },
     benchmarkNote: `Command center for the ${stages.length}-stage lifecycle in your brief. Mirrors the pipeline-overview pattern of leading lifecycle products.`,
   };
 
@@ -336,6 +353,7 @@ function processBlueprint(productName: string, subject: string, operator: string
       { title: `${subject} Summary`, items: records360.columns.map((label, i) => ({ label, value: first360[i] })).slice(0, 5) },
     ],
     primaryActions: [`Complete ${stages[current]}`, "Attach Evidence", "Export Proof of Record"],
+    timeline: stages.slice(0, current).reverse().map((st, i) => ({ when: fmtDate(ANCHOR - (i + 1) * 3 * DAY), who: ownerOf(st) ?? PEOPLE[i % PEOPLE.length], what: `completed ${st} with evidence attached` })),
     benchmarkNote: `One page per ${s}: every stage of your lifecycle with who, when and evidence${brief.parts ? `, plus its ${plural(brief.parts.name).toLowerCase()} by serial number` : ""}. Mirrors the 360-degree record view of leading products.`,
   };
 
@@ -360,6 +378,7 @@ function processBlueprint(productName: string, subject: string, operator: string
       { title: "By Party", items: (parties.length ? parties : ["Operations Lead"]).map((p, i) => ({ label: p, value: `${(88 + i * 2.5).toFixed(1)}% within SLA` })) },
     ],
     primaryActions: ["Export Report", "Adjust Stage SLAs"],
+    chart: { title: "Average days in each stage", kind: "bar", labels: stages, values: stages.map((_, i) => Number((0.6 + ((i * 13) % 40) / 10).toFixed(1))) },
     benchmarkNote: "Per-stage throughput and SLA for your lifecycle. Mirrors the operational analytics pattern of leading products.",
   };
 
@@ -371,7 +390,7 @@ function processBlueprint(productName: string, subject: string, operator: string
 
   const phaseModules = phases.map((p, i) => ({ id: `mod-bp-phase-${i + 1}`, name: phaseName(p) }));
   const moduleFor = (stage: string) => phaseModules[phaseOf(stage)].name;
-  const oversight = "Oversight & Traceability";
+  const oversight = `${S} Overview`;
 
   const screens: ScreenDefinition[] = [
     inferred({ id: "scr-bp-1", name: `${subject} Command Center`, module: oversight, layoutType: "dashboard" as const, components: ["KPI tiles", "Records per stage", "Stalled records"], purpose: `See every ${s} across all ${stages.length} stages and what is stalled.`, ui: overview }, "pipeline command center"),
