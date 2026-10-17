@@ -19,6 +19,8 @@ interface ScreenCanvasProps {
   readOnly: boolean;
   /** The product's data entities. A form-wizard screen renders a validated form for the entity it edits. */
   entities?: DataEntityDefinition[];
+  /** The page header already shows the first primary action, so the screen does not repeat it. */
+  actionInHeader?: boolean;
 }
 
 const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -68,13 +70,28 @@ const StatusOrText: React.FC<{ value: string; chip?: boolean }> = ({ value, chip
   );
 };
 
+const PERSON_COLUMN = /owner|party|assign|advisor|supervisor|agent|requester|approver|manager|engineer|technician|handler|customer|member|\bby\b|\buser\b/i;
+const AVATAR_COLORS = ['bg-indigo-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-sky-500', 'bg-violet-500'];
+
+const PersonCell: React.FC<{ value: string }> = ({ value }) => {
+  if (!value || value === '—') return <span>{value}</span>;
+  const initials = value.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  const color = AVATAR_COLORS[value.length % AVATAR_COLORS.length];
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`w-6 h-6 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${color}`}>{initials}</span>
+      <span>{value}</span>
+    </span>
+  );
+};
+
 const TrendIcon: React.FC<{ trend: 'up' | 'down' | 'flat' }> = ({ trend }) => {
   if (trend === 'up') return <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />;
   if (trend === 'down') return <TrendingDown className="w-3.5 h-3.5 text-rose-600" />;
   return <Minus className="w-3.5 h-3.5 text-slate-400" />;
 };
 
-export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, entities }) => {
+export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, entities, actionInHeader }) => {
   const { ui } = screen;
   const [activeFilter, setActiveFilter] = useState(0);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -104,6 +121,56 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
   const selected = rows[Math.min(selectedIdx, Math.max(rows.length - 1, 0))];
   const selectedTitle = selected?.[0] ?? '';
   const statusColIdx = ui.table.columns.findIndex((c) => /status|state|stage/i.test(c));
+
+  // Stages in order: the filter chips, minus "All" and side states, counted over every sample row.
+  const stages = ui.filters.filter((f) => !/^all\b/i.test(f) && !/^(on hold|cancell?ed|closed|archived)$/i.test(f.trim()));
+  const stageCounts = stages.map((st) =>
+    statusColIdx >= 0 ? ui.table.rows.filter((r) => (r[statusColIdx] ?? '').toLowerCase() === st.toLowerCase()).length : 0,
+  );
+  const maxCount = Math.max(1, ...stageCounts);
+  const currentStage = selected && statusColIdx >= 0 ? stages.findIndex((st) => st.toLowerCase() === (selected[statusColIdx] ?? '').toLowerCase()) : -1;
+
+  const pipeline = stages.length >= 3 && statusColIdx >= 0 && (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-slate-900">Work by stage</h3>
+        <span className="text-[11px] text-slate-500">Click a stage to filter</span>
+      </div>
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+        {stages.map((st, i) => {
+          const fi = ui.filters.indexOf(st);
+          const on = activeFilter === fi;
+          return (
+            <button
+              key={st}
+              onClick={() => { setActiveFilter(on ? 0 : fi); setSelectedIdx(0); }}
+              className={`text-left rounded-lg border p-3 cursor-pointer transition-colors ${on ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300'}`}
+            >
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-600 text-[9px] flex items-center justify-center">{i + 1}</span>
+                <span className="truncate">{st}</span>
+              </div>
+              <div className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{stageCounts[i]}</div>
+              <div className="mt-2 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${(stageCounts[i] / maxCount) * 100}%` }} />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const stageProgress = currentStage >= 0 && stages.length >= 3 && (
+    <ol className="flex items-center gap-1">
+      {stages.map((st, i) => (
+        <li key={st} className="flex-1 min-w-0">
+          <div className={`h-1.5 rounded-full ${i < currentStage ? 'bg-emerald-500' : i === currentStage ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+          <div className={`mt-1 text-[10px] truncate ${i === currentStage ? 'font-bold text-indigo-700' : 'text-slate-400'}`}>{st}</div>
+        </li>
+      ))}
+    </ol>
+  );
 
   const runAction = (action: string) => {
     if (readOnly) return;
@@ -161,9 +228,10 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     </div>
   );
 
-  const actionsBar = ui.primaryActions.length > 0 && (
+  const actionList = actionInHeader ? ui.primaryActions.slice(1) : ui.primaryActions;
+  const actionsBar = actionList.length > 0 && (
     <div className="flex flex-wrap items-center gap-2">
-      {ui.primaryActions.map((a, i) => (
+      {actionList.map((a, i) => (
         <button
           key={a}
           onClick={() => runAction(a)}
@@ -210,7 +278,11 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
               >
                 {row.map((cell, ci) => (
                   <td key={ci} className={`px-4 py-2.5 whitespace-nowrap ${ci === 0 ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
-                    <StatusOrText value={cell} chip={ci === statusColIdx} />
+                    {ci > 0 && PERSON_COLUMN.test(ui.table.columns[ci] ?? '') && ci !== statusColIdx ? (
+                      <PersonCell value={cell} />
+                    ) : (
+                      <StatusOrText value={cell} chip={ci === statusColIdx} />
+                    )}
                   </td>
                 ))}
               </tr>
@@ -237,6 +309,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
         </div>
         {statusColIdx >= 0 && <StatusOrText value={selected[statusColIdx] ?? ''} chip />}
       </div>
+      {stageProgress}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         {ui.table.columns.slice(1).map((c, i) => (
           <div key={c}>
@@ -250,7 +323,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
 
   const panels = (cols: string) => (
     <div className={`grid gap-3 ${cols}`}>
-      {ui.detailPanels.map((p) => (
+      {ui.detailPanels.filter((p) => !(pipeline && /per stage|by stage/i.test(p.title))).map((p) => (
         <div key={p.title} className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
           <h4 className="text-xs font-bold text-slate-900 mb-2.5">{p.title}</h4>
           <dl className="space-y-2 text-xs">
@@ -272,6 +345,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     case 'table-detail':
       body = (
         <>
+          {pipeline}
           {toolbar}
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2 space-y-4">{table}</div>
@@ -428,6 +502,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
     default:
       body = (
         <>
+          {pipeline}
           {toolbar}
           {table}
           {actionsBar}
@@ -438,25 +513,6 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
 
   return (
     <div className="space-y-4">
-      {isBenchmark && (
-        <div className="flex flex-wrap items-start gap-2.5 rounded-xl border border-violet-200 bg-gradient-to-r from-violet-50 via-purple-50 to-indigo-50 px-4 py-3">
-          <Sparkles className="w-4 h-4 text-violet-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-violet-900 flex-1">
-            <span className="font-bold">Industry benchmark · inferred.</span>{' '}
-            {ui.benchmarkNote ?? 'Predicted from how comparable products are built; needs BU validation.'}
-          </div>
-        </div>
-      )}
-
-      {!isBenchmark && ui.benchmarkNote && (
-        <div className="flex flex-wrap items-start gap-2.5 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-blue-50 to-cyan-50 px-4 py-3">
-          <Sparkles className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
-          <div className="text-xs text-indigo-900 flex-1">
-            <span className="font-bold">{ui.benchmarkNote}</span>
-          </div>
-        </div>
-      )}
-
       {feedback && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800">
           {feedback} (simulated)
@@ -466,7 +522,6 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
       {screen.layoutType !== 'form-wizard' && kpiRow}
       {body}
 
-      <p className="text-[11px] text-slate-400">Sample values are illustrative and are not real data.</p>
     </div>
   );
 };

@@ -21,11 +21,13 @@ import {
   Globe,
   Cpu,
   Rocket,
+  Settings2,
 } from 'lucide-react';
 
 import { ChangeImpactAnalysis, ScreenDefinition, ScreenUISpec } from '../types';
 import { ScreenCanvas } from './ScreenCanvas';
 import { PrototypeDesignBar } from './PrototypeDesignBar';
+import { AppShell, ShellNavItem } from './AppShell';
 
 interface PrototypeScreenProps {
   definition: ProductDefinition;
@@ -57,6 +59,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
 }) => {
   const [activeProtoScreenIdx, setActiveProtoScreenIdx] = useState<number>(0);
   const [selectedRoleIdx, setSelectedRoleIdx] = useState<number>(0);
+  const [showTools, setShowTools] = useState(false);
+  const [actionToast, setActionToast] = useState<string | null>(null);
   
   // View mode toggle: 'visual' (Visual UI Screen Mockup) vs 'grid' (Data & Schema Grid)
   const [viewMode, setViewMode] = useState<'visual' | 'grid'>('visual');
@@ -165,6 +169,20 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   const selectedRole = roles[selectedRoleIdx] || roles[0];
   const isReadOnlyRole = selectedRole.permissions.some(p => p.toLowerCase().includes('read only') || p.toLowerCase().includes('auditor'));
 
+  const navItems: ShellNavItem[] = useMemo(
+    () => screens.map((s, i) => ({ id: s.id, label: s.name, group: s.module || 'Application', icon: SCREEN_ICONS[i % SCREEN_ICONS.length] })),
+    [screens],
+  );
+  // A sample person for the signed-in user: the prototype is not about the BA using the factory.
+  const userDisplayName = ['Priya Raman', 'Marcus Chen', 'Elena García', 'Samuel Okafor', 'Hannah Weber', 'Diego Alvarez'][selectedRoleIdx % 6];
+  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' ? benchmarkScreen.ui.primaryActions[0] : undefined;
+  React.useEffect(() => {
+    if (!actionToast) return;
+    const t = setTimeout(() => setActionToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [actionToast]);
+  React.useEffect(() => setActionToast(null), [activeProtoScreenIdx]);
+
   // Derive primary data entity for grid view
   const primaryEntity = useMemo(() => {
     return definition?.dataEntities?.[0] || {
@@ -212,13 +230,13 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   }, [definition, primaryEntity]);
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-200/70 flex flex-col font-sans">
       {/* Top Banner: Application Controls & Role Switcher */}
       <div className="bg-slate-900 text-white px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md border-b border-slate-800">
         <div className="flex items-center gap-3">
           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            {isGeneratingPrototype ? 'AI THINKING...' : 'LIVE INTERACTIVE PROTOTYPE'}
+            {isGeneratingPrototype ? 'AI THINKING...' : 'PROTOTYPE'}
           </span>
           <span className="text-xs text-slate-300 hidden md:inline truncate max-w-md">
             Product Definition <span className="font-mono text-indigo-300 font-semibold">{definition.version}</span>
@@ -238,7 +256,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
               }`}
             >
               <Monitor className="w-3.5 h-3.5" />
-              <span>🎨 Visual UI Mockup</span>
+              <span>Application view</span>
             </button>
             <button
               onClick={() => setViewMode('grid')}
@@ -249,9 +267,20 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
-              <span>📊 Data & Schema Grid</span>
+              <span>Data & schema</span>
             </button>
           </div>
+
+          <button
+            onClick={() => setShowTools((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+              showTools ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            <span>Design tools</span>
+            {definition.screens.some((sc) => sc.ui?.origin !== 'AI') && <span className="w-2 h-2 rounded-full bg-amber-400" title="Some screens were made by the offline engine" />}
+          </button>
 
           <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">
             <span className="text-slate-400 text-[11px]">Role:</span>
@@ -287,54 +316,19 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
       </div>
 
       {/* Main Container */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-5">
-        {onRedesign && setReferenceImage && (
-          <PrototypeDesignBar
-            definition={definition}
-            referenceImage={referenceImage}
-            setReferenceImage={setReferenceImage}
-            onRedesign={onRedesign}
-            isGenerating={isGeneratingPrototype}
-          />
-        )}
-
-        {/* BU Guidance Banner with Instant UI Prompt Bar */}
-        <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-200/80 rounded-2xl p-4 flex flex-col gap-3 text-xs text-indigo-950 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                <Eye className="w-4 h-4" />
-              </div>
-              <div className="space-y-0.5">
-                <span className="font-bold text-indigo-950 text-sm flex items-center gap-2">
-                  {isGeneratingPrototype ? 'AI Advanced Thinking Engine Active' : 'Business Unit Interactive Web Application Screen Preview'}
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono text-[10px] font-bold">
-                    {isGeneratingPrototype ? 'Generating UI Blueprints...' : viewMode === 'visual' ? 'UI Screen Wireframe Active' : 'Database Grid Active'}
-                  </span>
-                </span>
-                <p className="text-slate-600 text-[11px] leading-relaxed">
-                  {isGeneratingPrototype
-                    ? `The AI is analyzing "${definition.productName}" requirements and studying leading products to generate domain-specific UI prototypes with advanced thinking...`
-                    : viewMode === 'visual'
-                    ? `Below is the live visual application screen for "${definition.productName}". Each screen is designed for its job in your process. Type any UI change request below to instantly update the UI.`
-                    : `Below is the schema & database record breakdown for business Analysts and system engineers.`}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={onRequestChangeClick}
-                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer transition-all"
-              >
-                ✏️ Full Impact Analyzer
-              </button>
-            </div>
-          </div>
-
-          {/* Instant Natural Language UI Change Input Bar */}
-          {!isGeneratingPrototype && (
-            <div className="bg-white/90 border border-indigo-200 rounded-xl p-2 flex flex-col sm:flex-row items-center gap-2 shadow-2xs">
+      <div className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 flex flex-col gap-4">
+        {showTools && (
+          <div className="flex flex-col gap-3">
+            {onRedesign && setReferenceImage && (
+              <PrototypeDesignBar
+                definition={definition}
+                referenceImage={referenceImage}
+                setReferenceImage={setReferenceImage}
+                onRedesign={onRedesign}
+                isGenerating={isGeneratingPrototype}
+              />
+            )}
+            <div className="bg-white border border-slate-200 rounded-xl p-2 flex flex-col sm:flex-row items-center gap-2 shadow-2xs">
               <div className="flex items-center gap-2 text-indigo-600 text-xs font-bold pl-2 shrink-0">
                 <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>Instant UI Customizer:</span>
@@ -343,36 +337,25 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
                 type="text"
                 value={instantChangeText}
                 onChange={(e) => setInstantChangeText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleInstantApply();
-                }}
-                placeholder="Type any UI change (e.g., 'Add Service Cost Calculator screen', 'Add Emergency Assistance button', 'Add Voice of Customer tab')..."
+                onKeyDown={(e) => { if (e.key === 'Enter') handleInstantApply(); }}
+                placeholder="Type any UI change (e.g. 'Add a Cost Calculator screen', 'Add an Emergency button')..."
                 className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-medium focus:outline-hidden focus:border-indigo-500"
               />
               <button
                 disabled={isApplyingInstant || !instantChangeText.trim()}
                 onClick={() => handleInstantApply()}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 ${
                   isApplyingInstant || !instantChangeText.trim()
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs cursor-pointer'
                 }`}
               >
-                {isApplyingInstant ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Applying UI Change...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>⚡ Apply UI Change</span>
-                  </>
-                )}
+                <Send className="w-3.5 h-3.5" />
+                <span>{isApplyingInstant ? 'Applying…' : 'Apply UI Change'}</span>
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* ── AI THINKING LOADING STATE ── */}
         {isGeneratingPrototype && (
@@ -425,183 +408,79 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
           </div>
         )}
 
-        {/* Application Navigation Tabs (Screens) — hidden during generation */}
-        {!isGeneratingPrototype && (
-          <div className="bg-white rounded-xl shadow-xs border border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-2xs">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-900">{definition.productName}</div>
-                <div className="text-[10px] text-slate-500">{definition.businessUnit} • {definition.modules.length} Modules</div>
-              </div>
-            </div>
 
-            {/* Dynamic Screen Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-medium">
-              {screens.map((scr, idx) => {
-                const isActive = activeProtoScreenIdx === idx;
-                const IconComp = SCREEN_ICONS[idx % SCREEN_ICONS.length];
-                return (
-                  <button
-                    key={scr.id || idx}
-                    onClick={() => setActiveProtoScreenIdx(idx)}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-indigo-600 text-white font-semibold shadow-xs'
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <IconComp className="w-3.5 h-3.5" />
-                    <span>{scr.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* VIEW MODE 1: VISUAL UI MOCKUP SCREEN — always rendered through ScreenCanvas */}
         {viewMode === 'visual' && !isGeneratingPrototype && (
-          <div className="bg-slate-900 rounded-2xl p-2.5 shadow-2xl border border-slate-800 flex flex-col gap-3">
-            {/* Simulated Web Application Header Bar */}
-            <div className="bg-slate-800 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-white border border-slate-700/60">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
-                  <span className="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
-                </div>
-                <div className="h-4 w-px bg-slate-700"></div>
-                <div className="font-bold text-sm tracking-wide text-indigo-200 flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-indigo-400" />
-                  <span>{definition.productName}</span>
-                </div>
+          <>
+            {definition.changeHistory && definition.changeHistory.length > 0 && (
+              <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span><strong>Updated ({definition.version}):</strong> {definition.changeHistory[0].changeRequested}</span>
+                <button onClick={onRequestChangeClick} className="font-bold text-emerald-800 hover:underline cursor-pointer">+ Request another change</button>
               </div>
+            )}
 
-              {/* Application Top Bar Controls */}
-              <div className="flex items-center gap-3 text-xs">
-                <div className="relative hidden sm:block">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder={`Search ${definition.productName || 'records'}...`}
-                    className="bg-slate-900/80 text-white font-medium pl-8 pr-3 py-1.5 rounded-lg border border-slate-700 text-xs w-56 focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-                <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 text-xs font-medium">
-                  <User className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{selectedRole.name}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                </div>
-              </div>
-            </div>
-
-            {/* Application Main Canvas Container */}
-            <div className="bg-slate-50 rounded-xl p-4 sm:p-6 text-slate-800 min-h-[550px] flex flex-col gap-6">
-
-              {/* Dynamic Live Applied Change Feedback Banner */}
-              {definition.changeHistory && definition.changeHistory.length > 0 && (
-                <div className="p-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white rounded-xl shadow-md flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center font-bold text-sm shrink-0">
-                      ⚡
-                    </span>
-                    <div>
-                      <div className="font-bold text-sm flex items-center gap-2">
-                        UI Live Updated ({definition.version})
-                        <span className="px-2 py-0.2 rounded-full bg-white/20 text-[10px] font-mono font-bold">
-                          Active Version
-                        </span>
-                      </div>
-                      <div className="text-slate-100 text-[11px] truncate max-w-xl">
-                        Latest Applied Request: "{definition.changeHistory[0].changeRequested}"
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={onRequestChangeClick}
-                      className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-[11px] rounded-lg shadow-xs cursor-pointer transition-all"
-                    >
-                      + Request Another Change
-                    </button>
-                  </div>
+            <AppShell
+              productName={definition.productName}
+              tagline={definition.businessUnit}
+              nav={navItems}
+              activeId={activeScreenObj.id}
+              onNavigate={(id) => {
+                const i = screens.findIndex((s) => s.id === id);
+                if (i >= 0) setActiveProtoScreenIdx(i);
+              }}
+              userName={userDisplayName}
+              userRole={selectedRole.name}
+              groupLabel={activeScreenObj.module}
+              title={activeScreenObj.name}
+              subtitle={activeScreenObj.purpose}
+              badge={isReadOnlyRole ? 'View only' : undefined}
+              primaryAction={
+                shellAction
+                  ? { label: shellAction, disabled: isReadOnlyRole, onClick: () => setActionToast(`${shellAction} (simulated)`) }
+                  : undefined
+              }
+            >
+              {actionToast && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800">{actionToast}</div>
+              )}
+              {benchmarkScreen ? (
+                <ScreenCanvas
+                  key={benchmarkScreen.id}
+                  screen={benchmarkScreen}
+                  readOnly={isReadOnlyRole}
+                  entities={definition.dataEntities}
+                  actionInHeader={!!shellAction}
+                />
+              ) : (
+                <div className="py-16 text-center text-sm text-slate-500">
+                  This screen has no design yet. Go back to the BRD and click Build Prototype.
                 </div>
               )}
+            </AppShell>
 
-              {/* UNIFIED SCREEN RENDERER — all screens go through ScreenCanvas */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6 animate-in fade-in">
-                {/* Application Screen Header Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                        {activeScreenObj.module || 'Application Module'}
-                      </span>
-                      <span className="text-xs text-slate-400 font-mono">• Active UI Screen Prototype</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                      {activeScreenObj.name}
-                    </h2>
-                    <p className="text-xs text-slate-600 max-w-3xl">{activeScreenObj.purpose}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="px-3 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-2xs">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>Live BU Interactive UI</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Render through ScreenCanvas if UI spec exists, otherwise show prompt */}
-                {benchmarkScreen ? (
-                  <ScreenCanvas key={benchmarkScreen.id} screen={benchmarkScreen} readOnly={isReadOnlyRole} entities={definition.dataEntities} />
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-16 text-center space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center">
-                      <Sparkles className="w-8 h-8 text-slate-400" />
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="text-lg font-bold text-slate-700">No UI Blueprint Generated Yet</h3>
-                      <p className="text-xs text-slate-500 max-w-md">
-                        This screen doesn't have an AI-generated UI blueprint yet. 
-                        Navigate back to the Product Definition screen and click "Build Prototype" 
-                        to generate rich, domain-adaptive UI mockups powered by advanced AI thinking.
-                      </p>
-                    </div>
-                  </div>
+            <details className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-600">
+              <summary className="cursor-pointer font-semibold text-slate-700">
+                Prototype notes (not part of the app): where this layout comes from, rules, sample data
+              </summary>
+              <div className="mt-3 space-y-3">
+                {(benchmarkScreen?.ui.benchmarkNote || benchmarkScreen?.confidence === 'INFERRED') && (
+                  <p><strong>This screen:</strong> {benchmarkScreen?.ui.benchmarkNote ?? 'Predicted from how comparable products are built; needs BU validation.'}</p>
                 )}
-
-                {/* Enforced Business Rules Banner */}
+                <p>Names, numbers and dates on screen are made-up sample values, not real data.</p>
                 {definition.businessRules.length > 0 && (
-                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-indigo-950 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                        Enforced Business Governance Rules
-                      </span>
-                      <span className="text-[10px] text-indigo-700 font-mono font-bold bg-indigo-100 px-2 py-0.5 rounded">
-                        {definition.businessRules.length} Active Rules
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {definition.businessRules.slice(0, 3).map((r, rIdx) => (
-                        <span key={rIdx} className="px-3 py-1 bg-white border border-indigo-200 text-indigo-950 rounded-lg text-[11px] font-medium shadow-2xs">
-                          <strong className="font-mono text-indigo-700">{r.code}:</strong> {r.rule}
-                        </span>
+                  <div>
+                    <div className="font-semibold text-slate-700 mb-1">Business rules the app enforces ({definition.businessRules.length})</div>
+                    <ul className="space-y-1">
+                      {definition.businessRules.slice(0, 6).map((r, i) => (
+                        <li key={i}><span className="font-mono font-bold text-indigo-700">{r.code}</span> {r.rule}</li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 )}
               </div>
-
-            </div>
-          </div>
+            </details>
+          </>
         )}
+
 
         {/* VIEW MODE 2: SCHEMA & DATA GRID VIEW (FOR ANALYSTS & ENGINEERS) */}
         {viewMode === 'grid' && !isGeneratingPrototype && (
