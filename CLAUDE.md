@@ -74,6 +74,9 @@ the numbers can be tightened toward the spec once real usage is visible.
   Gemini only: if the answer is still unusable (or not JSON), the same model is shown its errors once
   (`askForCorrection`, a 3-turn request) and the corrected answer is repaired and used (`corrected: true`); then the
   second model / next provider as before. `npm run check:repair` covers it.
+- **Connection probe** (`npm run check:gemini`, `scripts/gemini.probe.ts`): one tiny request per way of connecting to Gemini (Vertex
+  with key / key + project / project sign-in, regular API) and model (`gemini-4-argon`, Flash); prints what Google answered,
+  never a key. Use it when Gemini refuses a key or a model.
 - **Live check** (`npm run check:live [-- N | -- "Product name"]`, `scripts/live.check.ts`): runs name-only sample
   products through Understand Business, BRD and Build Prototype with the real keys from `.env` (limits off, separate
   usage log) and writes `live-check-report.md` (gitignored): per step the outcome, model, time, fixes, failures and

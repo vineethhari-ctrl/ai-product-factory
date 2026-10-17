@@ -18,6 +18,7 @@
     "check:materials": "tsx scripts/materials.check.ts",
     "check:repair": "tsx scripts/repair.check.ts",
     "check:live": "tsx scripts/live.check.ts",
+    "check:gemini": "tsx scripts/gemini.probe.ts",
     "check:questions": "tsx scripts/questions.check.ts",
     "check:prototype": "tsx scripts/prototype.check.ts"
   },
