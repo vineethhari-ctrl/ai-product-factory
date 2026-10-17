@@ -15,7 +15,7 @@ import {
 import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
 import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
-import { entityToSQL } from "../src/services/validationEngine";
+import { entityToSQL, FIELD_FORMATS } from "../src/services/validationEngine";
 import {
   BENCHMARK_TAG,
   UI_SPEC_RULES,
@@ -374,6 +374,40 @@ function finalizeConstraints(definition: ProductDefinition): ProductDefinition {
 }
 
 /** Product definition with every open question labelled for the BU Team or the BA & Tech Team. */
+const FIELD_LABEL_SYNONYMS: Record<string, string> = { string: "text", number: "decimal", float: "decimal", double: "decimal", currency: "decimal", money: "decimal", int: "integer", timestamp: "datetime", uri: "url", guid: "uuid" };
+const FIELD_SENSITIVITIES = ["none", "pii", "financial", "credential"];
+
+/**
+ * A model may label a field with a format or sensitivity outside the app's list. One unknown word must not reject
+ * the whole definition: map a common synonym, otherwise leave the label out (the field then has no extra constraint).
+ */
+function dropUnknownFieldLabels(raw: unknown): unknown {
+  const entities = (raw as { dataEntities?: unknown })?.dataEntities;
+  if (!Array.isArray(entities)) return raw;
+  const known = FIELD_FORMATS as string[];
+  return {
+    ...(raw as object),
+    dataEntities: entities.map((e) => {
+      const fields = (e as { fields?: unknown })?.fields;
+      if (!Array.isArray(fields)) return e;
+      return {
+        ...(e as object),
+        fields: fields.map((f) => {
+          if (!f || typeof f !== "object") return f;
+          const { format, sensitivity, origin, ...rest } = f as Record<string, unknown>;
+          const fmt = typeof format === "string" ? (known.includes(format) ? format : FIELD_LABEL_SYNONYMS[format.toLowerCase()]) : undefined;
+          return {
+            ...rest,
+            ...(fmt && known.includes(fmt) ? { format: fmt } : {}),
+            ...(typeof sensitivity === "string" && FIELD_SENSITIVITIES.includes(sensitivity) ? { sensitivity } : {}),
+            ...(origin === "BU" || origin === "INFERRED" ? { origin } : {}),
+          };
+        }),
+      };
+    }),
+  };
+}
+
 export async function generateProductDefinition(
   understanding: BusinessUnderstanding,
   productName: string,
@@ -581,12 +615,12 @@ Return ONLY a valid JSON object matching this schema:
   try {
     const parsed = await callLLMJSON("generate-definition", prompt, ProductDefinitionSchema, (raw) => {
       // The prompt asks for evidenceMapping as { topic: sources[] }; the schema uses [{ topic, sources }].
-      const obj = raw as { evidenceMapping?: unknown };
+      const obj = dropUnknownFieldLabels(raw) as { evidenceMapping?: unknown };
       const em = obj?.evidenceMapping;
       if (em && typeof em === "object" && !Array.isArray(em)) {
         return { ...obj, evidenceMapping: Object.entries(em).map(([topic, sources]) => ({ topic, sources })) };
       }
-      return raw;
+      return obj;
     });
     if (parsed) {
       const { evidenceMapping, ...rest } = parsed;

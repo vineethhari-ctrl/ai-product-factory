@@ -142,6 +142,27 @@ try {
   try { await runWithUsageContext("ba", "P4", () => quiet(() => generatePrototypeUI({ ...offline, objective: `${offline.objective} (AI down)` }))); } catch (e) { thrown = e; }
   restore4();
   t("AI down with a key set: Build Prototype reports it instead of going offline", thrown instanceof AIUnavailableError);
+
+  // A model labels a field with a format outside the list: the definition is still accepted
+  process.env.GEMINI_API_KEY = "g";
+  const { ProductDefinitionSchema } = await import("../server/aiSchemas");
+  const withLabels = JSON.parse(JSON.stringify(def));
+  // Shape the offline sample like a model answer: only BU/INFERRED origins, no empty table cells
+  for (const e of withLabels.dataEntities) for (const f of e.fields) if (f.origin !== "BU" && f.origin !== "INFERRED") f.origin = "INFERRED";
+  for (const sc of withLabels.screens) if (sc.ui?.table) sc.ui.table.rows = sc.ui.table.rows.map((r: unknown[]) => r.map((c) => c ?? "-"));
+  withLabels.dataEntities[0].fields[0].format = "string";
+  withLabels.dataEntities[0].fields[1].format = "made-up-label";
+  withLabels.dataEntities[0].fields[1].sensitivity = "top-secret";
+  t("control: the strict schema rejects an unknown format", !ProductDefinitionSchema.safeParse(withLabels).success);
+  let accepted: Awaited<ReturnType<typeof generateProductDefinition>> | null = null;
+  let rejected: unknown = null;
+  const restore5 = setProviderForTests("gemini", async (_task, _p, schema, coerce) => {
+    const r = schema.safeParse(coerce ? coerce(JSON.parse(JSON.stringify(withLabels))) : withLabels);
+    return r.success ? r.data : null;
+  });
+  try { accepted = await runWithUsageContext("ba", "P5", () => quiet(() => generateProductDefinition({ ...u, extractedAt: "label-test" } as typeof u, "Label Test Product", "PV/EV", "v1.0"))); } catch (e) { rejected = e; }
+  restore5();
+  t("an unknown field format no longer rejects the whole definition", accepted !== null && rejected === null, String(rejected));
   delete process.env.GEMINI_API_KEY;
 
   // Reference image input
