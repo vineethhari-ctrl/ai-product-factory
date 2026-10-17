@@ -188,9 +188,9 @@ export function geminiAuth(): GeminiAuth | null {
     const apiKey = usable(clean(process.env.GEMINI_API_KEY));
     return apiKey ? { backend: "api", apiKey } : null;
   }
-  // Vertex: an API key (express mode: GOOGLE_API_KEY, or GEMINI_API_KEY as a fallback), else project + location
-  // with the Google sign-in already on the machine (gcloud auth application-default login).
-  const apiKey = usable(clean(process.env.GOOGLE_API_KEY)) || usable(clean(process.env.GEMINI_API_KEY));
+  // Vertex: an API key (GOOGLE_API_KEY only: a regular Gemini key from AI Studio is not valid on Vertex), else
+  // project + location with the Google sign-in already on the machine (gcloud auth application-default login).
+  const apiKey = usable(clean(process.env.GOOGLE_API_KEY));
   if (apiKey) return { backend: "vertex", apiKey };
   const project = usable(clean(process.env.GOOGLE_CLOUD_PROJECT));
   if (project) return { backend: "vertex", project, location: clean(process.env.GOOGLE_CLOUD_LOCATION) || "global" };
