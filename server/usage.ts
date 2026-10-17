@@ -139,6 +139,11 @@ interface UsageContext {
   servedModel?: string;
   /** Who answered the AI step of this request; sent to the browser as X-AI-Status. */
   status?: AIStatus;
+  /** Fixes made to the answer being served, and whether the model was asked to correct it. */
+  repairs?: string[];
+  corrected?: boolean;
+  /** Every AI step of this request, in order (a request can make more than one, e.g. research then design). */
+  calls?: AIStatus[];
 }
 
 /** What went wrong with one provider model, in plain language for the BA. */
@@ -165,6 +170,10 @@ export interface AIStatus {
   outcome: "ai" | "cache" | "offline-no-key" | "offline-limit" | "offline-failed" | "failed";
   model?: string;
   failures?: ProviderFailure[];
+  /** Small fixes made to the AI's answer so it could be used (see answerRepair.ts). */
+  repairs?: string[];
+  /** The model was shown its format errors once and its corrected answer was used. */
+  corrected?: boolean;
 }
 
 const als = new AsyncLocalStorage<UsageContext>();
@@ -221,7 +230,27 @@ export function currentFailures(): ProviderFailure[] {
 
 export function setAIStatus(status: Omit<AIStatus, "button">) {
   const ctx = als.getStore();
-  if (ctx) ctx.status = { ...status, button: AI_BUTTONS[status.task] };
+  if (!ctx) return;
+  const extra = status.outcome === "ai"
+    ? { ...(ctx.repairs?.length ? { repairs: ctx.repairs } : {}), ...(ctx.corrected ? { corrected: true } : {}) }
+    : {};
+  ctx.status = { ...status, ...extra, button: AI_BUTTONS[status.task] };
+  (ctx.calls ??= []).push(ctx.status);
+  ctx.repairs = undefined;
+  ctx.corrected = undefined;
+}
+
+/** Called by the provider clients when the answer they return needed fixes or a corrective second try. */
+export function recordAnswerRepairs(repairs: string[], corrected = false) {
+  const ctx = als.getStore();
+  if (!ctx) return;
+  ctx.repairs = repairs.length ? repairs : undefined;
+  ctx.corrected = corrected || undefined;
+}
+
+/** Every AI step recorded in this context so far (scripts: the live check reports each one). */
+export function currentAICalls(): AIStatus[] {
+  return als.getStore()?.calls ?? [];
 }
 
 /** The AI status of the current request, if it made an AI step. */

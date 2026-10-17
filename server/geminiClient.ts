@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { AITask, geminiModels, geminiRoute, providerKey } from "./routing";
-import { type ProviderFailure, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
+import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
+import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
 import type { AIImage } from "./llmRouter";
 
 /**
@@ -74,13 +75,69 @@ function fail(model: string, kind: ProviderFailure["kind"], task: AITask, detail
 
 const isTransient = (kind: ProviderFailure["kind"]) => kind === "busy" || kind === "quota";
 
-/** Strip code fences and surrounding prose so JSON.parse sees only the payload. */
-function extractJson(text: string): string {
-  let clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  const first = clean.indexOf("{");
-  const last = clean.lastIndexOf("}");
-  if (first !== -1 && last > first) clean = clean.substring(first, last + 1);
-  return clean;
+type Interpreted<T> = { ok: true; data: T; repairs: string[] } | { ok: false; detail: string; problems: string[] };
+
+/** Read a model's text as the schema's data: parse loosely, reshape (`coerce`), then repair small mistakes. */
+function interpret<S extends z.ZodType>(
+  text: string,
+  schema: S,
+  coerce: ((raw: unknown) => unknown) | undefined,
+  sources: Array<{ title: string; url: string }>
+): Interpreted<z.infer<S>> {
+  const raw = parseJsonLoose(text);
+  if (raw === undefined) {
+    return { ok: false, detail: "the answer was not valid JSON", problems: ["The answer was not valid JSON. Return exactly one JSON object and nothing else."] };
+  }
+  // The pages Google Search returned, so the BA can see what the research read.
+  if (sources.length && raw && typeof raw === "object" && !Array.isArray((raw as { sources?: unknown }).sources)) {
+    (raw as { sources?: unknown }).sources = sources;
+  }
+  const shaped = coerce ? coerce(raw) : raw;
+  const result = repairToSchema(schema, shaped);
+  if (result.success) return { ok: true, data: result.data, repairs: result.repairs };
+  const problems = describeIssues(result.issues, shaped);
+  return { ok: false, detail: `schema validation (${problems[0] ?? "unknown"})`, problems };
+}
+
+const correctionPrompt = (problems: string[]) => `Your previous answer could not be used: it does not match the required JSON format.
+Fix exactly these problems and keep everything else the same:
+${problems.map((p) => `- ${p}`).join("\n")}
+
+Return the complete corrected JSON object only: no explanation, no code fences.`;
+
+function logServed(task: AITask, model: string, started: number, usage: any, maxTokens: number, repairs: string[], corrected = false) {
+  console.log(`[AI Engine] ${task}: ${model} ok in ${Date.now() - started}ms (output ${usage?.candidatesTokenCount ?? "?"} of ${maxTokens}, thinking ${usage?.thoughtsTokenCount ?? 0} tokens)${corrected ? " after one correction" : ""}.`);
+  if (repairs.length) {
+    console.log(`[AI Engine] ${task}: ${model} answer used after ${repairs.length} small fix(es): ${repairs.slice(0, 6).join("; ")}${repairs.length > 6 ? "; ..." : ""}`);
+  }
+}
+
+/** One corrective turn: the original request, the model's answer, and the list of problems. Text, or null. */
+async function askForCorrection(
+  ai: GoogleGenAI,
+  task: AITask,
+  model: string,
+  contents: string | Array<{ role: string; parts: unknown[] }>,
+  previous: string,
+  problems: string[],
+  temperature: number | undefined,
+  maxTokens: number
+): Promise<string | null> {
+  const userTurn = typeof contents === "string" ? { role: "user", parts: [{ text: contents }] } : contents[0];
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents: [userTurn, { role: "model", parts: [{ text: previous }] }, { role: "user", parts: [{ text: correctionPrompt(problems) }] }] as any,
+      config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
+    });
+    const usage = response.usageMetadata;
+    recordTokens(task, model, usage?.promptTokenCount ?? 0, (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0));
+    if (response.candidates?.[0]?.finishReason === "MAX_TOKENS" || !response.text) return null;
+    return response.text;
+  } catch (err) {
+    console.warn(`[AI Engine] ${task}: ${model} correction failed: ${errorText(err).slice(0, 160)}`);
+    return null;
+  }
 }
 
 /** One model: up to MAX_ATTEMPTS on transient errors. Returns the data, or the failure kind. */
@@ -130,29 +187,26 @@ async function callModel<S extends z.ZodType>(
         return { kind: "bad-answer" };
       }
 
-      let raw: unknown;
-      try {
-        raw = JSON.parse(extractJson(response.text));
-      } catch {
-        fail(model, "bad-answer", task, "the answer was not valid JSON");
-        return { kind: "bad-answer" };
-      }
-      if (webSearch && raw && typeof raw === "object") {
-        // The pages Google Search returned, so the BA can see what the research read.
-        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-        const found = chunks.flatMap((c) => (c.web?.uri ? [{ title: c.web.title || c.web.uri, url: c.web.uri }] : []));
-        const obj = raw as { sources?: unknown };
-        if (found.length && !Array.isArray(obj.sources)) obj.sources = found;
-      }
-      const result = schema.safeParse(coerce ? coerce(raw) : raw);
-      if (!result.success) {
-        const issue = result.error.issues[0];
-        fail(model, "bad-answer", task, `schema validation (${issue?.path.join(".") || "root"}: ${issue?.message})`);
-        return { kind: "bad-answer" };
+      const chunks = webSearch ? response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [] : [];
+      const sources = chunks.flatMap((c) => (c.web?.uri ? [{ title: c.web.title || c.web.uri, url: c.web.uri }] : []));
+      const first = interpret(response.text, schema, coerce, sources);
+      if (first.ok) {
+        recordAnswerRepairs(first.repairs);
+        logServed(task, model, started, usage, maxTokens, first.repairs);
+        return { data: first.data };
       }
 
-      console.log(`[AI Engine] ${task}: ${model} ok in ${Date.now() - started}ms (output ${usage?.candidatesTokenCount ?? "?"} of ${maxTokens}, thinking ${usage?.thoughtsTokenCount ?? 0} tokens).`);
-      return { data: result.data };
+      // Still unusable after repair: show the model its mistakes once and use its corrected answer.
+      console.warn(`[AI Engine] ${task}: ${model} answer unusable (${first.detail}); asking it to correct ${first.problems.length} problem(s).`);
+      const corrected = await askForCorrection(ai, task, model, contents, response.text, first.problems, temperature, maxTokens);
+      const second = corrected === null ? null : interpret(corrected, schema, coerce, sources);
+      if (second?.ok) {
+        recordAnswerRepairs(second.repairs, true);
+        logServed(task, model, started, usage, maxTokens, second.repairs, true);
+        return { data: second.data };
+      }
+      fail(model, "bad-answer", task, second && !second.ok ? second.detail : first.detail);
+      return { kind: "bad-answer" };
     } catch (err: any) {
       const kind = classifyGeminiError(err);
       if (isTransient(kind) && attempt < MAX_ATTEMPTS) {

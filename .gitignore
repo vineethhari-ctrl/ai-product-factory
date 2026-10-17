@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 data/
+
+# Live AI check report (may contain AI text about your products)
+live-check-report.md

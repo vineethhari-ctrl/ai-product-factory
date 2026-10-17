@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { AITask, claudeRoute, providerKey } from "./routing";
-import { type ProviderFailure, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
+import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
+import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
 import type { AIImage } from "./llmRouter";
 
 export type { AITask };
@@ -113,10 +114,21 @@ export async function callClaudeJSON<S extends z.ZodType>(
       return null;
     }
     if (message.parsed_output == null) {
-      fail(task, route.model, "bad-answer", "output did not match the schema");
-      return null;
+      // Rare with an enforced format: try to repair the text answer before giving up.
+      const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+      const raw = parseJsonLoose(text);
+      const repaired = raw === undefined ? null : repairToSchema(schema, raw);
+      if (!repaired?.success) {
+        fail(task, route.model, "bad-answer", repaired ? `schema validation (${describeIssues(repaired.issues, raw, 1)[0]})` : "output did not match the schema");
+        return null;
+      }
+      recordAnswerRepairs(repaired.repairs);
+      recordServedModel(route.model);
+      console.log(`[AI Engine] ${task}: ${route.model} ok after ${repaired.repairs.length} small fix(es) in ${Date.now() - started}ms.`);
+      return repaired.data as z.infer<S>;
     }
 
+    recordAnswerRepairs([]);
     recordServedModel(route.model);
     console.log(`[AI Engine] ${task}: ${route.model} ok in ${Date.now() - started}ms (${message.usage.input_tokens} in / ${message.usage.output_tokens} out of ${route.maxTokens}).`);
     return message.parsed_output as z.infer<S>;
@@ -125,15 +137,6 @@ export async function callClaudeJSON<S extends z.ZodType>(
     fail(task, route.model, classify(err), detail);
     return null;
   }
-}
-
-/** Strip code fences and surrounding prose so JSON.parse sees only the payload. */
-function extractJson(text: string): string {
-  let clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  const first = clean.indexOf("{");
-  const last = clean.lastIndexOf("}");
-  if (first !== -1 && last > first) clean = clean.substring(first, last + 1);
-  return clean;
 }
 
 /** Most turns a searching call may be resumed after the server pauses it (long searches). */
@@ -187,22 +190,20 @@ async function callClaudeWithSearch<S extends z.ZodType>(
       return null;
     }
     const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-    let raw: unknown;
-    try {
-      raw = JSON.parse(extractJson(text));
-    } catch {
+    const raw = parseJsonLoose(text);
+    if (raw === undefined) {
       fail(task, route.model, "bad-answer", "the answer was not valid JSON");
       return null;
     }
     if (raw && typeof raw === "object" && sources.length && !Array.isArray((raw as { sources?: unknown }).sources)) {
       (raw as { sources?: unknown }).sources = sources.slice(0, 12);
     }
-    const parsed = schema.safeParse(raw);
+    const parsed = repairToSchema(schema, raw);
     if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      fail(task, route.model, "bad-answer", `schema validation (${issue?.path.join(".") || "root"}: ${issue?.message})`);
+      fail(task, route.model, "bad-answer", `schema validation (${describeIssues(parsed.issues, raw, 1)[0]})`);
       return null;
     }
+    recordAnswerRepairs(parsed.repairs);
     recordServedModel(route.model);
     console.log(`[AI Engine] ${task}: ${route.model} with web search ok in ${Date.now() - started}ms (${sources.length} pages read).`);
     return parsed.data as z.infer<S>;

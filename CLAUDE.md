@@ -60,6 +60,18 @@ the numbers can be tightened toward the spec once real usage is visible.
   skips the second model.
 - Claude: SDK retries 429/5xx/529 (3x); refusal, `max_tokens` truncation or schema-invalid output ends
   the attempt and passes to the next provider.
+- **Repair, don't reject** (`server/answerRepair.ts`, both clients): an answer that fails the schema is first repaired
+  from the validation errors (closest allowed label, type conversion, leave out an optional value or use a neutral
+  default, trim, drop only the one list item that cannot be fixed) and used if that makes it valid. Every fix is logged
+  (`answer used after N small fix(es)`) and kept on the AI status (`repairs`; the header carries only `repairCount`).
+  Gemini only: if the answer is still unusable (or not JSON), the same model is shown its errors once
+  (`askForCorrection`, a 3-turn request) and the corrected answer is repaired and used (`corrected: true`); then the
+  second model / next provider as before. `npm run check:repair` covers it.
+- **Live check** (`npm run check:live [-- N | -- "Product name"]`, `scripts/live.check.ts`): runs name-only sample
+  products through Understand Business, BRD and Build Prototype with the real keys from `.env` (limits off, separate
+  usage log) and writes `live-check-report.md` (gitignored): per step the outcome, model, time, fixes, failures and
+  simple output checks. Use it to find all real-model problems in one pass. The BRD is still one request; split it
+  only if the report shows cut-offs or repeated unrepairable answers (splitting triples the AI calls per click).
 - **The AI drives; offline only without a key.** When keys are set and every provider fails, `callLLMJSON` throws
   `AIUnavailableError`; the endpoint answers 503 `{error, aiUnavailable}`, the browser keeps the previous result and
   the banner offers Retry. The local engine answers only when no key is set (or a usage limit applies).
@@ -206,7 +218,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI

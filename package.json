@@ -16,6 +16,8 @@
     "check:usage": "tsx scripts/usage.check.ts",
     "check:routing": "tsx scripts/routing.check.ts",
     "check:materials": "tsx scripts/materials.check.ts",
+    "check:repair": "tsx scripts/repair.check.ts",
+    "check:live": "tsx scripts/live.check.ts",
     "check:questions": "tsx scripts/questions.check.ts",
     "check:prototype": "tsx scripts/prototype.check.ts"
   },

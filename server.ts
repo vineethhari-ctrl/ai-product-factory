@@ -33,7 +33,9 @@ async function startServer() {
       const notices = currentNotices();
       if (notices.length && !res.headersSent) res.setHeader("X-AI-Notice", encodeURIComponent(notices.join("\n")));
       const status = currentAIStatus();
-      if (status && !res.headersSent) res.setHeader("X-AI-Status", encodeURIComponent(JSON.stringify(status)));
+      // Repairs are listed in the server log; the header carries only their count (headers have a size limit).
+      const brief = status && { ...status, repairs: undefined, repairCount: status.repairs?.length || undefined };
+      if (brief && !res.headersSent) res.setHeader("X-AI-Status", encodeURIComponent(JSON.stringify(brief)));
       return json(body);
     };
     next();
