@@ -14,6 +14,7 @@ import type {
 } from "../src/types";
 import { BENCHMARK_TAG } from "./benchmark";
 import { resolveFieldConstraints } from "../src/services/validationEngine";
+import { withDocuments } from "./documents";
 
 /**
  * Product blueprint for thin input without an LLM.
@@ -143,7 +144,7 @@ export function rng(seed: string): () => number {
 export const PEOPLE = ["Priya Raman", "Marcus Chen", "Elena García", "Samuel Okafor", "Hannah Weber", "Diego Alvarez", "Aisha Khan", "Tomás Novak"];
 export const ORGS = ["Northwind Group", "Contoso Ltd", "Fabrikam Inc", "Tailspin Partners", "Litware Co", "Adventure Works", "Woodgrove Unit"];
 
-const humanize = (name: string) =>
+export const humanize = (name: string) =>
   name
     .replace(/_/g, " ")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -274,6 +275,7 @@ const PATTERN_NOTES: Record<ScreenDefinition["layoutType"], string> = {
   "split-view": "Mirrors the inbox-and-triage pattern of best-in-class service consoles: work the queue on the left, act on the right without losing context.",
   "form-wizard": "Mirrors the guided-intake pattern of top self-service products: short steps, inline validation and a server-checked submit.",
   "profile-360": "Mirrors the 360-degree record view of leading CRM-style products: every fact, owner and event about one record on one page.",
+  transaction: "Mirrors how business documents work in mature business applications: a list of documents, a New button, header fields, line items with totals and workflow actions that move the document through its statuses.",
 };
 
 const ACTIONS: Record<ScreenDefinition["layoutType"], (s: string) => string[]> = {
@@ -282,6 +284,7 @@ const ACTIONS: Record<ScreenDefinition["layoutType"], (s: string) => string[]> =
   "split-view": () => ["Take Ownership", "Approve", "Request Information", "Escalate"],
   "form-wizard": (s) => [`Submit ${s}`, "Save Draft"],
   "profile-360": () => ["Advance Status", "Add Note", "Reassign"],
+  transaction: (s) => [`New ${s}`, "Export"],
 };
 
 /** Build a complete UI blueprint for a screen from its entity; used whenever no model wrote one. */
@@ -583,10 +586,11 @@ export function entityForScreen(screen: ScreenDefinition, entities: DataEntityDe
 /** Give every screen without a UI blueprint a complete one. Screens with one are left alone. */
 export function ensureScreenUI(definition: ProductDefinition, subjectOverride?: string): ProductDefinition {
   const subject = subjectOverride ?? definition.blueprintBrief?.subject ?? deriveSubject(definition.productName, definition.businessUnit);
-  return {
+  // Then every transaction screen gets its business document (documents.ts).
+  return withDocuments({
     ...definition,
     screens: definition.screens.map((s) =>
       s.ui ? s : { ...s, ui: buildScreenUI(s, entityForScreen(s, definition.dataEntities), subject, definition.productName) }
     ),
-  };
+  });
 }

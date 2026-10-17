@@ -154,7 +154,7 @@ export const ProductDefinitionSchema = z.object({
       id: z.string(),
       name: z.string(),
       module: z.string(),
-      layoutType: z.enum(["dashboard", "table-detail", "form-wizard", "split-view", "profile-360"]),
+      layoutType: z.enum(["dashboard", "table-detail", "form-wizard", "split-view", "profile-360", "transaction"]),
       components: z.array(z.string()),
       purpose: z.string(),
       confidence: Confidence,
@@ -294,6 +294,48 @@ const BoardSchema = z.object({
 
 const TimelineSchema = z.array(z.object({ when: z.string(), who: z.string(), what: z.string() }));
 
+const DocumentFieldSchema = z.object({
+  label: z.string(),
+  kind: z.enum(["text", "long-text", "number", "money", "percent", "date", "select", "lookup", "email", "phone", "checkbox"]),
+  required: z.boolean().optional(),
+  options: z.array(z.string()).optional(),
+  sample: z.string().optional(),
+  readOnly: z.boolean().optional(),
+});
+
+/** A business document for a 'transaction' screen (see TransactionDocument in src/types.ts). */
+const DocumentSchema = z.object({
+  name: z.string(),
+  numberPrefix: z.string(),
+  sections: z.array(z.object({ title: z.string(), fields: z.array(DocumentFieldSchema) })),
+  lines: z
+    .object({
+      title: z.string(),
+      columns: z.array(z.object({ label: z.string(), kind: z.enum(["text", "number", "money", "percent", "select"]), options: z.array(z.string()).optional() })),
+      rows: z.array(z.array(z.string())),
+      quantityColumn: z.string().optional(),
+      priceColumn: z.string().optional(),
+      discountColumn: z.string().optional(),
+      amountColumn: z.string().optional(),
+    })
+    .optional(),
+  totals: z
+    .object({ currency: z.string(), discountPercent: z.number().optional(), taxLabel: z.string().optional(), taxPercent: z.number().optional() })
+    .optional(),
+  states: z.array(z.string()),
+  actions: z.array(
+    z.object({
+      label: z.string(),
+      from: z.array(z.string()),
+      to: z.string(),
+      role: z.string().optional(),
+      needsReason: z.boolean().optional(),
+      creates: z.string().optional(),
+    })
+  ),
+  related: z.object({ from: z.string().optional(), next: z.array(z.string()).optional() }).optional(),
+});
+
 export const UIThemeSchema = z.object({
   primaryColor: z.string(),
   accentColor: z.string(),
@@ -308,8 +350,12 @@ export const PrototypeUISchema = z.object({
   screens: z.array(
     z.object({
       screenId: z.string(),
+      /** Only for a screen the design adds (a business document with no screen yet): its name, menu group and job. */
+      name: z.string().optional(),
+      module: z.string().optional(),
+      purpose: z.string().optional(),
       inspiredBy: z.string(),
-      layoutType: z.enum(["dashboard", "table-detail", "form-wizard", "split-view", "profile-360"]),
+      layoutType: z.enum(["dashboard", "table-detail", "form-wizard", "split-view", "profile-360", "transaction"]),
       ui: ScreenUISchema.extend({
         benchmarkNote: z.string(),
         /** Record a form-wizard screen creates or completes; "" for other layouts. */
@@ -318,6 +364,8 @@ export const PrototypeUISchema = z.object({
         chart: ChartSchema.optional(),
         board: BoardSchema.optional(),
         timeline: TimelineSchema.optional(),
+        /** The business document of a 'transaction' screen. */
+        document: DocumentSchema.optional(),
       }),
     })
   ),

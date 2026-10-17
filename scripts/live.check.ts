@@ -84,6 +84,7 @@ out("Routing used:");
 for (const l of describeRouting()) out(`- ${l}`);
 
 let totalTokens = 0, totalCost = 0;
+const lastPrototype = new Map<string, string[]>();
 for (const [i, [name, bu]] of products.entries()) {
   const user = `live-check-${i + 1}`, project = `live-${i + 1}`;
   console.log(`\n=== ${name} (${bu}) ===`);
@@ -108,10 +109,19 @@ for (const [i, [name, bu]] of products.entries()) {
     await pause(4000);
     const p = await step("Build Prototype", () => generatePrototypeUI(d.value!), (def) => [
       ["every screen designed by the AI", def.screens.every((s) => s.ui?.origin === "AI")],
+      ["business document screens (at least 2)", def.screens.filter((s) => s.layoutType === "transaction" && s.ui?.document).length >= 2],
+      ["documents have header fields and a workflow", def.screens.filter((s) => s.ui?.document).every((s) => s.ui!.document!.sections.length >= 1 && s.ui!.document!.actions.length >= 1)],
+      ["at least one document with line items", def.screens.some((s) => (s.ui?.document?.lines?.columns.length ?? 0) >= 2)],
       ["research on similar apps", !!def.designResearch],
       ["a colour theme", !!def.uiTheme],
     ]);
     res.push(p.result);
+    if (p.value) {
+      lastPrototype.set(name, p.value.screens.filter((s) => s.ui?.document).map((s) => {
+        const d = s.ui!.document!;
+        return `${d.name} (${d.sections.reduce((n, x) => n + x.fields.length, 0)} fields, ${d.lines ? `${d.lines.columns.length}-column lines, ` : ""}${d.states.length} statuses, ${d.actions.length} actions)`;
+      }));
+    }
     return res;
   });
   const usage = usageReport(user, project).me;
@@ -128,6 +138,11 @@ for (const [i, [name, bu]] of products.entries()) {
     if (!r.ok) problems++;
     const calls = r.calls.map((c) => `${c.task}: ${c.outcome}${c.model ? ` (${c.model})` : ""}${c.corrected ? ", corrected" : ""}${c.repairs?.length ? `, ${c.repairs.length} fixes` : ""}`).join("; ");
     out(`| ${r.step} | ${r.error ? "FAILED" : r.ok ? "ok" : "ok, but checks failed"} | ${r.seconds}s | ${calls || "-"} |`);
+  }
+  const docs = lastPrototype.get(name) ?? [];
+  if (docs.length) {
+    out("");
+    out(`Business documents: ${docs.join("; ")}`);
   }
   for (const r of results) {
     const failedChecks = r.checks.filter(([, ok]) => !ok).map(([c]) => c);

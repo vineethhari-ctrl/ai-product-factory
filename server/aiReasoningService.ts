@@ -16,6 +16,7 @@ import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
 import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
 import { entityToSQL, FIELD_FORMATS } from "../src/services/validationEngine";
+import { cleanDocument, withDocuments } from "./documents";
 import {
   BENCHMARK_TAG,
   UI_SPEC_RULES,
@@ -441,6 +442,7 @@ ${benchmarkBlock}
 ${UI_SPEC_RULES}
 ${FIELD_INFERENCE_RULES}
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
+- BUSINESS DOCUMENTS FIRST: list every business document the users create and work in this process (whatever the BU calls it: something a user starts, fills in, sends for a decision and that turns into the next document). Each one MUST be a data entity with its own business fields (who it is for, what is asked or supplied, dates, amounts, terms) and, when it lists several items, a separate line-item entity. Each one MUST have a screen with layoutType "transaction" that creates and works it (set its ui.entity to the document's entity name). When the process has documents, at least half of the screens are "transaction" screens; dashboards and queues only support them.
 - DATA ENTITIES: For EVERY entity, generate 8-15 fields with correct types (string, number, boolean, timestamp, enum(...), text, json, uuid), accurate required/optional flags, and descriptive notes. ALWAYS include: id (uuid, required), created_at (timestamp), updated_at (timestamp), created_by (string), status (enum), plus all domain-specific fields a real production database would need. NEVER leave an entity with fewer than 6 fields.
 - VALIDATIONS: Generate 8-15 input validation rules covering: email format, phone format, required field enforcement, min/max length, numeric range, date range constraints, enum value constraints, unique constraints, regex patterns, and cross-field dependencies. Cover EVERY user-facing form field.
 - BUSINESS RULES: Generate 6-12 business rules covering: state machine transitions, SLA enforcement, permission boundaries, audit triggers, data integrity constraints, and domain-specific regulatory rules. Do NOT wait for the BU to mention these.
@@ -485,7 +487,7 @@ Return ONLY a valid JSON object matching this schema:
       "id": "scr-1",
       "name": "Screen Name",
       "module": "Module Name",
-      "layoutType": "dashboard" | "table-detail" | "form-wizard" | "split-view" | "profile-360",
+      "layoutType": "dashboard" | "table-detail" | "form-wizard" | "split-view" | "profile-360" | "transaction",
       "components": ["Component A", "Component B"],
       "purpose": "Screen functional goal",
       "confidence": "CONFIRMED" | "INFERRED",
@@ -500,7 +502,7 @@ Return ONLY a valid JSON object matching this schema:
         },
         "detailPanels": [{"title": "Request Details", "items": [{"label": "Priority", "value": "High"}]}],
         "primaryActions": ["Reassign", "Approve"],
-        "entity": "Exact name of the data entity this screen creates or edits (required for form-wizard screens, otherwise omit)",
+        "entity": "Exact name of the data entity this screen creates or edits (required for form-wizard and transaction screens, otherwise omit)",
         "benchmarkNote": "Mirrors the queue-and-detail pattern common in comparable industry products"
       }
     }
@@ -639,7 +641,8 @@ Return ONLY a valid JSON object matching this schema:
         lastUpdated: new Date().toISOString(),
       };
       // Sanitise inferred field constraints, guarantee the system fields, and ask the BU to confirm what was predicted.
-      const definition = finalizeConstraints(built);
+      // Transaction screens get their business document (from the record's fields) until Build Prototype designs it.
+      const definition = withDocuments(finalizeConstraints(built));
       if (!thinness.thin) return definition;
 
       // Thin input: tag what was predicted and guarantee the BU is asked to validate it.
@@ -905,21 +908,32 @@ async function generatePrototypeUnlabelled(
       const updated = JSON.parse(JSON.stringify(definition)) as ProductDefinition;
       const entityNames = new Set(updated.dataEntities.map((e) => e.name));
       let designed = 0;
+      let added = 0;
       for (const generated of parsed.screens) {
-        const screenIdx = updated.screens.findIndex(s => s.id === generated.screenId);
+        let screenIdx = updated.screens.findIndex(s => s.id === generated.screenId);
+        // A business document with no screen yet: the design may add one (at most 4).
+        if (screenIdx === -1 && generated.name?.trim() && generated.layoutType === "transaction" && added < 4) {
+          screenIdx = addDocumentScreen(updated, generated.screenId, generated.name, generated.module, generated.purpose);
+          added++;
+        }
         if (screenIdx === -1) continue;
-        const { entity, device, chart, board, timeline, ...ui } = generated.ui;
+        const { entity, device, chart, board, timeline, document, ...ui } = generated.ui;
+        const states = updated.dataEntities.find((e) => e.name === entity)?.lifecycle?.states ?? [];
+        const doc = generated.layoutType === "transaction" ? cleanDocument(document, states) : undefined;
         updated.screens[screenIdx].layoutType = generated.layoutType;
         updated.screens[screenIdx].ui = {
           ...normalizeUISpec(ui),
           // Only a record that exists can drive the form; anything else falls back to the screen text.
           ...(entity && entityNames.has(entity) ? { entity } : {}),
           ...cleanUIBlocks({ device, chart, board, timeline }),
+          ...(doc ? { document: doc } : {}),
           benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
           origin: "AI",
         };
         designed++;
       }
+      const documents = updated.screens.filter((s) => s.layoutType === "transaction" && s.ui?.document).length;
+      console.log(`[AI Engine] generate-prototype-ui: ${documents} business document screen(s)${added ? `, ${added} added for documents that had no screen` : ""}.`);
       const theme = cleanTheme(parsed.theme);
       if (theme) updated.uiTheme = theme;
       if (research) updated.designResearch = research;
@@ -959,6 +973,29 @@ async function researchComparableApps(definition: ProductDefinition): Promise<De
     console.warn("[AI Engine] research-prototype: no research, designing from the definition alone:", err instanceof Error ? err.message : err);
     return undefined;
   }
+}
+
+/** Add a screen the design proposed for a business document that had none: menu group, navigation and module. */
+function addDocumentScreen(def: ProductDefinition, rawId: string, name: string, module?: string, purpose?: string): number {
+  const base = (rawId || `scr-doc-${name}`).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "scr-doc";
+  let id = base.startsWith("scr-") ? base : `scr-doc-${base}`;
+  while (def.screens.some((s) => s.id === id)) id = `${id}-x`;
+  const moduleName = module?.trim() || def.screens[0]?.module || "Documents";
+  def.screens.push({
+    id,
+    name: name.trim().slice(0, 80),
+    module: moduleName,
+    layoutType: "transaction",
+    components: [],
+    purpose: purpose?.trim() || `Create and work ${name.trim()}`,
+    confidence: "INFERRED",
+    evidence: ["AI design: added for a business document that had no screen"],
+  });
+  def.navigation = [...(def.navigation ?? []), { id: `nav-${id}`, label: name.trim().slice(0, 80), screenId: id, icon: "FileText", allowedRoles: ["All"] }];
+  const mod = def.modules.find((m) => m.name === moduleName);
+  if (mod) mod.screens = [...mod.screens, id];
+  else def.modules.push({ id: `mod-${id}`, name: moduleName, description: "Business documents", screens: [id], confidence: "INFERRED", evidence: ["AI design"] });
+  return def.screens.length - 1;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -1017,7 +1054,7 @@ function withDefinitionBlueprint(
     : swapped;
   const usesBlueprint = dataEntities.some((e) => e.id === "ent-bp-1");
 
-  const iconFor: Record<string, string> = { dashboard: "LayoutDashboard", "split-view": "ShieldAlert", "table-detail": "FileText", "form-wizard": "Sliders", "profile-360": "Users" };
+  const iconFor: Record<string, string> = { dashboard: "LayoutDashboard", "split-view": "ShieldAlert", "table-detail": "FileText", "form-wizard": "Sliders", "profile-360": "Users", transaction: "FileText" };
   const accessFor = (role: string): ProductDefinition["permissions"][number]["accessLevel"] =>
     /audit|read.?only|viewer/i.test(role) ? "Read Only" : /admin/i.test(role) ? "Full Admin" : /requester|customer|external/i.test(role) ? "Restricted Segment" : "Read/Write";
 
@@ -1659,16 +1696,18 @@ function generateDeterministicDefinition(
         name: de.title,
         description: de.description,
         fields: de.fields && de.fields.length >= 5 ? de.fields : [
-          { name: 'id', type: 'uuid', required: true, notes: 'Primary Identifier (UUIDv4)' },
-          { name: 'record_number', type: 'string', required: true, notes: 'Human-readable record reference code' },
-          { name: 'title', type: 'string', required: true, notes: 'Primary display title / subject' },
-          { name: 'status', type: 'enum(DRAFT, PENDING, APPROVED, REJECTED, ARCHIVED)', required: true, notes: 'Workflow state machine value' },
-          { name: 'priority', type: 'enum(LOW, MEDIUM, HIGH, CRITICAL)', required: true, notes: 'Urgency classification' },
-          { name: 'assigned_to_user_id', type: 'uuid', required: false, notes: 'Assigned operator / owner ID' },
-          { name: 'metadata_json', type: 'json', required: false, notes: 'Extensible key-value domain attributes' },
+          // Plain business fields a user fills in; ids and audit stamps are added as system fields later.
+          { name: 'reference_number', type: 'string', required: true, notes: 'Number the business uses to refer to it' },
+          { name: 'title', type: 'string', required: true, notes: 'Short description of what it is about' },
+          { name: 'requested_by', type: 'string', required: true, notes: 'Person or party it is for' },
+          { name: 'owner', type: 'string', required: false, notes: 'Person responsible for the next step' },
+          { name: 'due_date', type: 'date', required: false, notes: 'When it must be done' },
+          { name: 'priority', type: 'enum(LOW, MEDIUM, HIGH, CRITICAL)', required: true, notes: 'How urgent it is' },
+          { name: 'status', type: 'enum(DRAFT, PENDING, APPROVED, REJECTED, ARCHIVED)', required: true, notes: 'Where it is in its workflow' },
+          { name: 'notes', type: 'text', required: false, notes: 'Anything the next person should know' },
+          // Audit stamps: taken over as hidden system fields (name kept).
           { name: 'created_at', type: 'timestamp', required: true, notes: 'Creation timestamp' },
-          { name: 'updated_at', type: 'timestamp', required: true, notes: 'Last modification timestamp' },
-          { name: 'created_by_user_id', type: 'uuid', required: true, notes: 'Creator user identifier' }
+          { name: 'updated_at', type: 'timestamp', required: true, notes: 'Last modification timestamp' }
         // Generated by the engine, not stated by the BU, even when the entity itself is confirmed.
         ].map(f => ({ ...f, origin: 'INFERRED' as const })),
         relationships: ['Parent Module (1:N)', 'Audit Log (1:N)', 'Assigned User (N:1)'],

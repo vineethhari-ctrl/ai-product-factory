@@ -144,6 +144,71 @@ export interface ScreenUISpec {
   board?: { columns: Array<{ title: string; cards: Array<{ title: string; subtitle: string; tag: string }> }> };
   /** Recent activity on the selected record or the whole screen, newest first. */
   timeline?: Array<{ when: string; who: string; what: string }>;
+  /**
+   * For a 'transaction' screen: the business document users create and move through its workflow here
+   * (whatever the BU calls it). The list of existing documents is `table`; `document` describes one document.
+   */
+  document?: TransactionDocument;
+}
+
+/** Input kinds a document field can have. Generic: every business supplies its own labels and options. */
+export type DocumentFieldKind = 'text' | 'long-text' | 'number' | 'money' | 'percent' | 'date' | 'select' | 'lookup' | 'email' | 'phone' | 'checkbox';
+
+export interface DocumentField {
+  label: string;
+  kind: DocumentFieldKind;
+  required?: boolean;
+  /** Choices for 'select' and suggestions for 'lookup' (e.g. existing parties or items). */
+  options?: string[];
+  /** A realistic sample value, used when an existing document is opened. */
+  sample?: string;
+  /** Filled in by the system, e.g. a number or a date; shown but not editable. */
+  readOnly?: boolean;
+}
+
+/** The line items of a document: a grid the user adds rows to. Amounts and totals are calculated. */
+export interface DocumentLines {
+  title: string;
+  columns: Array<{ label: string; kind: 'text' | 'number' | 'money' | 'percent' | 'select'; options?: string[] }>;
+  /** Sample lines for an existing document; each has exactly as many cells as there are columns. */
+  rows: string[][];
+  /** Column labels used to calculate each line's amount: quantity x price, less discount %. All optional. */
+  quantityColumn?: string;
+  priceColumn?: string;
+  discountColumn?: string;
+  /** Column holding the calculated line amount (read only). */
+  amountColumn?: string;
+}
+
+export interface DocumentAction {
+  label: string;
+  /** Statuses in which this action is offered; empty = every status that is not final. */
+  from: string[];
+  /** Status after the action. */
+  to: string;
+  /** Who may do it, from the users of the product. */
+  role?: string;
+  /** The user must give a reason (e.g. rejecting). */
+  needsReason?: boolean;
+  /** Name of the next document this action creates (e.g. converting one document into the next one). */
+  creates?: string;
+}
+
+/** A business document as the users know it: header fields in sections, optional line items, totals and a workflow. */
+export interface TransactionDocument {
+  /** Singular name in the BU's words. */
+  name: string;
+  /** Prefix of the document number, e.g. "AB-". */
+  numberPrefix: string;
+  sections: Array<{ title: string; fields: DocumentField[] }>;
+  lines?: DocumentLines;
+  /** Totals under the lines: subtotal always; discount and tax only when they apply. */
+  totals?: { currency: string; discountPercent?: number; taxLabel?: string; taxPercent?: number };
+  /** Statuses in order; the first is where a new document starts. */
+  states: string[];
+  actions: DocumentAction[];
+  /** The document this one usually comes from, and the ones created from it: the chain shown on the document. */
+  related?: { from?: string; next?: string[] };
 }
 
 export interface ScreenChart {
@@ -178,7 +243,7 @@ export interface ScreenDefinition {
   id: string;
   name: string;
   module: string;
-  layoutType: 'dashboard' | 'table-detail' | 'form-wizard' | 'split-view' | 'profile-360';
+  layoutType: 'dashboard' | 'table-detail' | 'form-wizard' | 'split-view' | 'profile-360' | 'transaction';
   components: string[];
   purpose: string;
   confidence: ConfidenceStatus;

@@ -111,7 +111,9 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   // Derive dynamic screens from definition
   const screens = useMemo(() => {
     if (definition?.screens && definition.screens.length > 0) {
-      return definition.screens;
+      // Document screens first: creating and working documents is what the application is for.
+      const isDoc = (s: ScreenDefinition) => s.layoutType === 'transaction' && !!s.ui?.document;
+      return [...definition.screens.filter(isDoc), ...definition.screens.filter((s) => !isDoc(s))];
     }
     if (definition?.modules && definition.modules.length > 0) {
       return definition.modules.map((m, idx) => ({
@@ -177,7 +179,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   // A sample person for the signed-in user: the prototype is not about the BA using the factory.
   const userDisplayName = ['Priya Raman', 'Marcus Chen', 'Elena García', 'Samuel Okafor', 'Hannah Weber', 'Diego Alvarez'][selectedRoleIdx % 6];
   // Form and phone screens carry their own main button; the page header would repeat it.
-  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' && benchmarkScreen.ui.device !== 'phone' ? benchmarkScreen.ui.primaryActions[0] : undefined;
+  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' && !(benchmarkScreen.layoutType === 'transaction' && benchmarkScreen.ui.document) && benchmarkScreen.ui.device !== 'phone' ? benchmarkScreen.ui.primaryActions[0] : undefined;
   React.useEffect(() => {
     if (!actionToast) return;
     const t = setTimeout(() => setActionToast(null), 3000);

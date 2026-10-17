@@ -34,7 +34,7 @@ for (const [name, bu] of [["Warranty Claims Portal", "After-Sales"], ["Volunteer
   t(`${tag} benchmark applied`, def.benchmark?.applied === true);
   t(`${tag} at least 6 screens`, def.screens.length >= 6, String(def.screens.length));
   t(`${tag} all five layouts used`, new Set(def.screens.map((s) => s.layoutType)).size === 5);
-  t(`${tag} every screen has a full UI blueprint`, def.screens.every((s) => s.ui && s.ui.kpis.length >= 3 && s.ui.table.rows.length >= 5 && s.ui.primaryActions.length >= 2 && s.ui.detailPanels.length >= 2));
+  t(`${tag} every screen has a full UI blueprint`, def.screens.every((s) => s.ui && (s.ui.kpis.length >= 3 || !!s.ui.document) &&s.ui.table.rows.length >= 5 && s.ui.primaryActions.length >= 2 && s.ui.detailPanels.length >= 2));
   t(`${tag} status is the last column`, def.screens.every((s) => /status|state|stage/i.test(s.ui!.table.columns.at(-1)!)), def.screens.map((s) => s.ui!.table.columns.join("/")).join(" ; "));
   t(`${tag} rows match column count`, def.screens.every((s) => s.ui!.table.rows.every((r) => r.length === s.ui!.table.columns.length)));
   t(`${tag} no placeholder cells`, def.screens.every((s) => s.ui!.table.rows.flat().every((c) => c && c !== "—" && !/undefined|NaN/.test(c))));

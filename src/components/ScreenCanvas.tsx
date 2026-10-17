@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { DataEntityDefinition, ScreenDefinition, ScreenUISpec } from '../types';
 import { EntityForm } from './EntityForm';
+import { TransactionScreen } from './TransactionScreen';
 import { BoardView, ChartCard, PhoneCanvas, StatusOrText, TimelineCard } from './UIBlocks';
 
 interface ScreenCanvasProps {
@@ -354,6 +355,13 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
   // ── Layouts ───────────────────────────────────────────────────────────────
   let body: React.ReactNode;
   switch (screen.layoutType) {
+    case 'transaction':
+      if (ui.document) {
+        body = <TransactionScreen key={screen.id} ui={{ ...ui, document: ui.document }} readOnly={readOnly} />;
+        break;
+      }
+    // A transaction screen without a document is shown as a record list.
+    // falls through
     case 'table-detail':
       body = (
         <>

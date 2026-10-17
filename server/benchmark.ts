@@ -71,7 +71,7 @@ export function definitionBenchmarkDirective(reason: string): string {
 
 /** Rules for the per-screen UI blueprint. Applied on every run because the prototype renders from it. */
 export const UI_SPEC_RULES = `UI BLUEPRINT RULES (the prototype renders each screen directly from its "ui" object, so quality here is the quality of the UI):
-- Choose layoutType for the screen's job: dashboard (monitoring and KPIs), table-detail (managing records), form-wizard (multi-step tasks; make detailPanels the steps and their items the form fields), split-view (triage a queue on the left, act on the right), profile-360 (everything about one customer, vehicle or asset).
+- Choose layoutType for the screen's job: dashboard (monitoring and KPIs), table-detail (managing records), form-wizard (multi-step tasks; make detailPanels the steps and their items the form fields), split-view (triage a queue on the left, act on the right), profile-360 (everything about one record), transaction (create and work one business document: a list of documents with a New button, the document's header fields, line items with totals, and workflow actions such as submit, approve or convert into the next document).
 - kpis: 3 to 4 domain-specific metrics with realistic values, a trend of up, down or flat, and a short delta such as "+4.2% vs last week".
 - filters: 3 to 5 filter or segment chips a user of this screen would really use.
 - table: a title, 4 to 6 columns that fit the domain, and 5 to 7 realistic sample rows. Every row must have exactly as many cells as there are columns. Include a status-like column with values such as Active, Pending, Overdue, Completed or Blocked.

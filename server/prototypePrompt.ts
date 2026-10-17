@@ -70,9 +70,11 @@ TASK:
 1. Search the web for 3-4 real, well-regarded applications that do the same kind of work for the same kinds of users
    (product pages, UI galleries, design case studies, app store screenshots, help-centre pages with screenshots).
    Prefer the products people in this line of work actually use and praise for being easy to use.
-2. For each, write what its UI does well that this product should borrow: navigation, how a record's progress is
-   shown, queues, boards, approvals, mobile screens for outside parties, dashboards. Describe layout and interaction
-   patterns only. Never copy names, logos, wording or data.
+2. For each, write what its UI does well that this product should borrow. Look first at how users CREATE and WORK
+   business documents in it: the list with a New button, the document header, line items with calculated totals,
+   approval and workflow buttons, converting one document into the next, printing or sending it. Then navigation,
+   queues, boards, mobile screens for outside parties and dashboards. Describe layout and interaction patterns only.
+   Never copy names, logos, wording or data.
 3. Decide the visual direction for this product: the feel, colour palette (name the primary and accent colours as
    hex codes that suit these users), light or dark navigation, density.
 4. For every screen above, name the pattern to use and why it fits that screen's job.
@@ -103,6 +105,41 @@ Borrow layout and interaction patterns only. Never copy another product's name, 
 `;
 }
 
+/**
+ * The core of every prototype: the business documents users create and move through their workflow. The words come
+ * from the definition; this text names no kind of document.
+ */
+export const DOCUMENT_RULES = `BUSINESS DOCUMENTS ARE THE CORE OF THE PROTOTYPE:
+A business application is used to CREATE and WORK documents: a user starts one, fills in its header and its lines,
+saves it as a draft, sends it for a decision, someone approves or rejects it, and it turns into the next document.
+Dashboards and queues only support that work. A prototype without document screens is not acceptable.
+A. From the process, journeys, records and rules above, list every business document the users create or work
+   (whatever the BU calls it). Each document gets a screen with layoutType "transaction" and a "document" object.
+B. Use the existing screen whose job is to create or work that document. If a document has no such screen, ADD one:
+   screenId "scr-doc-" plus a short name, and give "name", "module" and "purpose" for it. Add at most 4 screens.
+   When the process has documents, at least half of all screens must be "transaction" screens.
+C. document.sections: 2-4 sections in the order a user fills them in (who it is for, what is asked or supplied,
+   dates and terms, internal notes), each with 3-10 fields. kind is one of text, long-text, number, money, percent,
+   date, select (give 3-8 options), lookup (choose an existing party, record or item: give 3-6 realistic options),
+   email, phone, checkbox. Mark required fields. The document number and system dates are readOnly. Give each field a
+   realistic "sample" so an existing document opens filled in.
+D. document.lines: when the document lists several items, units, services or tasks, a line grid with 3-7 columns
+   (an item column first, often a lookup-like select with options) and 2-4 realistic sample rows. Name the columns used
+   to calculate in quantityColumn, priceColumn, discountColumn (optional) and amountColumn. When money is involved,
+   add totals: the currency code that suits the BU, and discountPercent or taxPercent with taxLabel only when they
+   apply. Leave out lines when the document has a single subject.
+E. document.states: 3-7 statuses in order; the first is where a new document starts (a draft). document.actions:
+   the workflow buttons in the BU's verbs, each with "from" (statuses where it is offered), "to", the "role" that may
+   do it (a user above) for approvals, needsReason true for rejecting or putting on hold, and "creates" with the
+   next document's name when the action turns this document into another one.
+F. document.related: "from" = the document this one usually comes from, "next" = documents created from it, so the
+   user sees the chain. document.name = the document's name in the BU's words; numberPrefix = 2-4 letters.
+G. For a "transaction" screen, table = the list of existing documents of that kind: the document number first
+   (starting with numberPrefix), then the party it is for, a key date, the total when money is involved, status last;
+   6 rows whose values match the document's samples and statuses. primaryActions starts with "New " + the document
+   name. kpis: 0-3 small figures about this list (how many are open, value waiting for approval).
+`;
+
 export function buildPrototypePrompt(def: ProductDefinition, hasReference: boolean, research?: DesignResearch): string {
   const screens = screenList(def);
   const personas = def.personas.map((p) => `- ${p.name} (${p.role}): goals ${list(p.keyGoals, 3)}`).join("\n");
@@ -125,7 +162,7 @@ REFERENCE SCREEN (image attached): the BA uploaded a screen they like. Follow it
 definition. You design for the job each screen does in the process, for the people who use it.
 
 TASK: Design every screen of the prototype for "${def.productName}" (${def.businessUnit}). The BU must be able to
-look at it and say "yes, that is our application". Make it as attractive and polished as the best modern business
+look at it and say "yes, that is our application", and must be able to create and work its business documents in it. Make it as attractive and polished as the best modern business
 software: clear hierarchy, realistic content, nothing generic.
 Objective: ${def.objective}
 ${reference}${hasReference ? "" : researchSection(research)}
@@ -145,6 +182,7 @@ ${rules || "- (none listed)"}
 SCREENS TO DESIGN (design every one; keep each screenId exactly):
 ${screens}
 
+${DOCUMENT_RULES}
 HOW TO DESIGN EACH SCREEN:
 1. Start from the job. Ask: who opens this screen, at which stage of the process, and what must they decide or do
    here? Put what they need for that decision first.
@@ -157,6 +195,7 @@ HOW TO DESIGN EACH SCREEN:
    - "table-detail": find and manage many records
    - "form-wizard": capture a new record or complete a stage step by step
    - "profile-360": everything about one record: its stages so far, who did what, child records
+   - "transaction": create and work one kind of business document (see BUSINESS DOCUMENTS above)
 4. KPIs: 3-4 numbers this screen's user actually tracks, for its stage (e.g. how many are waiting at this stage and
    how long they wait). Realistic sample values and a short delta such as "+3 vs yesterday".
 5. Table: the record this screen works on. 4-7 columns taken from that record's fields (a reference number first,
@@ -168,7 +207,7 @@ HOW TO DESIGN EACH SCREEN:
    applies next. Use the first row's values so the panel matches the table.
 8. Primary actions: 2-4 verbs that move the record forward at this stage ("Approve extra cost", not "Submit").
    Respect the business rules (an action a rule forbids must not appear).
-9. entity: for a "form-wizard" screen, the exact name of the record it creates or completes from RECORDS above;
+9. entity: for a "form-wizard" or "transaction" screen, the exact name of the record it creates or completes from RECORDS above;
    otherwise "".
 10. inspiredBy: a short generic name for the pattern you used, e.g. "Work queue with side detail" or "Stage pipeline
     overview". Never name a company or product.
@@ -194,9 +233,10 @@ Return ONLY valid JSON in exactly this shape:
   "theme": {"primaryColor": "#hex", "accentColor": "#hex", "sidebarStyle": "dark" | "light" | "brand", "density": "comfortable" | "compact"},
   "screens": [
     {
-      "screenId": "the screen id above",
+      "screenId": "the screen id above, or scr-doc-... for an added screen",
+      "name": "Only for an added screen", "module": "Only for an added screen", "purpose": "Only for an added screen",
       "inspiredBy": "Generic pattern name",
-      "layoutType": "dashboard" | "table-detail" | "form-wizard" | "split-view" | "profile-360",
+      "layoutType": "dashboard" | "table-detail" | "form-wizard" | "split-view" | "profile-360" | "transaction",
       "ui": {
         "entity": "Record name or empty string",
         "kpis": [{"label": "KPI in the BU's words", "value": "42", "trend": "up" | "down" | "flat", "delta": "+3 vs yesterday"}],
@@ -208,7 +248,16 @@ Return ONLY valid JSON in exactly this shape:
         "device": "desktop" | "phone",
         "chart": {"title": "Chart title", "kind": "bar" | "line" | "donut", "labels": ["Label"], "values": [12]},
         "board": {"columns": [{"title": "Stage or status", "cards": [{"title": "R-1042", "subtitle": "Who or what", "tag": "High"}]}]},
-        "timeline": [{"when": "Today 09:40", "who": "Person or party", "what": "What happened"}]
+        "timeline": [{"when": "Today 09:40", "who": "Person or party", "what": "What happened"}],
+        "document": {
+          "name": "Document name", "numberPrefix": "AB",
+          "sections": [{"title": "Section", "fields": [{"label": "Field", "kind": "text" | "long-text" | "number" | "money" | "percent" | "date" | "select" | "lookup" | "email" | "phone" | "checkbox", "required": true, "options": ["Option"], "sample": "Sample value", "readOnly": false}]}],
+          "lines": {"title": "Lines", "columns": [{"label": "Item", "kind": "text" | "number" | "money" | "percent" | "select", "options": ["Option"]}], "rows": [["value"]], "quantityColumn": "Column label", "priceColumn": "Column label", "discountColumn": "Column label", "amountColumn": "Column label"},
+          "totals": {"currency": "ABC", "discountPercent": 0, "taxLabel": "Tax name", "taxPercent": 0},
+          "states": ["Draft", "Next status"],
+          "actions": [{"label": "Verb in the BU's words", "from": ["Draft"], "to": "Next status", "role": "User", "needsReason": false, "creates": "Next document"}],
+          "related": {"from": "Previous document", "next": ["Next document"]}
+        }
       }
     }
   ]

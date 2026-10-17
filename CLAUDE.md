@@ -232,7 +232,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -270,10 +270,35 @@ data. The prompt names no company, product or industry; `inspiredBy` is a generi
 
 Each screen carries a `ui` blueprint (`ScreenUISpec`: kpis, filters, sample table, detailPanels,
 primaryActions, benchmarkNote) generated on every run, not only in benchmark mode. `ScreenCanvas.tsx`
-renders it per `layoutType` (dashboard, table-detail, split-view, form-wizard, profile-360) with row
+renders it per `layoutType` (dashboard, table-detail, split-view, form-wizard, profile-360, transaction) with row
 selection, filters, search, read-only role locking and a badge on benchmark-derived screens. Sample
 values are illustrative. Screens without `ui` (older definitions, the demo pack) fall back to the
 hand-built canvases in `PrototypeScreen.tsx`. Table rows are forced to the column count on the server.
+
+### Business documents (transaction screens)
+
+The core of every prototype: the documents users create and move through the process (whatever the BU calls them).
+- **Model** (`src/types.ts`): `ui.document: TransactionDocument` on a `transaction` screen: `name`, `numberPrefix`,
+  header `sections` of typed `fields` (text, long-text, number, money, percent, date, select, lookup, email, phone,
+  checkbox; `required`, `readOnly`, `sample`), optional `lines` (columns + quantity/price/discount/amount column
+  names), `totals` (currency, header discount %, tax label/%), `states`, `actions` (`from`, `to`, `role`,
+  `needsReason`, `creates` = convert to the next document) and `related` (`from`, `next`).
+- **Maths and workflow** (`src/services/documentMath.ts`, browser and server): line amount = qty x price less
+  discount %, totals, money format, `actionsFor`, `missingRequired`.
+- **AI**: `DOCUMENT_RULES` (`server/prototypePrompt.ts`) and the BRD's "BUSINESS DOCUMENTS FIRST" rule: list the
+  documents per process, one transaction screen each; the AI may add up to 4 `scr-doc-…` screens (name, module,
+  purpose), added with nav and module by `addDocumentScreen`. `cleanDocument` (`server/documents.ts`) repairs the
+  document (kind synonyms, a select needs 2+ options, unique labels, rows fitted to columns, amount column added,
+  real states only, step actions when none).
+- **Offline / guarantee**: `withDocuments` (called by `ensureScreenUI` and after the AI BRD) builds a document from the
+  screen's record (`documentFromEntity`: business fields only, never system/status/id fields; lines from the brief's
+  parts; states and actions from the lifecycle) and turns the first register screen into a transaction screen when
+  there is none (its KPI tiles are dropped). The first action is "New <document>".
+- **UI** (`TransactionScreen.tsx`): document list with status chips and search -> New / open -> header fields, line
+  grid with Add line and live totals, workflow buttons (reason when needed; required fields checked before leaving
+  the first status; fields lock after it), status stepper, document chain, history. Transaction screens come first.
+- `npm run check:transactions` (maths, cleaning, offline pipeline, AI stub, neutrality, the real screen in jsdom);
+  `check:live` reports each product's business documents.
 
 ## Conventions
 - Output shapes are zod schemas in `server/aiSchemas.ts`: enforced by Claude structured outputs
