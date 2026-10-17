@@ -70,14 +70,17 @@ export const ROUTING_MATRIX: Record<RouteClass, RouteRule> = {
   "benchmark-analytics": {
     // MAX_TOKENS: spec 4,096. The analysis JSON (about 50 items with descriptions and evidence) is
     // estimated to need more than that, so it is raised. Estimate, not measured: see CLAUDE.md.
-    gemini: { model: GEMINI_ARGON, temperature: 0.2, maxTokens: 16_384 },
+    // Measured with Argon (live check, Oct 2026): 10-11k tokens used; headroom raised to 24,576.
+    gemini: { model: GEMINI_ARGON, temperature: 0.2, maxTokens: 24_576 },
     claude: { model: CLAUDE_SONNET, maxTokens: 16_384, effort: "medium" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.2, maxTokens: 4096 },
   },
   "ui-prototyping": {
     // MAX_TOKENS: spec 8,192. A full definition with per-screen UI blueprints is estimated at
     // roughly 10k-25k tokens, so 8,192 would cut the JSON off. Raised.
-    gemini: { model: GEMINI_ARGON, temperature: 0.4, maxTokens: 32_768 },
+    // Measured with Argon (live check, Oct 2026): the BRD used 31,290 and in another run hit the 32,768 ceiling (Pro
+    // wrote the same BRD in 15-17k); the prototype used 9-15k. A bigger ceiling costs nothing unless it is used.
+    gemini: { model: GEMINI_ARGON, temperature: 0.4, maxTokens: 65_536 },
     claude: { model: CLAUDE_SONNET, maxTokens: 32_768, effort: "high" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.4, maxTokens: 8192 },
   },

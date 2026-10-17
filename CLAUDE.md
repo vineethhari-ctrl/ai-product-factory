@@ -37,9 +37,9 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 
 | Task (button) | Endpoint | First | Failover | Why | Max tokens (applied) |
 |---|---|---|---|---|---|
-| `analyze-material` (Understand Business) | `/api/analyze-material` | gemini-4-argon (temp 0.2) | claude-sonnet-5-5 (effort medium) | Gemini reads large mixed material well | 16,384 |
-| `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Most quality-critical; long structured reasoning | 32,768 |
-| `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 32,768 |
+| `analyze-material` (Understand Business) | `/api/analyze-material` | gemini-4-argon (temp 0.2) | claude-sonnet-5-5 (effort medium) | Gemini reads large mixed material well | 24,576 Gemini / 16,384 Claude |
+| `generate-definition` (Generate BRD) | `/api/generate-definition` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Most quality-critical; long structured reasoning | 65,536 Gemini / 32,768 Claude |
+| `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 65,536 Gemini / 32,768 Claude |
 | `analyze-change` (Change Impact) | `/api/analyze-change` | claude-haiku-4-5 (temp 0.5) | gemini-3.6-flash (temp 0.5) | Small and frequent: cheapest model with guaranteed valid output | 2,048 |
 | `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-4-argon + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
 
@@ -56,7 +56,7 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | Max tokens 4,096 (rule 1) | 16,384 | Estimated too small for the analysis JSON; would be cut off |
 | Max tokens 8,192 (rule 2) | 32,768 | Estimated too small for a definition with per-screen UI blueprints |
 
-The max-token changes are estimates, not measurements (the Gemini key was quota-limited when this
+Gemini ceilings were re-set from the first live check with Argon (BRD 31k of 32k used, once cut off; analysis 10-11k; prototype 9-15k; research 2-3k; the same BRD took 15-17k on Pro). Other max-token changes are estimates, not measurements (the Gemini key was quota-limited when this
 was written). Logs print `output N of ceiling` per call and warn when a response hits the ceiling, so
 the numbers can be tightened toward the spec once real usage is visible.
 
