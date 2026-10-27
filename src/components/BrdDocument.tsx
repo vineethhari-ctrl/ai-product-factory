@@ -49,6 +49,8 @@ const Table: React.FC<{ head: string[]; children: React.ReactNode }> = ({ head, 
 export const BrdBody: React.FC<{ definition: ProductDefinition }> = ({ definition }) => {
   const d = definition;
   const brief = d.blueprintBrief;
+  const problems = d.problemStatement?.length ? d.problemStatement : brief?.painPoints ?? [];
+  const kpis = d.successMetrics?.length ? d.successMetrics : brief?.kpis ?? [];
   const stages = brief?.stages ?? [];
   const owners = brief?.stageOwners ?? [];
   const accessOf = (role: string) => d.permissions.find((p) => p.role === role)?.accessLevel ?? '';
@@ -67,20 +69,20 @@ export const BrdBody: React.FC<{ definition: ProductDefinition }> = ({ definitio
         {brief?.goal && <p className="text-[11px] text-slate-500 italic">BU goal: {brief.goal}</p>}
       </div>
 
-      {(brief?.painPoints?.length || brief?.kpis?.length) ? (
+      {(problems.length || kpis.length) ? (
         <div className="space-y-3">
-          <Heading n={next()} title="Problem Statement & Success Measures" sub="Stated by the BU in the brief." />
+          <Heading n={next()} title="Problem Statement & Success Measures" sub="The problems and measures the business named. Baselines and targets are set by the BU." />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            {brief?.painPoints?.length ? (
+            {problems.length ? (
               <div className="p-4 bg-rose-50/50 border border-rose-100 rounded-xl space-y-2">
                 <div className="font-bold text-rose-800 uppercase text-[10px] tracking-wider">Problems today</div>
-                <ol className="space-y-1.5 list-decimal list-inside text-slate-700">{brief.painPoints.map((p, i) => <li key={i}>{p}</li>)}</ol>
+                <ol className="space-y-1.5 list-decimal list-inside text-slate-700">{problems.map((p, i) => <li key={i}>{p}</li>)}</ol>
               </div>
             ) : null}
-            {brief?.kpis?.length ? (
+            {kpis.length ? (
               <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-2">
                 <div className="font-bold text-emerald-800 uppercase text-[10px] tracking-wider">Success measures (KPIs)</div>
-                <ol className="space-y-1.5 list-decimal list-inside text-slate-700">{brief.kpis.map((k, i) => <li key={i}>{k} <span className="text-slate-400">· baseline and target to be set by the BU</span></li>)}</ol>
+                <ol className="space-y-1.5 list-decimal list-inside text-slate-700">{kpis.map((k, i) => <li key={i}>{k} <span className="text-slate-400">· baseline and target to be set by the BU</span></li>)}</ol>
               </div>
             ) : null}
           </div>

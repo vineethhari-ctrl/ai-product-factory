@@ -1,5 +1,6 @@
 import { 
-  BusinessUnderstanding, 
+  BlueprintBrief,
+  BusinessUnderstanding,
   ProductDefinition, 
   UploadedMaterial, 
   ChangeImpactAnalysis, 
@@ -36,6 +37,7 @@ import { ensureScreenUI, lower } from "./blueprint";
 import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
 import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
+import { hasBriefStructure, parseBrief } from "./briefParser";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
@@ -215,6 +217,9 @@ Return ONLY a valid JSON object matching this schema:
   ]
 }`;
 
+  // What the BU wrote in its own words: process, owners, rules, KPIs. Carried to the BRD and the prototype design.
+  const brief = parseBrief([description, ...materials.map((m) => m.contentSnippet ?? "")].filter(Boolean).join("\n"), productName);
+
   try {
     const parsed = await callLLMJSON("analyze-material", prompt, BusinessUnderstandingSchema);
     if (parsed) {
@@ -223,6 +228,7 @@ Return ONLY a valid JSON object matching this schema:
       const result: BusinessUnderstanding = {
         ...understanding,
         extractedAt,
+        ...(hasBriefStructure(brief) ? { blueprintBrief: brief } : {}),
         // Identity and status are the server's, not the model's.
         clarifications: (clarifications ?? []).map((c, i) => ({ ...c, id: `clr-ai-${c.audience.toLowerCase()}-${i + 1}`, askedAt: extractedAt, status: "OPEN" as const })),
       };
@@ -428,6 +434,15 @@ export async function generateProductDefinition(
   return definitionWithAudiences(await generateDefinitionUnlabelled(understanding, productName, businessUnit, version));
 }
 
+/** Problems, KPIs and the parsed brief from the BU's own words, used when the model left them out. */
+function briefFacts(def: { problemStatement?: string[]; successMetrics?: string[] }, brief?: BlueprintBrief): Partial<ProductDefinition> {
+  return {
+    ...(brief ? { blueprintBrief: brief } : {}),
+    ...(def.problemStatement?.length ? {} : brief?.painPoints?.length ? { problemStatement: brief.painPoints } : {}),
+    ...(def.successMetrics?.length ? {} : brief?.kpis?.length ? { successMetrics: brief.kpis } : {}),
+  };
+}
+
 async function generateDefinitionUnlabelled(
   understanding: BusinessUnderstanding,
   productName: string,
@@ -452,6 +467,7 @@ ${benchmarkBlock}
 ${UI_SPEC_RULES}
 ${FIELD_INFERENCE_RULES}
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
+- PROBLEM & SUCCESS: problemStatement lists every pain point the BU stated; successMetrics lists every KPI the BU stated plus any the process clearly needs. Never invent baselines or targets; the BU sets them.
 - BUSINESS DOCUMENTS FIRST: list every business document the users create and work in this process (whatever the BU calls it: something a user starts, fills in, sends for a decision and that turns into the next document). Each one MUST be a data entity with its own business fields (who it is for, what is asked or supplied, dates, amounts, terms) and, when it lists several items, a separate line-item entity. Each one MUST have a screen with layoutType "transaction" that creates and works it (set its ui.entity to the document's entity name). When the process has documents, at least half of the screens are "transaction" screens; dashboards and queues only support them.
 - DATA ENTITIES: For EVERY entity, generate 8-15 fields with correct types (string, number, boolean, timestamp, enum(...), text, json, uuid), accurate required/optional flags, and descriptive notes. ALWAYS include: id (uuid, required), created_at (timestamp), updated_at (timestamp), created_by (string), status (enum), plus all domain-specific fields a real production database would need. NEVER leave an entity with fewer than 6 fields.
 - VALIDATIONS: Generate 8-15 input validation rules covering: email format, phone format, required field enforcement, min/max length, numeric range, date range constraints, enum value constraints, unique constraints, regex patterns, and cross-field dependencies. Cover EVERY user-facing form field.
@@ -471,6 +487,8 @@ Return ONLY a valid JSON object matching this schema:
   "productName": "${productName}",
   "businessUnit": "${businessUnit}",
   "objective": "Clear executive problem statement and goal",
+  "problemStatement": ["What goes wrong today, one short item each, in the BU's own words"],
+  "successMetrics": ["One KPI per item, named the way the BU names it; no invented targets"],
   "personas": [
     {
       "id": "p-1",
@@ -645,6 +663,7 @@ Return ONLY a valid JSON object matching this schema:
         version,
         productName,
         businessUnit,
+        ...briefFacts(rest, understanding.blueprintBrief),
         evidenceMapping: Object.fromEntries(evidenceMapping.map((e) => [e.topic, e.sources])),
         changeHistory: [],
         isApproved: false,
@@ -1083,6 +1102,7 @@ function withDefinitionBlueprint(
     permissions: personas.map((p) => ({ role: p.name, accessLevel: accessFor(p.role), constraints: p.permissions.join("; ") })),
     ...(usesBlueprint ? { notifications: bp.notifications, validations: bp.validations } : {}),
     blueprintBrief: blueprint.brief,
+    ...briefFacts(def, blueprint.brief),
   };
   result = ensureScreenUI(result, blueprint.subject);
   if (!thinness.thin) return result;

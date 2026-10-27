@@ -352,3 +352,8 @@ export function parseBrief(text: string, productName = ""): BlueprintBrief {
   const { owners: _owners, parties: _parties, ...rest } = detail;
   return { subject, stages, parties, ...(stageOwners ? { stageOwners } : {}), ...(parts ? { parts } : {}), ...rest };
 }
+
+/** True when the brief says something the later steps can use (a process, goal, rules, KPIs or problems). */
+export function hasBriefStructure(b: BlueprintBrief): boolean {
+  return b.stages.length >= 3 || !!b.goal || !!b.rules?.length || !!b.kpis?.length || !!b.painPoints?.length || !!b.integrations?.length;
+}

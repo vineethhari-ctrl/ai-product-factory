@@ -144,6 +144,19 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
 - `npm run check:thin` runs a name-only pipeline for three unlike products and a brief with a process chain, and
   checks parsing, screens, UI, lifecycle order, form validation, tagging, determinism and domain neutrality.
 
+## The BU's own words reach the BRD on every path (`server/briefParser.ts`, `src/components/BrdDocument.tsx`)
+
+`parseBrief` also reads labelled paragraphs (`Goal:`, `Journey:`, `Who does what:`, `Stakeholders / parties:`, `Pain points:`,
+`Rules:`, `KPIs:`, `Integrations:`) into `goal`, `painPoints`, `rules` (split on `;`, one item each), `kpis`, `integrations`,
+`parties`, per-party `partyDuties` and `stageOwners`. These are the BU's words, so rules and integrations are CONFIRMED.
+- Offline: a structured brief replaces the keyword extractor's guesses in every section (`withLocalBlueprint`).
+- AI path: the parsed brief is attached to the understanding and the definition (`blueprintBrief`), so stage owners reach the
+  prototype prompt; `problemStatement` / `successMetrics` are asked of the model and filled from the brief when it omits them
+  (`briefFacts`). `npm run check:brief` covers it with a model stand-in.
+- The BRD tab renders the whole document (`BrdBody`): problem statement and KPIs, process and lifecycle with owners, personas,
+  journeys, requirements per screen, rules, data dictionary with field validation, validations, notifications, integrations,
+  standard non-functional requirements, assumptions and open questions per team.
+
 ## AI usage control (`server/usage.ts`)
 
 Who spent what, per BA and project, with limits, a monthly budget and a response cache. Settings in `.env.example`.

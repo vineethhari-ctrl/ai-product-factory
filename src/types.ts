@@ -432,6 +432,10 @@ export interface ProductDefinition {
   productName: string;
   businessUnit: string;
   objective: string;
+  /** What goes wrong today, one item each (the BU's words where stated). */
+  problemStatement?: string[];
+  /** KPIs: how success is measured. Baselines and targets are set by the BU. */
+  successMetrics?: string[];
   personas: PersonaDefinition[];
   modules: ModuleDefinition[];
   screens: ScreenDefinition[];

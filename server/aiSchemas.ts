@@ -128,6 +128,8 @@ const ScreenUISchema = z.object({
 
 export const ProductDefinitionSchema = z.object({
   objective: z.string(),
+  problemStatement: z.array(z.string()).optional(),
+  successMetrics: z.array(z.string()).optional(),
   personas: z.array(
     z.object({
       id: z.string(),

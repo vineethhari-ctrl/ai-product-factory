@@ -21,7 +21,8 @@
     "check:gemini": "tsx scripts/gemini.probe.ts",
     "check:transactions": "tsx scripts/transactions.check.tsx",
     "check:questions": "tsx scripts/questions.check.ts",
-    "check:prototype": "tsx scripts/prototype.check.ts"
+    "check:prototype": "tsx scripts/prototype.check.ts",
+    "check:brief": "tsx scripts/brief-facts.check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
