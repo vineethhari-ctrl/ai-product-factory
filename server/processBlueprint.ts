@@ -204,7 +204,8 @@ function processPersonas(subject: string, operator: string, brief: BlueprintBrie
   const s = lower(subject);
   const parties = [operator, ...brief.parties.filter((p) => p !== operator)].slice(0, 10);
   const partyPersonas = parties.map((p, i) => {
-    const duties = brief.partyDuties?.[p] ?? [];
+    const owned = brief.stages.filter((_, k) => brief.stageOwners?.[k] === p);
+    const duties = brief.partyDuties?.[p] ?? (owned.length ? [`Own the ${owned.join(", ")} stage${owned.length > 1 ? "s" : ""}`] : []);
     const approves = duties.some((d) => /\bapprov/i.test(d));
     return inferred({
       id: `p-bp-party-${i + 1}`,

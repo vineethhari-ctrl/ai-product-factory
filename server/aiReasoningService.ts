@@ -349,7 +349,7 @@ function withLocalBlueprint(
     : `built around the ${lower(subject)} lifecycle: capture, triage, decide, close and oversee`;
   const b = blueprint.brief;
   const briefSummary = [
-    b.goal,
+    b.goal?.replace(/[.!?]*$/, "."),
     `The BU describes a ${stages.length}-stage ${lower(subject)} lifecycle (${stages.join(" → ")})${parties.length ? `, worked by ${parties.join(", ")}` : ""}.`,
     b.painPoints?.length ? `Today: ${b.painPoints.map((x) => lower(x)).join("; ")}.` : "",
     b.kpis?.length ? `Success is measured by ${b.kpis.map((x) => lower(x)).join(", ")}.` : "",
