@@ -46,6 +46,7 @@ const PRODUCT_SUFFIXES = new Set([
 
 function titleWord(w: string): string {
   if (w.length <= 4 && w === w.toUpperCase() && /[A-Z]/.test(w)) return w; // keep acronyms
+  if (/[a-z][A-Z]/.test(w)) return w; // keep a brand written in camel case
   return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
 }
 
@@ -115,7 +116,7 @@ export function deriveOperatorRole(productName: string, description = ""): strin
 }
 
 /** Lower-case a phrase for use mid-sentence, keeping acronyms ("ABC Request Log" -> "ABC request log"). */
-export const lower = (t: string) => t.split(/\s+/).map((w) => (w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w) ? w : w.toLowerCase())).join(" ");
+export const lower = (t: string) => t.split(/\s+/).map((w) => ((w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w)) || /[a-z][A-Z]/.test(w) ? w : w.toLowerCase())).join(" ");
 
 export const DEFAULT_OPERATOR = "Operations Specialist";
 

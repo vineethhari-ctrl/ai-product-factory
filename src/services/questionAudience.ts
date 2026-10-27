@@ -84,7 +84,7 @@ interface QuestionContext {
   askedAt: string;
 }
 
-const lower = (s: string) => s.split(/\s+/).map((w) => (w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w) ? w : w.toLowerCase())).join(" ");
+const lower = (s: string) => s.split(/\s+/).map((w) => ((w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w)) || /[a-z][A-Z]/.test(w) ? w : w.toLowerCase())).join(" ");
 
 /** Plain business questions every product needs answered; built only from the BU's own nouns. */
 /** "a request", "an order". */
