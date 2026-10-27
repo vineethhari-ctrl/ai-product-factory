@@ -257,7 +257,7 @@ function splitTop(s: string, sep: RegExp): string[] {
 }
 
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const ROLE_WORD = /(?:ers|ors|ians|ists|ants|ents|ives)$/;
+const ROLE_WORD = /(?:ers|ors|ians|ists|ysts|ants|ents|ives)$/;
 const PREPOSITIONS = new Set(["to", "for", "from", "in", "on", "at", "with", "by", "of", "above", "below", "before", "after", "within", "into", "via"]);
 
 /** The role at the start of a clause: words up to the first plural role noun, before any preposition. */
@@ -342,7 +342,7 @@ function extractDetails(text: string, stages: string[]): Partial<BlueprintBrief>
 const sentencesOf = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x.length > 8);
 const stripEnd = (x: string) => x.replace(/[.!?]+$/, "").trim();
 const RULE_CUE = /\b(must(?: not)?|cannot|can't|shall|has to|have to|mandatory|only if|not allowed|should not|needs? (?:the|a|an|to|approval)|requires?|(?:more|less) than \d|above \d|below \d|within \d+ (?:days?|hours?|working))/i;
-const PAIN_CUE = /\b(problems?|issues?|delays?|manual(?:ly)?|chas(?:e|ed|ing)|keep (?:calling|asking)|confus\w+|complain\w*|errors?|lost|late|difficult\w*|struggl\w+|not visible|no visibility|nobody|twice|entered again|again|slow|takes? days|only at|only when|rework)\b/i;
+const PAIN_CUE = /\b(problems?|issues?|delays?|manual(?:ly)?|chas(?:e|ed|ing)|keep (?:calling|asking)|confus\w+|complain\w*|errors?|lost|late|difficult\w*|struggl\w+|not visible|no visibility|nobody|twice|entered again|again|slow|takes? days|only at|only when|rework|altered|fraud|depends? on (?:one|a single)|costs? \d)\b/i;
 const GOAL_CUE = /\b(we want|we need|aim|goal|objective|purpose|so that|vision|looking for)\b/i;
 const KPI_CUE = /\b(kpis?|metrics?|measure[sd]?|track(?:ed|ing)?|monitor(?:ed|ing)?)\b/i;
 const INTEG_CUE = /\b(integrat\w+|talk to|connect(?:s|ed)? (?:to|with)|interface[sd]? with|sync(?:s|ed)? with|feeds? (?:from|into)|send(?:s)? (?:\w+ ){0,3}(?:updates|messages|alerts))\b/i;
@@ -350,10 +350,10 @@ const INTEG_CUE = /\b(integrat\w+|talk to|connect(?:s|ed)? (?:to|with)|interface
 /** Roles named in prose with an article: "the team lead", "a desk clerk", "by the approver". */
 function extractSingularRoles(text: string): string[] {
   const found: string[] = [];
-  for (const m of text.matchAll(/\b(?:the|a|an|by|with|from|to)\s+((?:[a-z]+\s+){0,2}[a-z]+(?:er|or|ian|ist|ant|ent|ive))\b/gi)) {
+  for (const m of text.matchAll(/\b(?:the|a|an|by|with|from|to)\s+((?:[a-z]+\s+){0,2}[a-z]+(?:er|or|ian|ist|yst|ant|ent|ive))\b/gi)) {
     const words = m[1].toLowerCase().split(/\s+/).filter((w) => !LEAD_FILLER.has(w));
     const last = words[words.length - 1];
-    if (!last || /ment$/.test(last) || ["same", "other", "this", "that", "each", "any", "new", "every", "one"].includes(words[0])) continue;
+    if (!last || last.length < 5 || /ment$/.test(last) || ["same", "other", "this", "that", "each", "any", "new", "every", "one"].includes(words[0])) continue;
     if ((NOT_ROLE_SINGULAR.has(last) && words.length === 1 && last !== "customer" && last !== "partner") || NOT_ROLES.has(last + "s")) continue;
     if (words.some((w) => STOP.has(w) && w !== "sales")) continue;
     const label = titlePhrase(words.join(" "));
@@ -396,8 +396,8 @@ const LEAD_FILLER = new Set(["first", "then", "later", "finally", "next", "also"
 const ADVERBS = new Set(["first", "then", "later", "finally", "next", "also", "just", "only", "and", "after", "that"]);
 const PRONOUNS = new Set(["it", "them", "this", "that", "they", "him", "her", "one"]);
 const VERB_FIX: Record<string, string> = { does: "perform", do: "perform", has: "have", is: "be" };
-const NOT_ROLE_SINGULAR = new Set(["other", "number", "order", "paper", "letter", "user", "owner", "cover", "power", "tower", "corner", "border", "answer", "offer", "transfer", "register", "monitor", "sensor", "meter", "member", "header", "folder", "layer", "filter", "factor", "sector", "vector", "error", "chapter", "barrier", "marker", "master", "water", "center", "centre", "matter", "partner", "customer"]);
-const ROLE_ANY = /(?:ers?|ors?|ians?|ists?|ants?|ents?|ives?)$/;
+const NOT_ROLE_SINGULAR = new Set(["tamper", "ledger", "other", "number", "order", "paper", "letter", "user", "owner", "cover", "power", "tower", "corner", "border", "answer", "offer", "transfer", "register", "monitor", "sensor", "meter", "member", "header", "folder", "layer", "filter", "factor", "sector", "vector", "error", "chapter", "barrier", "marker", "master", "water", "center", "centre", "matter", "partner", "customer"]);
+const ROLE_ANY = /(?:ers?|ors?|ians?|ists?|ysts?|ants?|ents?|ives?)$/;
 
 function baseVerb(v: string): string {
   const w = v.toLowerCase();
@@ -433,7 +433,7 @@ function extractChain(text: string): { stages: string[]; owners: string[] } {
       if (!verb || !/^[A-Za-z]{3,}$/.test(verb)) continue;
       let obj: string[] = [];
       for (const w of words.slice(1)) {
-        if (PREPOSITIONS.has(w.toLowerCase()) || /^(?:when|once|so|because|which|who)$/i.test(w)) break;
+        if (PREPOSITIONS.has(w.toLowerCase()) || /^(?:when|once|so|because|which|who|or|and)$/i.test(w)) break;
         obj.push(w);
       }
       while (obj.length && LEAD_FILLER.has(obj[0].toLowerCase())) obj = obj.slice(1);
