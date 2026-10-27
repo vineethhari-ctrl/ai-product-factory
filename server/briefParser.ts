@@ -170,6 +170,7 @@ export function extractParts(text: string): BlueprintBrief["parts"] {
   for (const m of text.matchAll(/\b((?:[A-Za-z]{3,}\s+)?[A-Za-z]{4,})\s+(?:such as|e\.g\.|like)\s+([^.;:()]+)/gi)) {
     const noun = m[1].split(/\s+/).filter((w, i, a) => i === a.length - 1 || !STOP.has(w.toLowerCase())).join(" ");
     const items = m[2]
+      .split(/,?\s+in\s+/i)[0]
       .split(/,|\band\b|\bor\b|\//)
       .map((s) => s.trim().replace(/\betc\.?$/i, "").trim())
       .filter((s) => s && s.split(/\s+/).length <= 3 && !/^etc\.?$/i.test(s));
@@ -311,11 +312,14 @@ function extractDuties(text: string, stages: string[]): { duties: Record<string,
 /** Everything the BU wrote under labels, without any domain vocabulary. */
 function extractDetails(text: string, stages: string[]): Partial<BlueprintBrief> & { owners?: string[] } {
   const sec = extractSections(text);
+  const prose = extractProse(text);
   const out: Partial<BlueprintBrief> & { owners?: string[] } = {};
   if (sec.goal) out.goal = sentence(sec.goal.replace(/\s+/g, " ").trim());
+  else if (prose.goal) out.goal = prose.goal;
+  const items = (s: string | undefined) => (s ? (s.includes(";") ? splitTop(s, /;/) : sentencesOf(s).map(stripEnd)).map(sentence) : []);
   const list = (s: string | undefined, sep: RegExp) => (s ? splitTop(s, sep).map(sentence) : []);
-  const pain = list(sec.pain, /;/), rules = list(sec.rules, /;/);
-  const kpis = list(sec.kpis, /,/), integrations = list(sec.integrations, /,/);
+  const pain = sec.pain ? items(sec.pain) : prose.painPoints ?? [], rules = sec.rules ? items(sec.rules) : prose.rules ?? [];
+  const kpis = sec.kpis ? list(sec.kpis, /,/) : prose.kpis ?? [], integrations = sec.integrations ? list(sec.integrations, /,/) : prose.integrations ?? [];
   if (pain.length) out.painPoints = pain.slice(0, 10);
   if (rules.length) out.rules = rules.slice(0, 20);
   if (kpis.length) out.kpis = kpis.slice(0, 10);
@@ -331,10 +335,139 @@ function extractDetails(text: string, stages: string[]): Partial<BlueprintBrief>
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Ordinary prose: a BU email or meeting notes with no labels and no arrow chain.
+// ---------------------------------------------------------------------------------------------
+
+const sentencesOf = (text: string) => text.split(/(?<=[.!?])\s+|\n+/).map((x) => x.replace(/\s+/g, " ").trim()).filter((x) => x.length > 8);
+const stripEnd = (x: string) => x.replace(/[.!?]+$/, "").trim();
+const RULE_CUE = /\b(must(?: not)?|cannot|can't|shall|has to|have to|mandatory|only if|not allowed|should not|needs? (?:the|a|an|to|approval)|requires?|(?:more|less) than \d|above \d|below \d|within \d+ (?:days?|hours?|working))/i;
+const PAIN_CUE = /\b(problems?|issues?|delays?|manual(?:ly)?|chas(?:e|ed|ing)|keep (?:calling|asking)|confus\w+|complain\w*|errors?|lost|late|difficult\w*|struggl\w+|not visible|no visibility|nobody|twice|entered again|again|slow|takes? days|only at|only when|rework)\b/i;
+const GOAL_CUE = /\b(we want|we need|aim|goal|objective|purpose|so that|vision|looking for)\b/i;
+const KPI_CUE = /\b(kpis?|metrics?|measure[sd]?|track(?:ed|ing)?|monitor(?:ed|ing)?)\b/i;
+const INTEG_CUE = /\b(integrat\w+|talk to|connect(?:s|ed)? (?:to|with)|interface[sd]? with|sync(?:s|ed)? with|feeds? (?:from|into)|send(?:s)? (?:\w+ ){0,3}(?:updates|messages|alerts))\b/i;
+
+/** Roles named in prose with an article: "the team lead", "a desk clerk", "by the approver". */
+function extractSingularRoles(text: string): string[] {
+  const found: string[] = [];
+  for (const m of text.matchAll(/\b(?:the|a|an|by|with|from|to)\s+((?:[a-z]+\s+){0,2}[a-z]+(?:er|or|ian|ist|ant|ent|ive))\b/gi)) {
+    const words = m[1].toLowerCase().split(/\s+/).filter((w) => !LEAD_FILLER.has(w));
+    const last = words[words.length - 1];
+    if (!last || /ment$/.test(last) || ["same", "other", "this", "that", "each", "any", "new", "every", "one"].includes(words[0])) continue;
+    if ((NOT_ROLE_SINGULAR.has(last) && words.length === 1 && last !== "customer" && last !== "partner") || NOT_ROLES.has(last + "s")) continue;
+    if (words.some((w) => STOP.has(w) && w !== "sales")) continue;
+    const label = titlePhrase(words.join(" "));
+    if (!found.some((f) => f.toLowerCase() === label.toLowerCase())) found.push(label);
+  }
+  return found;
+}
+
+/** "a, b, c and d" -> items, without leading filler words. */
+function listItems(fragment: string): string[] {
+  return splitTop(fragment.replace(/,?\s+and\s+(?=[^,]+$)/i, ", "), /,/)
+    .map((x) => x.replace(/^(?:and|or|the|a|an|our)\s+/i, "").trim())
+    .filter((x) => x && x.split(/\s+/).length <= 8);
+}
+
+function extractProse(text: string): Partial<BlueprintBrief> {
+  const out: Partial<BlueprintBrief> = {};
+  const sents = sentencesOf(text);
+  const goal = sents.find((x) => GOAL_CUE.test(x));
+  if (goal) out.goal = sentence(stripEnd(goal.replace(/^(?:hi|hello|dear)[^.]*?,\s*/i, "").replace(/^we (?:want|need)\s+/i, "")));
+  const rest = sents.filter((x) => x !== goal);
+  const rules = rest.filter((x) => RULE_CUE.test(x) && !INTEG_CUE.test(x) && x.length <= 220);
+  const pain = rest.filter((x) => !rules.includes(x) && PAIN_CUE.test(x) && x.length <= 220 && !KPI_CUE.test(x));
+  if (rules.length) out.rules = rules.map((x) => sentence(stripEnd(x))).slice(0, 20);
+  if (pain.length) out.painPoints = pain.map((x) => sentence(stripEnd(x))).slice(0, 10);
+  const kpiSent = rest.find((x) => KPI_CUE.test(x) && /,/.test(x));
+  if (kpiSent) {
+    const items = listItems(stripEnd(kpiSent).replace(/^.*?\b(?:kpis?|metrics?|measure[sd]?|track(?:ed|ing)?|monitor(?:ed|ing)?)\b\s*(?:are|is|such as|:|include)?\s*/i, ""));
+    if (items.length >= 2) out.kpis = items.map(sentence).slice(0, 10);
+  }
+  const intSent = rest.find((x) => INTEG_CUE.test(x) && /,/.test(x));
+  if (intSent) {
+    const items = listItems(stripEnd(intSent).replace(/^.*?\b(?:talk to|integrates? with|connects? (?:to|with)|interfaces? with|sync(?:s)? with)\b\s*/i, ""));
+    if (items.length >= 2) out.integrations = items.map(sentence).slice(0, 12);
+  }
+  return out;
+}
+
+const LEAD_FILLER = new Set(["first", "then", "later", "finally", "next", "also", "just", "only", "and", "after", "that", "a", "an", "the", "each", "every", "their", "its", "his", "her"]);
+const ADVERBS = new Set(["first", "then", "later", "finally", "next", "also", "just", "only", "and", "after", "that"]);
+const PRONOUNS = new Set(["it", "them", "this", "that", "they", "him", "her", "one"]);
+const VERB_FIX: Record<string, string> = { does: "perform", do: "perform", has: "have", is: "be" };
+const NOT_ROLE_SINGULAR = new Set(["other", "number", "order", "paper", "letter", "user", "owner", "cover", "power", "tower", "corner", "border", "answer", "offer", "transfer", "register", "monitor", "sensor", "meter", "member", "header", "folder", "layer", "filter", "factor", "sector", "vector", "error", "chapter", "barrier", "marker", "master", "water", "center", "centre", "matter", "partner", "customer"]);
+const ROLE_ANY = /(?:ers?|ors?|ians?|ists?|ants?|ents?|ives?)$/;
+
+function baseVerb(v: string): string {
+  const w = v.toLowerCase();
+  if (VERB_FIX[w]) return VERB_FIX[w];
+  if (/(?:ch|sh|x|ss)es$/.test(w)) return w.slice(0, -2);
+  if (/ies$/.test(w)) return w.slice(0, -3) + "y";
+  if (/[^s]s$/.test(w)) return w.slice(0, -1);
+  return w;
+}
+
+/** "A customer first makes an enquiry, then takes a test drive, then gets a quotation ..." -> stages and who does each. */
+function extractChain(text: string): { stages: string[]; owners: string[] } {
+  let best: { stages: string[]; owners: string[] } = { stages: [], owners: [] };
+  for (const sent of sentencesOf(text)) {
+    if ((sent.match(/\bthen\b/gi) ?? []).length < 3) continue;
+    const clauses = sent.split(/,?\s*(?:and\s+)?\b(?:then|later|finally|next|after that)\b\s*,?\s*/i).map((c) => c.trim()).filter(Boolean);
+    const stages: string[] = [], owners: string[] = [];
+    let owner = "";
+    for (const clause of clauses) {
+      let words = clause.split(/\s+/).map(cleanWord).filter(Boolean);
+      while (words.length && ADVERBS.has(words[0].toLowerCase())) words = words.slice(1);
+      // "the clerk checks ...": a one-word subject after "the/a", then a verb in -s, when no role-ending word is found.
+      const bare = /^(?:the|a|an)$/i.test(words[0] ?? "") && words.length > 3 && /^[A-Za-z]{3,}s$/.test(words[2]) && !/s$/i.test(words[1]) && !ROLE_ANY.test(words[1].toLowerCase()) ? words[1] : "";
+      if (bare) { owner = titlePhrase(bare); words = words.slice(2); }
+      while (words.length && LEAD_FILLER.has(words[0].toLowerCase())) words = words.slice(1);
+      // A subject: words up to a role noun, before the verb ("the desk clerk files a request").
+      const at = words.findIndex((w, i) => i < 4 && ROLE_ANY.test(w.toLowerCase()) && !NOT_ROLES.has(w.toLowerCase()) && i < words.length - 1 && !PREPOSITIONS.has(words[0].toLowerCase()));
+      let end = at;
+      while (end >= 0 && end + 1 < words.length - 1 && end + 1 < 3 && ROLE_ANY.test(words[end + 1].toLowerCase()) && !NOT_ROLES.has(words[end + 1].toLowerCase())) end++;
+      if (at >= 0 && at < 3) { owner = singularPhrase(titlePhrase(words.slice(0, end + 1).join(" "))); words = words.slice(end + 1); }
+      while (words.length && LEAD_FILLER.has(words[0].toLowerCase())) words = words.slice(1);
+      const verb = words[0];
+      if (!verb || !/^[A-Za-z]{3,}$/.test(verb)) continue;
+      let obj: string[] = [];
+      for (const w of words.slice(1)) {
+        if (PREPOSITIONS.has(w.toLowerCase()) || /^(?:when|once|so|because|which|who)$/i.test(w)) break;
+        obj.push(w);
+      }
+      while (obj.length && LEAD_FILLER.has(obj[0].toLowerCase())) obj = obj.slice(1);
+      if (obj.length && PRONOUNS.has(obj[0].toLowerCase())) obj = [];
+      const label = titlePhrase([baseVerb(verb), ...obj.slice(0, 3)].join(" "));
+      if (stages.some((x) => x.toLowerCase() === label.toLowerCase())) continue;
+      stages.push(label); owners.push(owner);
+    }
+    if (stages.length > best.stages.length) best = { stages, owners };
+  }
+  return best.stages.length >= 4 ? { stages: best.stages.slice(0, MAX_STAGES), owners: best.owners.slice(0, MAX_STAGES) } : { stages: [], owners: [] };
+}
+
+/** A numbered or bulleted list of 4+ short items is the process. */
+function extractListStages(text: string): string[] {
+  const items: string[] = [];
+  let run: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*(?:\d{1,2}[.)]|[-*•–])\s+(.{2,50}?)\s*$/);
+    if (m && m[1].split(/\s+/).length <= 5 && !/[.:;]$/.test(m[1])) run.push(titlePhrase(m[1])); else { if (run.length > items.length) items.splice(0, items.length, ...run); run = []; }
+  }
+  if (run.length > items.length) items.splice(0, items.length, ...run);
+  return items.length >= 4 ? [...new Set(items)].slice(0, MAX_STAGES) : [];
+}
+
 export function parseBrief(text: string, productName = ""): BlueprintBrief {
   let stages = extractStages(text);
-  let subject = extractSubject(text, stages, productName);
-  let stageOwners: string[] | undefined;
+  const fromArrow = stages.length > 0;
+  let chainOwners: string[] | undefined;
+  if (!stages.length) stages = extractListStages(text);
+  if (!stages.length) { const chain = extractChain(text); stages = chain.stages; if (chain.owners.filter(Boolean).length >= Math.ceil(stages.length / 2)) chainOwners = chain.owners; }
+  // Stage names built from prose ("Take Test Drive") share verbs, so only an arrow chain can name the subject.
+  let subject = fromArrow || !stages.length ? extractSubject(text, stages, productName) : extractSubject("", [], productName);
+  let stageOwners: string[] | undefined = chainOwners;
   // Without an arrow chain, three or more "who does what" clauses describe the process.
   const actions = stages.length ? [] : extractActions(text);
   if (actions.length >= 3) {
@@ -347,8 +480,12 @@ export function parseBrief(text: string, productName = ""): BlueprintBrief {
   if (!stageOwners && detail.owners) stageOwners = detail.owners;
   const partNames = new Set((parts?.types ?? []).map((t) => t.toLowerCase()));
   const named = detail.parties ?? [];
-  const parties = [...new Set([...(stageOwners ?? []).filter(Boolean), ...named, ...(named.length ? [] : extractParties(`${productName}. ${text}`))])]
-    .filter((p) => !partNames.has(p.toLowerCase())).slice(0, named.length ? 10 : 6);
+  const roles = named.length ? [] : stages.length >= 3 ? [...extractSingularRoles(text), ...extractParties(`${productName}. ${text}`)] : extractParties(`${productName}. ${text}`);
+  const seen = new Set<string>();
+  const stageWords = new Set(stages.flatMap((st) => st.toLowerCase().split(/\s+/)));
+  const parties = [...(stageOwners ?? []).filter(Boolean), ...named, ...roles]
+    .filter((p) => !partNames.has(p.toLowerCase()) && !stageWords.has(p.toLowerCase().split(" ").pop()!) && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase()))
+    .slice(0, named.length || stages.length >= 3 ? 12 : 6);
   const { owners: _owners, parties: _parties, ...rest } = detail;
   return { subject, stages, parties, ...(stageOwners ? { stageOwners } : {}), ...(parts ? { parts } : {}), ...rest };
 }

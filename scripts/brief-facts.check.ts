@@ -31,7 +31,27 @@ KPIs: intake-to-approval days, first-time-right rate, member satisfaction.
 
 Integrations: Member register, Payment gateway.`;
 
+const PROSE = `Hi team,
+
+We want one place to follow every loan request, because today nobody knows where a request is. An applicant first submits a form, then the clerk checks the documents, then the officer assesses the risk, then the manager approves the amount, then the cashier releases the money and later the auditor reviews the file.
+
+Problems today: applicants keep calling to ask for status. Approvals take days because they go over email. Missing documents are found only at the end.
+
+A request cannot be approved without a complete document set. Amounts above 10000 must be approved by the manager. Money must not be released before approval. Every file has to be reviewed within 30 days.
+
+We will track approval time, rework rate and applicant satisfaction.
+
+It must talk to the core ledger, the identity service, and send SMS updates to applicants.`;
+
 (async () => {
+  const { parseBrief } = await import("../server/briefParser");
+  const pb = parseBrief(PROSE, "Loan Desk");
+  t("prose: process steps come from a 'then' chain", pb.stages.length >= 6 && pb.stages[0] === "Submit Form" && pb.stages.includes("Release Money"), pb.stages.join(" > "));
+  t("prose: the party doing each step is found", pb.stageOwners?.[3] === "Manager" && pb.stageOwners?.[1] === "Clerk", JSON.stringify(pb.stageOwners));
+  t("prose: rules, problems, KPIs, systems and goal are separated", (pb.rules?.length ?? 0) >= 4 && (pb.painPoints?.length ?? 0) >= 3 && (pb.kpis?.length ?? 0) >= 3 && (pb.integrations?.length ?? 0) >= 2 && !!pb.goal, JSON.stringify({ r: pb.rules?.length, p: pb.painPoints, k: pb.kpis, i: pb.integrations, g: pb.goal }));
+  t("prose: no rule is really a system list", !(pb.rules ?? []).some((r) => /core ledger/i.test(r)));
+  const lst = parseBrief("Steps:\n1. Receive\n2. Inspect\n3. Approve\n4. Ship\n", "Parcel Desk");
+  t("a numbered list of steps is the process", lst.stages.join() === "Receive,Inspect,Approve,Ship", lst.stages.join());
   const { analyzeBusinessMaterial, generateProductDefinition } = await import("../server/aiReasoningService");
   const { BusinessUnderstandingSchema, ProductDefinitionSchema } = await import("../server/aiSchemas");
   const { setProviderForTests } = await import("../server/llmRouter");
