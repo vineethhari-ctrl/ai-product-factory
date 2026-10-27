@@ -19,9 +19,9 @@
  * Max-token ceilings for the two heavy routes are also raised; see MAX_TOKENS notes.
  */
 
-export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype";
+export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype" | "generate-test-suite" | "generate-engineering";
 
-export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general" | "design-research";
+export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general" | "design-research" | "specification";
 
 export type Provider = "gemini" | "claude";
 
@@ -32,6 +32,8 @@ export const TASK_ROUTE: Record<AITask, RouteClass> = {
   "analyze-change": "fast-general", // fast general text & standard route intent
   "generate-prototype-ui": "ui-prototyping", // advanced thinking prototype generation
   "research-prototype": "design-research", // web research on comparable apps before Build Prototype designs
+  "generate-test-suite": "specification", // use cases, scenarios, test cases and a Gherkin feature, traced to the BRD
+  "generate-engineering": "specification", // architecture, API contracts, NFRs, security, backlog, risks
 };
 
 export interface GeminiRoute {
@@ -84,6 +86,13 @@ export const ROUTING_MATRIX: Record<RouteClass, RouteRule> = {
     claude: { model: CLAUDE_SONNET, maxTokens: 32_768, effort: "high" },
     spec: { geminiModel: "gemini-1.5-pro", claudeModel: "claude-3-5-sonnet", temperature: 0.4, maxTokens: 8192 },
   },
+  "specification": {
+    // Not in the original matrix. Long structured documents derived from a finished BRD: low temperature for
+    // consistency, a high ceiling because a thinking model counts its reasoning in the output.
+    gemini: { model: GEMINI_ARGON, temperature: 0.3, maxTokens: 65_536 },
+    claude: { model: CLAUDE_SONNET, maxTokens: 32_768, effort: "high" },
+    spec: { geminiModel: GEMINI_PRO, claudeModel: CLAUDE_SONNET, temperature: 0.3, maxTokens: 32_768 },
+  },
   "design-research": {
     // Not in the original matrix. A short JSON brief (comparable apps, patterns, visual direction) written
     // after searching the web; Gemini 3.x counts thinking in the ceiling, hence the headroom.
@@ -118,6 +127,9 @@ export const TASK_PROVIDER_ORDER: Record<AITask, Provider[]> = {
   "analyze-change": ["claude", "gemini"],
   // Google Search grounding is native to Gemini and costs less per search than Claude's web search tool.
   "research-prototype": ["gemini", "claude"],
+  // Long structured documents from a finished BRD; Gemini first (one Vertex setup runs everything), Claude as backup.
+  "generate-test-suite": ["gemini", "claude"],
+  "generate-engineering": ["gemini", "claude"],
 };
 
 const envKey = (prefix: string, task: AITask) => `${prefix}_${task.toUpperCase().replace(/-/g, "_")}`;

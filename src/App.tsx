@@ -9,7 +9,8 @@ import {
   ProductDefinition, 
   EngineeringPackage, 
   EvidenceItem, 
-  ChangeImpactAnalysis 
+  ChangeImpactAnalysis,
+  TestSuite
 } from './types';
 import { Header } from './components/Header';
 import { CreateProductScreen } from './components/CreateProductScreen';
@@ -29,6 +30,7 @@ import {
 } from './data/defaultData';
 import { buildDynamicFallbackUnderstanding } from './services/dynamicFallback';
 import { entityToSQL } from './services/validationEngine';
+import { testSuiteSignature } from './services/testSuite';
 import { Sparkles, CheckSquare } from 'lucide-react';
 
 // ─── Pipeline State Persistence ──────────────────────────────────────────────
@@ -120,6 +122,8 @@ export default function App() {
   const [isGeneratingDefinition, setIsGeneratingDefinition] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isGeneratingPrototype, setIsGeneratingPrototype] = useState(false);
+  const [isGeneratingTests, setIsGeneratingTests] = useState(false);
+  const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
   const [changeModalOpen, setChangeModalOpen] = useState(false);
@@ -359,10 +363,12 @@ export default function App() {
       case 'analyze-material': return () => { setAiStatus(null); handleAnalyzeMaterials(); };
       case 'generate-definition': return businessUnderstanding ? () => { setAiStatus(null); handleRegenerateDefinition(); } : undefined;
       case 'generate-prototype-ui': return productDefinition ? () => { setAiStatus(null); handleBuildPrototype(true); } : undefined;
+      case 'generate-test-suite': return productDefinition ? () => { setAiStatus(null); handleGenerateTests(); } : undefined;
+      case 'generate-engineering': return productDefinition ? () => { setAiStatus(null); handlePrepareEngineering(); } : undefined;
       default: return undefined; // Change Impact: run the analysis again from the change window.
     }
   };
-  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype;
+  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isPreparingEngineering;
 
   // Step 6: Change Impact Analysis
   const handleAnalyzeChange = async (changeRequest: string): Promise<ChangeImpactAnalysis> => {
@@ -495,27 +501,72 @@ export default function App() {
     showToast('Change applied and change history recorded.');
   };
 
-  // Step 7: Engineering Package
-  const handlePrepareEngineering = async () => {
-    if (!productDefinition) return;
+  // Step 6: Test suite. The AI writes it from the BRD when one is configured; the rules-based suite stands in otherwise.
+  const handleGenerateTests = async () => {
+    if (!productDefinition || isGeneratingTests) return;
+    setIsGeneratingTests(true);
+    const forDefinition = productDefinition;
     try {
-      const response = await fetch('/api/export-package', {
+      const response = await fetch('/api/generate-tests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productDefinition: productDefinition,
-          changeHistory: productDefinition?.changeHistory || []
-        })
+        body: JSON.stringify({ productDefinition: forDefinition }),
       });
-
       if (response.ok) {
-        const pkg = await response.json();
+        const testSuite: TestSuite = await response.json();
+        setProductDefinition((prev) => (prev ? { ...prev, testSuite } : prev));
+        showToast(testSuite.origin === 'AI'
+          ? `The AI wrote ${testSuite.testCases.length} test cases covering ${testSuite.coverage.rulesCovered} of ${testSuite.coverage.rulesTotal} business rules.`
+          : 'Test suite derived from the BRD by rules.');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The test suite could not be written. Click Retry.', 9000);
+      }
+    } catch (err) {
+      console.error('Error generating the test suite:', err);
+      showToast('The test suite could not be written: the server did not answer.');
+    } finally {
+      setIsGeneratingTests(false);
+    }
+  };
+
+  // Opening the QA stage writes the suite once for the current BRD (free when no AI is configured).
+  const suiteTried = useRef<string>('');
+  useEffect(() => {
+    if (activeScreen !== 'qasuite' || !productDefinition) return;
+    const sig = testSuiteSignature(productDefinition);
+    if (productDefinition.testSuite?.basedOn === sig || suiteTried.current === sig) return;
+    suiteTried.current = sig;
+    handleGenerateTests();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeScreen, productDefinition]);
+
+  // Step 7: Engineering Package. The AI writes the architecture and delivery plan when one is configured.
+  const handlePrepareEngineering = async () => {
+    if (!productDefinition || isPreparingEngineering) return;
+    setIsPreparingEngineering(true);
+    const body = JSON.stringify({ productDefinition, changeHistory: productDefinition?.changeHistory || [] });
+    const post = (url: string) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    try {
+      let response = await post('/api/generate-engineering');
+      if (response.status === 503) {
+        // Keys are set but every AI provider failed: keep what we have and offer Retry (the banner shows why).
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The AI could not write the engineering plan. Click Retry.', 9000);
+        return;
+      }
+      if (!response.ok) response = await post('/api/export-package');
+      if (response.ok) {
+        const pkg: EngineeringPackage = await response.json();
         setEngineeringPackage(pkg);
         setActiveScreen('engineering');
+        showToast(pkg.plan?.origin === 'AI' ? 'The AI wrote the architecture and delivery plan.' : 'Engineering package ready (plan derived from the BRD by rules).');
         return;
       }
     } catch (err) {
       console.error('Error generating engineering package:', err);
+    } finally {
+      setIsPreparingEngineering(false);
     }
 
     const dynamicPkg: EngineeringPackage = {
@@ -815,6 +866,8 @@ export default function App() {
               definition={productDefinition}
               onProceedToEngineering={handlePrepareEngineering}
               onBackToDefinition={() => setActiveScreen('definition')}
+              onGenerateTests={handleGenerateTests}
+              isGeneratingTests={isGeneratingTests}
             />
           ) : (
             <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">

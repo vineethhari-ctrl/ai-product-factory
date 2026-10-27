@@ -250,10 +250,20 @@ export const BrdBody: React.FC<{ definition: ProductDefinition }> = ({ definitio
       </div>
 
       <div className="space-y-3">
-        <Heading n={next()} title="Non-Functional Requirements" sub="Proposed standard targets. The BA & Tech team confirms or changes them." />
-        <Table head={['Area', 'Requirement']}>
-          {NFRS.map(([a, r]) => <tr key={a}><td className="p-3 px-4 font-bold text-slate-900 whitespace-nowrap">{a}</td><td className="p-3 px-4 text-[11px]">{r}</td></tr>)}
+        <Heading n={next()} title="Non-Functional Requirements" sub={d.nonFunctionalRequirements?.length ? 'Written for this product. The BA & Tech team confirms or changes the targets.' : 'Proposed standard targets. The BA & Tech team confirms or changes them.'} />
+        <Table head={['Area', 'Requirement', 'Target']}>
+          {(d.nonFunctionalRequirements?.length ? d.nonFunctionalRequirements : NFRS.map(([area, requirement]) => ({ area, requirement, target: '' }))).map((n, i) => (
+            <tr key={`${n.area}${i}`}><td className="p-3 px-4 font-bold text-slate-900 whitespace-nowrap">{n.area}</td><td className="p-3 px-4 text-[11px]">{n.requirement}</td><td className="p-3 px-4 text-[11px] font-semibold">{n.target || 'To be set by the tech team'}</td></tr>
+          ))}
         </Table>
+        {d.risks?.length ? (
+          <>
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pt-2">Risks to delivery and operation</div>
+            <Table head={['Risk', 'Impact', 'Mitigation']}>
+              {d.risks.map((r, i) => <tr key={i}><td className="p-3 px-4 text-[11px] font-semibold text-slate-900">{r.risk}</td><td className="p-3 px-4 text-[11px]">{r.impact}</td><td className="p-3 px-4 text-[11px]">{r.mitigation}</td></tr>)}
+            </Table>
+          </>
+        ) : null}
       </div>
 
       <div className="space-y-3">

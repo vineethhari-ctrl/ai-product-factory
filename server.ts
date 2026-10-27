@@ -12,6 +12,8 @@ import {
   generatePrototypeUI
 } from "./server/aiReasoningService";
 import { validateRecordHandler } from "./server/recordRoute";
+import { generateTestSuite } from "./server/testSuiteService";
+import { attachPlan, generateEngineeringPlan } from "./server/engineeringPlan";
 import { describeRouting } from "./server/routing";
 import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
 import { parseReferenceImage } from "./server/referenceImage";
@@ -178,6 +180,34 @@ async function startServer() {
 
   // Generic, domain-neutral record validation (shared engine with the browser forms)
   app.post("/api/validate-record", validateRecordHandler);
+
+  // Test suite for a finished BRD: written by a model when one is configured, derived from the BRD by rules otherwise.
+  app.post("/api/generate-tests", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!definition?.businessRules || !definition?.personas) return res.status(400).json({ error: "Missing product definition." });
+      return res.json(await generateTestSuite(definition));
+    } catch (err: any) {
+      console.error("Error generating the test suite:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to generate the test suite" });
+    }
+  });
+
+  // Engineering package with its architecture and delivery plan: the plan is written by a model when one is configured.
+  app.post("/api/generate-engineering", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!definition?.businessRules || !definition?.personas) return res.status(400).json({ error: "Missing product definition." });
+      const changeHistory = req.body.changeHistory || definition.changeHistory || [];
+      const plan = await generateEngineeringPlan(definition);
+      return res.json(attachPlan(generateEngineeringPackageData(definition, changeHistory), plan));
+    } catch (err: any) {
+      console.error("Error generating the engineering package:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to generate the engineering package" });
+    }
+  });
 
   app.post("/api/export-package", handleExportPackage);
   app.post("/api/export-engineering", handleExportPackage);

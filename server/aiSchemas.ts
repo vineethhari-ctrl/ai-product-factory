@@ -130,6 +130,8 @@ export const ProductDefinitionSchema = z.object({
   objective: z.string(),
   problemStatement: z.array(z.string()).optional(),
   successMetrics: z.array(z.string()).optional(),
+  nonFunctionalRequirements: z.array(z.object({ area: z.string(), requirement: z.string(), target: z.string().optional() })).optional(),
+  risks: z.array(z.object({ risk: z.string(), impact: z.string(), mitigation: z.string() })).optional(),
   personas: z.array(
     z.object({
       id: z.string(),
@@ -383,4 +385,63 @@ export const DesignResearchSchema = z.object({
   designDirection: z.string(),
   screenPatterns: z.array(z.object({ screenId: z.string(), pattern: z.string(), why: z.string() })),
   sources: z.array(z.object({ title: z.string(), url: z.string() })).optional(),
+});
+
+/** Test suite written by a model from a finished BRD (the server adds origin, time and coverage). */
+export const TestSuiteSchema = z.object({
+  useCases: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    primaryActor: z.string(),
+    secondaryActors: z.array(z.string()),
+    preCondition: z.string(),
+    trigger: z.string(),
+    mainFlow: z.array(z.string()),
+    alternativeFlows: z.array(z.object({ step: z.string(), action: z.string() })),
+    postCondition: z.string(),
+    sourceTraceability: z.string(),
+  })),
+  scenarios: z.array(z.object({
+    id: z.string(),
+    type: z.enum(["POSITIVE", "NEGATIVE", "BOUNDARY", "EDGE"]),
+    module: z.string(),
+    objective: z.string(),
+    testVector: z.string(),
+    riskRating: z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]),
+    ruleCode: z.string(),
+    verificationMethod: z.string(),
+  })),
+  testCases: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    vector: z.enum(["POSITIVE", "NEGATIVE", "BOUNDARY", "EDGE"]),
+    targetModule: z.string(),
+    preconditions: z.string(),
+    testPayload: z.string(),
+    executionSteps: z.array(z.string()),
+    expectedResult: z.string(),
+    traces: z.array(z.string()).optional(),
+  })),
+  gherkinFeature: z.string(),
+});
+
+/** Engineering plan written by a model from a finished BRD (the server adds origin). */
+export const EngineeringPlanSchema = z.object({
+  architectureOverview: z.string(),
+  services: z.array(z.object({ name: z.string(), responsibility: z.string(), owns: z.array(z.string()), exposes: z.array(z.string()), dependsOn: z.array(z.string()) })),
+  events: z.array(z.object({ name: z.string(), producer: z.string(), consumers: z.array(z.string()), payloadSample: z.string() })),
+  nonFunctional: z.array(z.object({ area: z.string(), requirement: z.string(), target: z.string(), howVerified: z.string() })),
+  security: z.array(z.string()),
+  integrationContracts: z.array(z.object({ system: z.string(), direction: z.string(), protocol: z.string(), dataExchanged: z.string(), failureHandling: z.string() })),
+  backlog: z.array(z.object({ epic: z.string(), stories: z.array(z.object({ title: z.string(), acceptance: z.array(z.string()), traces: z.array(z.string()) })) })),
+  deployment: z.array(z.string()),
+  risks: z.array(z.object({ risk: z.string(), impact: z.string(), mitigation: z.string() })),
+  testStrategy: z.array(z.string()),
+  apiContracts: z.array(z.object({
+    endpoint: z.string(),
+    method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"]),
+    description: z.string(),
+    requestBodySample: z.string(),
+    responseBodySample: z.string(),
+  })),
 });

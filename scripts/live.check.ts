@@ -5,7 +5,7 @@
 //   npm run check:live -- 4            all 4 sample products
 //   npm run check:live -- "My product" your own product name(s); the report then contains AI text about it
 //
-// Costs real tokens (roughly 50-150k per product). Usage limits are off for this run and it is not added to the
+// Costs real tokens (roughly 100-250k per product). Usage limits are off for this run and it is not added to the
 // team's usage log. The report is written to live-check-report.md (not committed to git).
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +21,9 @@ await import("dotenv/config");
 const { describeRouting, hasProviderKey, geminiBackend, geminiAuth } = await import("../server/routing");
 const { analyzeBusinessMaterial, generateProductDefinition, generatePrototypeUI } = await import("../server/aiReasoningService");
 const { AIUnavailableError } = await import("../server/llmRouter");
+const { generateTestSuite } = await import("../server/testSuiteService");
+const { generateEngineeringPlan, attachPlan } = await import("../server/engineeringPlan");
+const { generateEngineeringPackageData } = await import("../server/aiReasoningService");
 const { runWithUsageContext, currentAICalls, usageReport } = await import("../server/usage");
 type AIStatus = ReturnType<typeof currentAICalls>[number];
 
@@ -103,6 +106,11 @@ for (const [i, [name, bu]] of products.entries()) {
       ["records with fields", def.dataEntities.length >= 1 && def.dataEntities.every((e) => e.fields.length >= 2)],
       ["every screen has a design", def.screens.every((s) => !!s.ui)],
       ["open questions labelled for a team", def.openQuestions.every((q) => q.audience === "BU" || q.audience === "TECH")],
+      ["at least 5 business rules", def.businessRules.length >= 5],
+      ["at least 2 journeys with 4+ steps", def.userJourneys.filter((j) => j.steps.length >= 4).length >= 2],
+      ["product-specific quality targets (not the standard list)", (def.nonFunctionalRequirements?.length ?? 0) >= 5],
+      ["risks listed", (def.risks?.length ?? 0) >= 3],
+      ["problems and success measures", (def.problemStatement?.length ?? 0) >= 1 && (def.successMetrics?.length ?? 0) >= 1],
     ]);
     res.push(d.result);
     if (!d.value) return res;
@@ -116,6 +124,31 @@ for (const [i, [name, bu]] of products.entries()) {
       ["a colour theme", !!def.uiTheme],
     ]);
     res.push(p.result);
+    const forDocs = p.value ?? d.value;
+    await pause(4000);
+    const tsu = await step("Generate Test Suite", () => generateTestSuite(forDocs), (ts) => [
+      ["written by the AI, not the rules-based stand-in", ts.origin === "AI"],
+      ["at least 20 test cases", ts.testCases.length >= 20],
+      ["at least 25 scenarios", ts.scenarios.length >= 25],
+      ["every business rule covered", ts.coverage.rulesCovered === ts.coverage.rulesTotal],
+      ["the AI itself covered the rules (nothing added by the server)", !ts.addedForCoverage?.length],
+      ["every journey has a use case", ts.coverage.journeysCovered === ts.coverage.journeysTotal],
+      ["test payloads use the product's own field names", (() => { const names = new Set(forDocs.dataEntities.flatMap((e) => e.fields.map((f) => f.name))); return ts.testCases.filter((t) => { try { return Object.keys(JSON.parse(t.testPayload)).some((k) => names.has(k)); } catch { return false; } }).length >= ts.testCases.length / 2; })()],
+      ["every test case has 3+ steps and a measurable expected result", ts.testCases.every((t) => t.executionSteps.length >= 3 && t.expectedResult.length > 30)],
+      ["a Gherkin feature with outlines", /Scenario Outline/.test(ts.gherkinFeature) && ts.gherkinFeature.length > 600],
+    ]);
+    res.push(tsu.result);
+    await pause(4000);
+    const eng = await step("Engineering Package", async () => attachPlan(generateEngineeringPackageData(forDocs, []), await generateEngineeringPlan(forDocs)), (pkg) => [
+      ["plan written by the AI, not the rules-based stand-in", pkg.plan?.origin === "AI"],
+      ["API contracts for every record (4+ each)", pkg.apiRequirements.length >= forDocs.dataEntities.length * 4],
+      ["a status-change endpoint per record with a lifecycle", forDocs.dataEntities.filter((e) => e.lifecycle).every((e) => pkg.apiRequirements.some((c) => /status|transition/i.test(c.endpoint) && c.description.includes(e.name) || /status|transition/i.test(c.endpoint)))],
+      ["8+ quality targets with numbers", (pkg.plan?.nonFunctional.filter((n) => /\d/.test(n.target)).length ?? 0) >= 6],
+      ["backlog with acceptance lines", (pkg.plan?.backlog.reduce((n, e) => n + e.stories.length, 0) ?? 0) >= 8],
+      ["risks tied to open questions or assumptions", (pkg.plan?.risks.length ?? 0) >= 4],
+      ["architecture overview of 250+ words", (pkg.plan?.architectureOverview.split(/\s+/).length ?? 0) >= 250],
+    ]);
+    res.push(eng.result);
     if (p.value) {
       lastPrototype.set(name, p.value.screens.filter((s) => s.ui?.document).map((s) => {
         const d = s.ui!.document!;

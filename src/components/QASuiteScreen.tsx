@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ProductDefinition } from '../types';
+import { currentTestSuite } from '../services/testSuite';
 import { copyToClipboard } from '../services/clipboardUtils';
 import {
   CheckSquare,
@@ -29,6 +30,9 @@ interface QASuiteScreenProps {
   definition: ProductDefinition;
   onProceedToEngineering: () => void;
   onBackToDefinition?: () => void;
+  /** Ask the AI to write the suite from the BRD (the screen shows the rules-based suite until then). */
+  onGenerateTests?: () => void;
+  isGeneratingTests?: boolean;
 }
 
 type TestVectorFilter = 'ALL' | 'POSITIVE' | 'NEGATIVE' | 'BOUNDARY' | 'EDGE';
@@ -36,7 +40,9 @@ type TestVectorFilter = 'ALL' | 'POSITIVE' | 'NEGATIVE' | 'BOUNDARY' | 'EDGE';
 export const QASuiteScreen: React.FC<QASuiteScreenProps> = ({
   definition,
   onProceedToEngineering,
-  onBackToDefinition
+  onBackToDefinition,
+  onGenerateTests,
+  isGeneratingTests
 }) => {
   const [activeVector, setActiveVector] = useState<TestVectorFilter>('ALL');
   const [activeTab, setActiveTab] = useState<'usecases' | 'matrix' | 'testcases' | 'bdd'>('usecases');
@@ -45,273 +51,14 @@ export const QASuiteScreen: React.FC<QASuiteScreenProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedUseCase, setExpandedUseCase] = useState<string | null>('UC-001');
 
-  // Derive dynamic or domain-calibrated QA artifacts from the actual ProductDefinition
-  const qaData = useMemo(() => {
-    const prodName = definition?.productName || 'Enterprise Product Platform';
-    const version = definition?.version || 'v1.0';
-    const primaryPersona = definition?.personas?.[0]?.name || 'Operations Lead';
-    const secondaryPersona = definition?.personas?.[1]?.name || 'System Specialist';
-    const primaryModule = definition?.modules?.[0]?.name || 'Core Management Service';
-    const secondaryModule = definition?.modules?.[1]?.name || 'Workflow Dispatch Module';
-    const primaryScreen = definition?.screens?.[0]?.name || 'Operational Dashboard';
-    const primaryRule = definition?.businessRules?.[0]?.code || 'BR-01';
-    const primaryRuleText = definition?.businessRules?.[0]?.rule || 'Enforce user role access control and validation';
-
-    const useCases = (definition?.userJourneys && definition.userJourneys.length > 0)
-      ? definition.userJourneys.map((uj, i) => ({
-          id: `UC-${String(i + 1).padStart(3, '0')}`,
-          title: uj.name,
-          primaryActor: uj.persona || primaryPersona,
-          secondaryActors: ['System Backend', 'API Gateway'],
-          preCondition: `System is initialized and ${primaryModule} is active.`,
-          trigger: uj.steps?.[0] || 'User initiates workflow action.',
-          mainFlow: uj.steps?.length ? uj.steps : [
-            `User accesses ${primaryScreen}.`,
-            `Executes action for ${uj.name}.`,
-            `System validates constraints and updates state.`
-          ],
-          alternativeFlows: [
-            {
-              step: 'If validation constraint fails',
-              action: 'System halts transaction, logs security event, and alerts operator.'
-            }
-          ],
-          postCondition: uj.outcome || 'Workflow completed successfully.',
-          sourceTraceability: `${primaryModule} • ${uj.id}`
-        }))
-      : [
-          {
-            id: 'UC-001',
-            title: `Core Execution Workflow in ${primaryModule}`,
-            primaryActor: primaryPersona,
-            secondaryActors: ['Backend API Gateway'],
-            preCondition: 'User is authenticated and session is active.',
-            trigger: 'User initiates action on primary dashboard.',
-            mainFlow: [
-              `User opens ${primaryScreen}.`,
-              'Selects operational target and submits request.',
-              'System evaluates business rules and applies updates.'
-            ],
-            alternativeFlows: [],
-            postCondition: 'State updated successfully.',
-            sourceTraceability: `${primaryModule} • ${primaryRule}`
-          }
-        ];
-
-    const testScenarios = (definition?.businessRules && definition.businessRules.length > 0)
-      ? [
-          ...definition.businessRules.map((br, idx) => ({
-            id: `SCN-${String(idx + 1).padStart(3, '0')}`,
-            type: (idx % 4 === 0 ? 'POSITIVE' : idx % 4 === 1 ? 'BOUNDARY' : idx % 4 === 2 ? 'NEGATIVE' : 'EDGE') as 'POSITIVE' | 'BOUNDARY' | 'NEGATIVE' | 'EDGE',
-            module: primaryModule,
-            objective: `Verification of Business Rule ${br.code || 'BR'}: ${br.rule}`,
-            testVector: `Rule Context: ${br.context || 'System Governance'}`,
-            riskRating: idx % 2 === 0 ? 'CRITICAL' : 'HIGH',
-            ruleCode: br.code || `BR-${idx + 1}`,
-            verificationMethod: 'Automated Integration & E2E Verification'
-          })),
-          {
-            id: `SCN-${String((definition.businessRules?.length || 0) + 1).padStart(3, '0')}`,
-            type: 'NEGATIVE' as const,
-            module: 'API Security Gateway',
-            objective: 'Reject unauthorized role attempts on restricted endpoints',
-            testVector: 'Unprivileged bearer JWT token payload',
-            riskRating: 'CRITICAL',
-            ruleCode: 'BR-SEC-01',
-            verificationMethod: 'Security Boundary Test'
-          },
-          {
-            id: `SCN-${String((definition.businessRules?.length || 0) + 2).padStart(3, '0')}`,
-            type: 'EDGE' as const,
-            module: 'Data Ingestion',
-            objective: 'System recovery under sudden network disconnect and burst retry',
-            testVector: 'Network jitter and packet burst replay',
-            riskRating: 'HIGH',
-            ruleCode: 'BR-NET-01',
-            verificationMethod: 'Chaos & Resilience Test'
-          }
-        ].slice(0, 8)
-      : [
-          {
-            id: 'SCN-001',
-            type: 'POSITIVE' as const,
-            module: primaryModule,
-            objective: `Standard execution for ${prodName}`,
-            testVector: 'Nominal operational inputs',
-            riskRating: 'LOW',
-            ruleCode: primaryRule,
-            verificationMethod: 'Automated E2E Suite'
-          },
-          {
-            id: 'SCN-002',
-            type: 'BOUNDARY' as const,
-            module: primaryModule,
-            objective: 'Boundary condition test at upper limit threshold',
-            testVector: 'Max threshold boundary point',
-            riskRating: 'CRITICAL',
-            ruleCode: primaryRule,
-            verificationMethod: 'Unit Boundary Suite'
-          },
-          {
-            id: 'SCN-003',
-            type: 'NEGATIVE' as const,
-            module: secondaryModule,
-            objective: 'Reject unauthorized role payload execution',
-            testVector: 'Invalid token claims',
-            riskRating: 'HIGH',
-            ruleCode: 'BR-SEC-01',
-            verificationMethod: 'Security Validator'
-          },
-          {
-            id: 'SCN-004',
-            type: 'EDGE' as const,
-            module: 'Ingestion Layer',
-            objective: 'Burst packet retry following connection drop',
-            testVector: 'Offline queue flush',
-            riskRating: 'HIGH',
-            ruleCode: 'BR-NET-01',
-            verificationMethod: 'Resilience Test'
-          }
-        ];
-
-    const testCases = [
-      {
-        id: `TC-${primaryModule.substring(0, 3).toUpperCase()}-101`,
-        title: `Verify ${primaryScreen} Data Ingestion & Real-Time Rendering`,
-        vector: 'POSITIVE' as const,
-        targetModule: primaryModule,
-        preconditions: `${primaryScreen} is active; API Gateway is authenticated; User session valid.`,
-        testPayload: JSON.stringify({
-          product: prodName,
-          module: primaryModule,
-          status: 'ACTIVE',
-          timestamp: new Date().toISOString()
-        }, null, 2),
-        executionSteps: [
-          `Publish sample payload to ${primaryModule} endpoint.`,
-          `Observe live UI updates in ${primaryScreen} within SLA.`,
-          'Verify system status badge renders expected state.',
-          'Verify audit history appends transaction.'
-        ],
-        expectedResult: `${primaryScreen} updates successfully with zero packet drop.`,
-        passStatus: 'READY'
-      },
-      {
-        id: `TC-${primaryModule.substring(0, 3).toUpperCase()}-102`,
-        title: `Evaluate Business Rule ${primaryRule} Threshold Enforcement`,
-        vector: 'BOUNDARY' as const,
-        targetModule: primaryModule,
-        preconditions: `System active with nominal state for ${primaryRule}.`,
-        testPayload: JSON.stringify({
-          ruleCode: primaryRule,
-          thresholdValue: 100.0,
-          evaluateMode: 'BOUNDARY'
-        }, null, 2),
-        executionSteps: [
-          `Transmit payload matching boundary threshold for ${primaryRule}.`,
-          'Verify rule engine triggers alert transition.',
-          'Inspect outbound notification bus.',
-          'Verify alert banner renders on UI.'
-        ],
-        expectedResult: 'System enforces business constraint immediately upon reaching boundary value.',
-        passStatus: 'READY'
-      },
-      {
-        id: 'TC-SEC-201',
-        title: 'Reject Unauthenticated API Requests (HTTP 401/403 Enforcement)',
-        vector: 'NEGATIVE' as const,
-        targetModule: 'API Security Gateway',
-        preconditions: 'API Gateway running with signature verification active.',
-        testPayload: JSON.stringify({
-          authHeader: 'Bearer invalid.token',
-          targetEndpoint: `/api/v1/${primaryModule.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-        }, null, 2),
-        executionSteps: [
-          'Issue HTTP request with invalid auth token.',
-          'Intercept HTTP response status code.',
-          'Inspect security audit log for access attempt record.'
-        ],
-        expectedResult: 'API rejects request with HTTP 403 Forbidden; security event logged.',
-        passStatus: 'READY'
-      },
-      {
-        id: 'TC-NET-301',
-        title: `${prodName} Offline Queue & Reconnect Recovery`,
-        vector: 'EDGE' as const,
-        targetModule: `${primaryModule} Resiliency Gateway`,
-        preconditions: 'Buffer storage active with payload queueing enabled.',
-        testPayload: JSON.stringify({
-          blackoutDurationSec: 60,
-          cachedTransactionsCount: 20
-        }, null, 2),
-        executionSteps: [
-          'Simulate network disconnect for 60 seconds.',
-          'Generate 20 queued client action payloads.',
-          'Restore network connection.',
-          'Verify backend reconciles all 20 payloads in chronological sequence.'
-        ],
-        expectedResult: 'All 20 queued actions ingested without gaps in strict sequence.',
-        passStatus: 'READY'
-      }
-    ];
-
-    const gherkinFeature = `
-@enterprise @product-verification @version-${version.replace('v', '')}
-Feature: ${prodName} - Quality Verification & Business Rules Safeguards
-  As a ${primaryPersona}
-  I want automated validation of ${primaryModule} rules and user workflows
-  So that operational performance is optimized and system compliance is guaranteed.
-
-  Background:
-    Given the ${prodName} services are fully operational
-    And the application gateway is accepting API requests
-    And the RBAC security context is authorized for "${primaryPersona}"
-
-  @positive @smoke @core-flow
-  Scenario: Validate standard workflow execution for ${primaryModule}
-    Given a valid request payload is provided for ${primaryModule}
-    When the ${primaryPersona} submits the transaction on ${primaryScreen}
-    Then the system should enforce rule "${primaryRule}"
-    And the transaction result should return "SUCCESS"
-    And the state update should reflect immediately in audit logs
-
-  @boundary @critical @safeguard
-  Scenario Outline: Enforce business rule validation thresholds
-    Given the system context is in state "<initial_state>"
-    When the user submits parameter "<parameter_key>" with value "<value>"
-    Then the system response status should be "<expected_status>"
-    And the audit notification should record category "SECURITY_RULE_AUDIT"
-
-    Examples:
-      | initial_state  | parameter_key | value   | expected_status |
-      | ACTIVE         | payload_size  | 1048576 | SUCCESS_200     |
-      | PENDING_REVIEW | role_auth     | GUEST   | FORBIDDEN_403   |
-      | DEGRADED       | retry_count   | 5       | RATE_LIMIT_429  |
-
-  @negative @security @rbac
-  Scenario: Reject unauthorized administrative request
-    Given an authenticated user with role "GUEST_VIEWER"
-    When the user submits a restricted action request on ${primaryScreen}
-    Then the system should reject the request with HTTP status 403
-    And the error response code should be "FORBIDDEN_INSUFFICIENT_SCOPE"
-    And an audit log entry should record the unauthorized attempt
-
-  @edge @network @resilience
-  Scenario: Recover and re-sequence client state following connectivity dropout
-    Given ${prodName} encounters a network blackout for 120 seconds
-    And 40 pending transaction events are buffered in local storage
-    When network connectivity is restored
-    Then all 40 queued events should be retransmitted to the backend
-    And the application datastore should reconcile them in chronological order
-`.trim();
-
-    return {
-      useCases,
-      testScenarios,
-      testCases,
-      gherkinFeature
-    };
-  }, [definition]);
+  // The suite written by a model when one answered, else derived from the BRD's own rules, records and journeys.
+  const suite = useMemo(() => currentTestSuite(definition), [definition]);
+  const qaData = useMemo(() => ({
+    useCases: suite.useCases,
+    testScenarios: suite.scenarios,
+    testCases: suite.testCases,
+    gherkinFeature: suite.gherkinFeature,
+  }), [suite]);
 
   const filteredTestCases = useMemo(() => {
     return qaData.testCases.filter(tc => {
@@ -376,7 +123,7 @@ Feature: ${prodName} - Quality Verification & Business Rules Safeguards
                 <CheckSquare className="w-3.5 h-3.5" /> Step 7: Verification & QA Suite
               </span>
               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-semibold rounded-md">
-                100% Traceability to BRD
+                {suite.coverage.rulesCovered} of {suite.coverage.rulesTotal} rules traced to tests
               </span>
               <span className="text-xs font-mono text-slate-500">
                 Baseline {definition.version}
@@ -421,6 +168,30 @@ Feature: ${prodName} - Quality Verification & Business Rules Safeguards
           </div>
         </div>
 
+        {/* Who wrote this suite, and what it proves */}
+        <div className={`rounded-xl border px-4 py-3 text-xs flex flex-wrap items-center justify-between gap-3 ${suite.origin === 'AI' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+          <div className="space-y-0.5">
+            <div className="font-bold">
+              {suite.origin === 'AI' ? 'Written by the AI from this BRD' : 'Derived from this BRD by rules (not written by the AI)'}
+            </div>
+            <div className="opacity-90">
+              {suite.origin === 'AI'
+                ? `Covers ${suite.coverage.rulesCovered} of ${suite.coverage.rulesTotal} business rules, ${suite.coverage.journeysCovered} of ${suite.coverage.journeysTotal} journeys and ${suite.coverage.entitiesCovered} of ${suite.coverage.entitiesTotal} records.${suite.addedForCoverage?.length ? ` The server added tests for ${suite.addedForCoverage.join(', ')}, which the AI left out.` : ''}`
+                : 'Every rule, journey and record in the BRD has tests, built from its own fields and statuses. Rule tests tell the tester how to arrange the rule-breaking condition. Press Generate with AI for tests written specifically for this product.'}
+            </div>
+          </div>
+          {onGenerateTests && (
+            <button
+              onClick={onGenerateTests}
+              disabled={isGeneratingTests}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>{isGeneratingTests ? 'Writing tests…' : suite.origin === 'AI' ? 'Regenerate with AI' : 'Generate with AI'}</span>
+            </button>
+          )}
+        </div>
+
         {/* Quality Metrics Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
@@ -448,10 +219,12 @@ Feature: ${prodName} - Quality Verification & Business Rules Safeguards
           </div>
 
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">BDD Feature Runner</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Business Rule Coverage</span>
             <div className="text-xl font-bold text-slate-900 mt-0.5 flex items-center gap-1.5">
-              <span>100%</span>
-              <span className="text-[10px] font-normal text-blue-600 font-sans">Playwright Ready</span>
+              <span>{suite.coverage.rulesCovered} / {suite.coverage.rulesTotal}</span>
+              <span className={`text-[10px] font-normal font-sans ${suite.coverage.rulesCovered === suite.coverage.rulesTotal ? 'text-emerald-600' : 'text-amber-600'}`}>
+                rules with a test
+              </span>
             </div>
           </div>
         </div>
@@ -492,7 +265,7 @@ Feature: ${prodName} - Quality Verification & Business Rules Safeguards
               <h2 className="text-base font-bold text-slate-900">Functional Use Cases Derived from BRD Topology</h2>
               <p className="text-xs text-slate-500">Every use case defines primary actors, pre-conditions, system triggers, and step-by-step execution flows.</p>
             </div>
-            <span className="text-xs text-slate-400 font-mono">Traceability: 100% Covered</span>
+            <span className="text-xs text-slate-400 font-mono">Journeys with a use case: {suite.coverage.journeysCovered} / {suite.coverage.journeysTotal}</span>
           </div>
 
           <div className="grid grid-cols-1 gap-4">

@@ -38,6 +38,7 @@ import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
 import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
 import { hasBriefStructure, parseBrief } from "./briefParser";
+import { buildApiContracts } from "./engineeringPlan";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
@@ -467,6 +468,7 @@ ${benchmarkBlock}
 ${UI_SPEC_RULES}
 ${FIELD_INFERENCE_RULES}
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
+- QUALITY & RISK: nonFunctionalRequirements lists 6-10 quality targets written for THIS product (its heaviest screens, its sensitive fields, its named systems, outside parties on phones), each with a measurable target; where the BU gave no volume, state your assumption in the target. risks lists 4-8 risks specific to this product (use the open questions and assumptions), each with impact and mitigation. Never invent a number the BU should decide; label it an assumption.
 - PROBLEM & SUCCESS: problemStatement lists every pain point the BU stated; successMetrics lists every KPI the BU stated plus any the process clearly needs. Never invent baselines or targets; the BU sets them.
 - BUSINESS DOCUMENTS FIRST: list every business document the users create and work in this process (whatever the BU calls it: something a user starts, fills in, sends for a decision and that turns into the next document). Each one MUST be a data entity with its own business fields (who it is for, what is asked or supplied, dates, amounts, terms) and, when it lists several items, a separate line-item entity. Each one MUST have a screen with layoutType "transaction" that creates and works it (set its ui.entity to the document's entity name). When the process has documents, at least half of the screens are "transaction" screens; dashboards and queues only support them.
 - DATA ENTITIES: For EVERY entity, generate 8-15 fields with correct types (string, number, boolean, timestamp, enum(...), text, json, uuid), accurate required/optional flags, and descriptive notes. ALWAYS include: id (uuid, required), created_at (timestamp), updated_at (timestamp), created_by (string), status (enum), plus all domain-specific fields a real production database would need. NEVER leave an entity with fewer than 6 fields.
@@ -489,6 +491,8 @@ Return ONLY a valid JSON object matching this schema:
   "objective": "Clear executive problem statement and goal",
   "problemStatement": ["What goes wrong today, one short item each, in the BU's own words"],
   "successMetrics": ["One KPI per item, named the way the BU names it; no invented targets"],
+  "nonFunctionalRequirements": [{"area": "Performance | Availability | Security | Audit | Retention | Resilience | Usability | Device support", "requirement": "Written for this product's own screens, records and systems", "target": "Measurable: a number with a unit, or the assumption behind it"}],
+  "risks": [{"risk": "A risk to delivering or running this product", "impact": "What it would cost", "mitigation": "What to do about it"}],
   "personas": [
     {
       "id": "p-1",
@@ -1158,18 +1162,8 @@ export function generateEngineeringPackageData(
     }))
   );
 
-  const apis = productDefinition.modules.map(m => ({
-    endpoint: `/api/v1/${m.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-    method: "GET" as const,
-    description: `Endpoint for ${m.name}: ${m.description}`,
-    requestBodySample: "None (Query params: filter=active)",
-    responseBodySample: JSON.stringify({
-      status: "success",
-      moduleId: m.id,
-      moduleName: m.name,
-      recordsCount: 10
-    }, null, 2)
-  }));
+  // Real contracts per record (list, create, read, change, status change) and per integration.
+  const apis = buildApiContracts(productDefinition);
 
   const dataModelSQL = `-- AI Product Factory Generated DDL Schema
 -- Product: ${productDefinition.productName} (${productDefinition.version})

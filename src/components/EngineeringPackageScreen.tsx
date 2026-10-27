@@ -26,6 +26,8 @@ interface EngineeringPackageScreenProps {
   onExportBlueprint?: () => void;
 }
 
+import { EngineeringPlanPanel } from './EngineeringPlanPanel';
+
 export const EngineeringPackageScreen: React.FC<EngineeringPackageScreenProps> = ({
   pkg,
   definition,
@@ -1180,10 +1182,10 @@ Included Files in this ZIP Package:
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Production Ready
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${pkg.plan?.origin === 'AI' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+              <CheckCircle2 className="w-3.5 h-3.5" /> {pkg.plan?.origin === 'AI' ? 'Plan written by the AI' : 'Plan derived from the BRD by rules'}
             </span>
-            <span className="text-xs text-slate-500 font-mono">Package Hash: #EPKG-9921-X</span>
+            <span className="text-xs text-slate-500 font-mono">{pkg.productName} {pkg.version} · {new Date(pkg.generatedAt).toLocaleDateString()}</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900">Autonomous Engineering Handoff</h1>
           <p className="text-sm text-slate-600">
@@ -1218,6 +1220,8 @@ Included Files in this ZIP Package:
           </button>
         </div>
       </div>
+
+      {pkg.plan && <EngineeringPlanPanel plan={pkg.plan} contracts={pkg.apiRequirements} />}
 
       {/* Blueprint JSON Specification Viewer */}
       <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">

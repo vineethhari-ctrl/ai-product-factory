@@ -12,7 +12,7 @@ export const AI_STATUS_EVENT = 'apf:ai-status';
 
 /** Who answered an AI button (server/usage.ts `AIStatus`), sent by the server in X-AI-Status. */
 export interface AIStatus {
-  task: 'analyze-material' | 'generate-definition' | 'generate-prototype-ui' | 'analyze-change' | 'research-prototype';
+  task: 'analyze-material' | 'generate-definition' | 'generate-prototype-ui' | 'analyze-change' | 'research-prototype' | 'generate-test-suite' | 'generate-engineering';
   button: string;
   outcome: 'ai' | 'cache' | 'offline-no-key' | 'offline-limit' | 'offline-failed' | 'failed';
   model?: string;

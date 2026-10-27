@@ -42,8 +42,10 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | `generate-prototype-ui` (Build Prototype) | `/api/generate-prototype` | claude-sonnet-5-5 (effort high) | gemini-4-argon (temp 0.4) | Schema-enforced output: fewer unusable, still-billed answers | 65,536 Gemini / 32,768 Claude |
 | `analyze-change` (Change Impact) | `/api/analyze-change` | claude-haiku-4-5 (temp 0.5) | gemini-3.6-flash (temp 0.5) | Small and frequent: cheapest model with guaranteed valid output | 2,048 |
 | `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-4-argon + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
+| `generate-test-suite` (Use Cases & QA, opens once per BRD, or Generate with AI) | `/api/generate-tests` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Long structured document from a finished BRD; Gemini first so one Vertex setup runs everything | 65,536 / 32,768 |
+| `generate-engineering` (Engineering Package) | `/api/generate-engineering` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Same | 65,536 / 32,768 |
 
-`/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call.
+`/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call (`export-package` is the rules-based package).
 
 ### Deviations from the matrix as written (and why)
 | Spec | Applied | Reason |
@@ -156,6 +158,33 @@ organisations/OEMs build such products, and builds the prototype from that. Logi
 - The BRD tab renders the whole document (`BrdBody`): problem statement and KPIs, process and lifecycle with owners, personas,
   journeys, requirements per screen, rules, data dictionary with field validation, validations, notifications, integrations,
   standard non-functional requirements, assumptions and open questions per team.
+
+## Test suite and engineering plan (AI-written, with a rules-based baseline)
+
+Use Cases & QA and the Engineering Package are no longer fixed templates. Each is written by a model from the finished BRD
+when one is configured (Gemini first, Claude as backup, same router, cache, limits and Retry banner as the other steps) and
+derived from the BRD by rules otherwise. The screen says which (`origin`: "Written by the AI" / "Derived by rules").
+- **Digest** (`server/definitionDigest.ts`): one compact reading of the BRD (roles and access, rules with codes, journeys, records
+  with field constraints and lifecycle, screens, integrations, validations, open questions) shared by both prompts.
+- **Test suite** (`server/testPrompt.ts`, `server/testSuiteService.ts`, `src/services/testSuite.ts`): use cases, a scenario matrix,
+  executable test cases with payloads in the product's real field names, and a Gherkin feature. `ensureCoverage` guarantees every
+  business rule has a scenario and a test case: a rule the model left out gets one added by the server, and the suite lists them
+  (`addedForCoverage`); an invented rule code is not evidence (`GENERAL`); a payload that is not JSON is repaired. The rules-based
+  suite (`buildTestSuite`) derives scenarios from each rule (holds / is violated), each lifecycle (valid path, skipped status), field
+  limits, roles, integrations and the audit trail; a rule test tells the tester to arrange the rule-breaking condition (the engine
+  cannot know how to break a business rule). The suite is stored on `definition.testSuite` with `basedOn` (fingerprint of the BRD);
+  a changed BRD makes it stale and it is rewritten when the QA stage is opened. The BRD's "Use Cases & Tests" tab shows the same suite.
+- **Engineering plan** (`server/engineeringPrompt.ts`, `server/engineeringPlan.ts`): architecture, services, per-record API contracts
+  (list, create, read, change, status change that rejects a forbidden change, one endpoint per integration; roles and 403/404/409/422
+  cases), events, quality targets with numbers and how each is verified, security controls, integration contracts, backlog with
+  acceptance lines, deployment, risks, test strategy. `buildApiContracts` always gives the package real contracts (the package no longer
+  lists one placeholder endpoint per module). Sections a model leaves empty are filled from `buildEngineeringPlan`; too few contracts are
+  replaced. Shown by `EngineeringPlanPanel`.
+- **BRD**: the definition prompt also asks for `nonFunctionalRequirements` and `risks` written for the product; the BRD tab shows
+  them instead of the standard list when present.
+- `npm run check:docs` covers it with model stand-ins (omitted rules, invented codes, bad JSON, empty answers, all providers failed).
+  `npm run check:live` now also runs both steps and checks coverage, payload field names, contracts per record and quality targets.
+  Nothing here has been run against a real model yet: run `npm run check:live` and read the report.
 
 ## AI usage control (`server/usage.ts`)
 

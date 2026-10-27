@@ -434,6 +434,12 @@ export interface ProductDefinition {
   objective: string;
   /** What goes wrong today, one item each (the BU's words where stated). */
   problemStatement?: string[];
+  /** Quality targets for this product (performance, availability, security, audit, retention...), written for it. */
+  nonFunctionalRequirements?: Array<{ area: string; requirement: string; target?: string }>;
+  /** What could go wrong with the product itself, with the impact and a mitigation. */
+  risks?: Array<{ risk: string; impact: string; mitigation: string }>;
+  /** The test suite for this BRD, once generated (by a model, or derived by rules). */
+  testSuite?: TestSuite;
   /** KPIs: how success is measured. Baselines and targets are set by the BU. */
   successMetrics?: string[];
   personas: PersonaDefinition[];
@@ -475,7 +481,85 @@ export interface ChangeImpactAnalysis {
   versionApplied?: string;
 }
 
+/** One formal use case of the test suite, traced to the journey, rules and screens it covers. */
+export interface TestUseCase {
+  id: string;
+  title: string;
+  primaryActor: string;
+  secondaryActors: string[];
+  preCondition: string;
+  trigger: string;
+  mainFlow: string[];
+  alternativeFlows: Array<{ step: string; action: string }>;
+  postCondition: string;
+  sourceTraceability: string;
+}
+
+export type TestVector = 'POSITIVE' | 'NEGATIVE' | 'BOUNDARY' | 'EDGE';
+
+/** One test scenario: what is verified, with which kind of input, how risky it is, and which rule it proves. */
+export interface TestScenario {
+  id: string;
+  type: TestVector;
+  module: string;
+  objective: string;
+  testVector: string;
+  riskRating: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  ruleCode: string;
+  verificationMethod: string;
+}
+
+/** One executable test case: preconditions, a payload in the product's own fields, steps, and the expected result. */
+export interface TestCase {
+  id: string;
+  title: string;
+  vector: TestVector;
+  targetModule: string;
+  preconditions: string;
+  testPayload: string;
+  executionSteps: string[];
+  expectedResult: string;
+  passStatus: 'READY';
+  /** Business rule, journey or screen this test proves (ids or names from the BRD). */
+  traces?: string[];
+}
+
+export interface TestSuite {
+  /** 'AI' when a model wrote it; 'OFFLINE' when it was derived from the BRD by rules. */
+  origin: 'AI' | 'OFFLINE';
+  generatedAt: string;
+  /** Fingerprint of the BRD content it was written for; a changed BRD makes the suite stale. */
+  basedOn?: string;
+  useCases: TestUseCase[];
+  scenarios: TestScenario[];
+  testCases: TestCase[];
+  gherkinFeature: string;
+  /** What the suite proves about the BRD. */
+  coverage: { rulesTotal: number; rulesCovered: number; journeysTotal: number; journeysCovered: number; entitiesTotal: number; entitiesCovered: number };
+  /** Rules the model left uncovered and the engine added scenarios for. */
+  addedForCoverage?: string[];
+}
+
+/** Engineering plan: how to build what the BRD describes. Written by a model, or derived from the BRD by rules. */
+export interface EngineeringPlan {
+  origin: 'AI' | 'OFFLINE';
+  architectureOverview: string;
+  services: Array<{ name: string; responsibility: string; owns: string[]; exposes: string[]; dependsOn: string[] }>;
+  events: Array<{ name: string; producer: string; consumers: string[]; payloadSample: string }>;
+  nonFunctional: Array<{ area: string; requirement: string; target: string; howVerified: string }>;
+  security: string[];
+  integrationContracts: Array<{ system: string; direction: string; protocol: string; dataExchanged: string; failureHandling: string }>;
+  backlog: Array<{ epic: string; stories: Array<{ title: string; acceptance: string[]; traces: string[] }> }>;
+  deployment: string[];
+  risks: Array<{ risk: string; impact: string; mitigation: string }>;
+  testStrategy: string[];
+  /** API contracts written for this product (per record: list, create, read, change, status change; integrations). */
+  apiContracts?: Array<{ endpoint: string; method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'; description: string; requestBodySample: string; responseBodySample: string }>;
+}
+
 export interface EngineeringPackage {
+  /** Architecture, delivery plan and backlog (see EngineeringPlan). */
+  plan?: EngineeringPlan;
   generatedAt: string;
   version: string;
   productName: string;

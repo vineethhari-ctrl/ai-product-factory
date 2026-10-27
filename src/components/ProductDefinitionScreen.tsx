@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ProductDefinition, ConfidenceStatus } from '../types';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
+import { currentTestSuite } from '../services/testSuite';
 import { AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { BrdBody } from './BrdDocument';
@@ -172,78 +173,18 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
         ]
   };
 
-  // Dynamic Use Cases & Test Scenarios Data
+  // Use cases and test scenarios come from the same suite as the QA screen: written by the AI when it has been, else derived from the BRD.
+  const suite = currentTestSuite(definition);
   const qaPackage = {
-    useCases: (definition.userJourneys && definition.userJourneys.length > 0)
-      ? definition.userJourneys.map((uj, idx) => ({
-          id: uj.id || `UC-00${idx + 1}`,
-          title: uj.name || `User Workflow ${idx + 1}`,
-          primaryActor: uj.persona || definition.personas?.[0]?.name || 'Primary User',
-          preCondition: `User is logged in and authorized for ${definition.productName || 'the system'}.`,
-          trigger: `User initiates ${uj.name} action from dashboard.`,
-          mainFlow: (uj.steps && uj.steps.length > 0) 
-            ? uj.steps 
-            : [`Access screen`, `Input required data`, `Submit for validation`, `System confirms update`],
-          postCondition: uj.outcome || `Action completes successfully with audit trace.`
-        }))
-      : (definition.screens && definition.screens.length > 0)
-      ? definition.screens.slice(0, 3).map((scr, idx) => ({
-          id: `UC-00${idx + 1}`,
-          title: `Execute ${scr.name} Workflow`,
-          primaryActor: definition.personas?.[0]?.name || 'Operational User',
-          preCondition: `User has permission to view ${scr.name}.`,
-          trigger: `User navigates to ${scr.name} module.`,
-          mainFlow: [
-            `Navigate to ${scr.name} screen.`,
-            `System loads component details: ${scr.components?.join(', ') || 'Data fields'}.`,
-            `Perform primary business action and save.`,
-            `System updates data store.`
-          ],
-          postCondition: `${scr.name} state updated and saved.`
-        }))
-      : [
-          {
-            id: "UC-001",
-            title: `Execute ${definition.productName || 'System'} Dashboard Action`,
-            primaryActor: definition.personas?.[0]?.name || "System User",
-            preCondition: "User is authenticated and has valid permissions.",
-            trigger: "User performs record modification or status trigger.",
-            mainFlow: [
-              "User navigates to main workflow page.",
-              "System renders active data entities and validation rules.",
-              "User confirms submission.",
-              "System processes payload and returns success."
-            ],
-            postCondition: "Record is updated and visible in audit history."
-          }
-        ],
-    testScenarios: (definition.businessRules && definition.businessRules.length > 0)
-      ? definition.businessRules.map((br, idx) => ({
-          id: `TC-00${idx + 1}`,
-          type: idx % 2 === 0 ? "POSITIVE / HAPPY PATH" : "BOUNDARY / THRESHOLD",
-          module: br.code || definition.modules?.[0]?.name || "Core Module",
-          title: `Verify rule: ${br.rule}`,
-          testData: `Context: ${br.context || 'Standard Input Payload'}`,
-          expectedResult: `System validates rule "${br.rule}" without error.`
-        }))
-      : [
-          {
-            id: "TC-001",
-            type: "POSITIVE / HAPPY PATH",
-            module: definition.modules?.[0]?.name || "Core System",
-            title: `Verify ${definition.productName || 'System'} standard data submission flow`,
-            testData: "Valid input payload matching schema",
-            expectedResult: "State updates cleanly; audit record generated."
-          },
-          {
-            id: "TC-002",
-            type: "BOUNDARY / THRESHOLD",
-            module: definition.modules?.[0]?.name || "Core System",
-            title: "Verify validation error on invalid input",
-            testData: "Empty or malformed payload fields",
-            expectedResult: "System halts submission and renders clear validation feedback."
-          }
-        ]
+    useCases: suite.useCases,
+    testScenarios: suite.scenarios.map((s, i) => ({
+      id: s.id,
+      type: s.type,
+      module: s.ruleCode,
+      title: s.objective,
+      testData: s.testVector,
+      expectedResult: (suite.testCases.find((c) => c.title === s.objective) ?? suite.testCases[i])?.expectedResult ?? `${s.riskRating} risk. ${s.verificationMethod}`,
+    })),
   };
 
   const handleFieldChange = (field: keyof ProductDefinition, val: any) => {
