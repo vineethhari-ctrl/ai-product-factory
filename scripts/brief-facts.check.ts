@@ -8,6 +8,7 @@ import path from "node:path";
 
 const dir = mkdtempSync(path.join(tmpdir(), "brief-"));
 process.env.DATA_DIR = dir;
+process.env.AI_CACHE_DAYS = "0";
 for (const k of ["AI_PROJECT_BUTTON_LIMIT", "AI_USER_BUTTON_LIMIT", "AI_USER_DAILY_TOKENS", "AI_MONTHLY_BUDGET_USD"]) process.env[k] = "0";
 delete process.env.GEMINI_API_KEY; delete process.env.ANTHROPIC_API_KEY; delete process.env.GOOGLE_GENAI_USE_VERTEXAI;
 
@@ -34,13 +35,15 @@ Integrations: Member register, Payment gateway.`;
   const { analyzeBusinessMaterial, generateProductDefinition } = await import("../server/aiReasoningService");
   const { BusinessUnderstandingSchema, ProductDefinitionSchema } = await import("../server/aiSchemas");
   const { setProviderForTests } = await import("../server/llmRouter");
-  const quiet = async <T,>(f: () => Promise<T>): Promise<T> => { const l = console.log, w = console.warn; console.log = () => {}; console.warn = () => {}; try { return await f(); } finally { console.log = l; console.warn = w; } };
+  const quiet = async <T,>(f: () => Promise<T>): Promise<T> => { const l = console.log, w = console.warn; console.log = () => {}; if (!process.env.DEBUG) console.warn = () => {}; try { return await f(); } finally { console.log = l; console.warn = w; } };
 
   // A model answer that, like a real one, knows nothing about the parsed brief.
   const u0 = await quiet(() => analyzeBusinessMaterial([], "Request Desk", "Operations", BRIEF));
   const d0 = await quiet(() => generateProductDefinition(u0, "Request Desk", "Operations"));
   const { blueprintBrief: _b, ...uAnswer } = u0 as any;
   const { blueprintBrief: _c, problemStatement: _p, successMetrics: _s, ...dAnswer } = d0 as any;
+  // The offline definition has system-added fields a model never writes; drop them so the stand-in fits the AI schema.
+  dAnswer.dataEntities = dAnswer.dataEntities.map((e: any) => ({ ...e, fields: e.fields.filter((f: any) => f.origin !== "SYSTEM" && f.source !== "system").map(({ source: _s, ...f }: any) => f) }));
   const evidence = Object.entries(d0.evidenceMapping ?? {}).map(([topic, sources]) => ({ topic, sources }));
 
   process.env.GEMINI_API_KEY = "g";
