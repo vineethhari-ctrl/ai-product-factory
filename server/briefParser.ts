@@ -56,6 +56,13 @@ function singular(w: string): string {
   return w;
 }
 
+/** Singular of the last word: "Regional Sales Managers" -> "Regional Sales Manager". */
+function singularPhrase(p: string): string {
+  const words = p.split(/\s+/);
+  words[words.length - 1] = singular(words[words.length - 1]);
+  return words.join(" ");
+}
+
 /** First item of a long fragment: words up to the first sentence or clause break. */
 function headItem(fragment: string): string {
   const words = fragment.trim().split(/\s+/).map(cleanWord).filter(Boolean);
@@ -160,12 +167,13 @@ export function extractParties(text: string): string[] {
 
 /** "<things> such as a, b and c" -> child records of the subject with a type list. */
 export function extractParts(text: string): BlueprintBrief["parts"] {
-  for (const m of text.matchAll(/\b([A-Za-z]{4,})\s+(?:such as|e\.g\.|like)\s+([^.;:()]+)/gi)) {
+  for (const m of text.matchAll(/\b((?:[A-Za-z]{3,}\s+)?[A-Za-z]{4,})\s+(?:such as|e\.g\.|like)\s+([^.;:()]+)/gi)) {
+    const noun = m[1].split(/\s+/).filter((w, i, a) => i === a.length - 1 || !STOP.has(w.toLowerCase())).join(" ");
     const items = m[2]
       .split(/,|\band\b|\bor\b|\//)
       .map((s) => s.trim().replace(/\betc\.?$/i, "").trim())
       .filter((s) => s && s.split(/\s+/).length <= 3 && !/^etc\.?$/i.test(s));
-    if (items.length >= 3) return { name: titlePhrase(singular(m[1])), types: [...new Set(items.map(titlePhrase))].slice(0, 10) };
+    if (items.length >= 3) return { name: singularPhrase(titlePhrase(noun)), types: [...new Set(items.map(titlePhrase))].slice(0, 10) };
   }
   return undefined;
 }
@@ -208,6 +216,121 @@ export function extractActions(text: string): BriefAction[] {
   return actions.slice(0, MAX_STAGES);
 }
 
+const SECTION_KEYS: Array<[keyof Sections, RegExp]> = [
+  ["who", /\bwho does what\b|\bresponsibilit/],
+  ["parties", /\b(?:stakeholders?|parties|actors|personas)\b/],
+  ["pain", /\b(?:pain points?|problems?|challenges?)\b/],
+  ["rules", /\brules?\b|\bpolicies\b|\bconstraints?\b/],
+  ["kpis", /\b(?:kpis?|metrics?)\b/],
+  ["integrations", /\b(?:integrations?|interfaces)\b/],
+  ["goal", /\b(?:goal|objective|purpose|vision)\b/],
+];
+interface Sections { goal?: string; who?: string; parties?: string; pain?: string; rules?: string; kpis?: string; integrations?: string }
+
+/** "Label: text" paragraphs, the way a BU lists goal, pain points, rules, KPIs, integrations. A blank line ends one. */
+function extractSections(text: string): Sections {
+  const out: Sections = {};
+  let current: keyof Sections | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z][A-Za-z /&'-]{2,40}?)\s*:\s*(.*)$/);
+    const key = m ? SECTION_KEYS.find(([, re]) => re.test(m[1].toLowerCase()))?.[0] : undefined;
+    if (m && key) { current = key; out[key] = `${out[key] ?? ""} ${m[2]}`.trim(); continue; }
+    if (!line.trim()) { current = undefined; continue; }
+    if (current && !m) out[current] = `${out[current]} ${line.trim()}`.trim();
+    else current = undefined;
+  }
+  return out;
+}
+
+/** Split on a separator that is not inside brackets. */
+function splitTop(s: string, sep: RegExp): string[] {
+  const out: string[] = [];
+  let depth = 0, cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && sep.test(ch)) { out.push(cur); cur = ""; } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((x) => x.replace(/\s+/g, " ").trim().replace(/[.]+$/, "")).filter(Boolean);
+}
+
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const ROLE_WORD = /(?:ers|ors|ians|ists|ants|ents|ives)$/;
+const PREPOSITIONS = new Set(["to", "for", "from", "in", "on", "at", "with", "by", "of", "above", "below", "before", "after", "within", "into", "via"]);
+
+/** The role at the start of a clause: words up to the first plural role noun, before any preposition. */
+function leadingRole(words: string[]): { role: string; rest: string[] } | undefined {
+  for (let i = 0; i < Math.min(4, words.length - 1); i++) {
+    const w = words[i].toLowerCase();
+    if (PREPOSITIONS.has(w)) return undefined;
+    if ((ROLE_WORD.test(w) || PEOPLE_WORDS.has(w)) && !NOT_ROLES.has(w)) {
+      return { role: singularPhrase(titlePhrase(words.slice(0, i + 1).join(" "))), rest: words.slice(i + 1) };
+    }
+  }
+  return undefined;
+}
+
+/** Which stage a duty belongs to: the stage name's stem or initials appearing in the duty's words. */
+function stageFor(duty: string, stages: string[], taken: Set<number>): number {
+  const words = duty.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const initials = words.map((w) => w[0]).join("");
+  let best = -1, bestScore = 0;
+  stages.forEach((st, i) => {
+    if (taken.has(i)) return;
+    const name = st.toLowerCase().replace(/[^a-z0-9 ]/g, "");
+    const stem = name.split(" ")[0].slice(0, 5);
+    let score = words.some((w) => w.startsWith(stem)) ? 1 : 0;
+    if (!name.includes(" ") && name.length >= 2 && name.length <= 5 && initials.includes(name)) score += 3;
+    if (score > bestScore) { best = i; bestScore = score; }
+  });
+  return best;
+}
+
+/** "clerks log requests and file notes, leads assign desks": duties per party, and the owner of each stage. */
+function extractDuties(text: string, stages: string[]): { duties: Record<string, string[]>; owners: string[] } {
+  const duties: Record<string, string[]> = {};
+  const owners: string[] = stages.map(() => "");
+  const taken = new Set<number>();
+  for (const segment of splitTop(text, /,/)) {
+    let role: string | undefined;
+    splitTop(segment.replace(/\band\b/gi, ","), /,/).forEach((clause, idx) => {
+      let words = clause.split(/\s+/).filter(Boolean);
+      const lead = leadingRole(words);
+      if (lead) { role = lead.role; words = lead.rest; }
+      if (!role || words.length === 0) return;
+      const duty = sentence(words.join(" "));
+      (duties[role] ??= []).push(duty);
+      const at = stages.length ? stageFor(words.join(" "), stages, taken) : -1;
+      if (at >= 0) { owners[at] = role; taken.add(at); }
+    });
+  }
+  return { duties, owners };
+}
+
+/** Everything the BU wrote under labels, without any domain vocabulary. */
+function extractDetails(text: string, stages: string[]): Partial<BlueprintBrief> & { owners?: string[] } {
+  const sec = extractSections(text);
+  const out: Partial<BlueprintBrief> & { owners?: string[] } = {};
+  if (sec.goal) out.goal = sentence(sec.goal.replace(/\s+/g, " ").trim());
+  const list = (s: string | undefined, sep: RegExp) => (s ? splitTop(s, sep).map(sentence) : []);
+  const pain = list(sec.pain, /;/), rules = list(sec.rules, /;/);
+  const kpis = list(sec.kpis, /,/), integrations = list(sec.integrations, /,/);
+  if (pain.length) out.painPoints = pain.slice(0, 10);
+  if (rules.length) out.rules = rules.slice(0, 20);
+  if (kpis.length) out.kpis = kpis.slice(0, 10);
+  if (integrations.length) out.integrations = integrations.slice(0, 12);
+  if (sec.parties) {
+    out.parties = splitTop(sec.parties, /,/).map((p) => singularPhrase(titlePhrase(p.replace(/\([^)]*\)/g, "").trim()))).filter((p) => p && p.split(" ").length <= 4);
+  }
+  if (sec.who) {
+    const { duties, owners } = extractDuties(sec.who, stages);
+    if (Object.keys(duties).length) out.partyDuties = duties;
+    if (owners.filter(Boolean).length >= Math.ceil(stages.length / 2)) out.owners = owners;
+  }
+  return out;
+}
+
 export function parseBrief(text: string, productName = ""): BlueprintBrief {
   let stages = extractStages(text);
   let subject = extractSubject(text, stages, productName);
@@ -220,8 +343,12 @@ export function parseBrief(text: string, productName = ""): BlueprintBrief {
     stageOwners = actions.map((a) => a.party);
   }
   const parts = extractParts(text);
+  const detail = extractDetails(text, stages);
+  if (!stageOwners && detail.owners) stageOwners = detail.owners;
   const partNames = new Set((parts?.types ?? []).map((t) => t.toLowerCase()));
-  const parties = [...new Set([...(stageOwners ?? []), ...extractParties(`${productName}. ${text}`)])]
-    .filter((p) => !partNames.has(p.toLowerCase())).slice(0, 6);
-  return { subject, stages, parties, ...(stageOwners ? { stageOwners } : {}), ...(parts ? { parts } : {}) };
+  const named = detail.parties ?? [];
+  const parties = [...new Set([...(stageOwners ?? []).filter(Boolean), ...named, ...(named.length ? [] : extractParties(`${productName}. ${text}`))])]
+    .filter((p) => !partNames.has(p.toLowerCase())).slice(0, named.length ? 10 : 6);
+  const { owners: _owners, parties: _parties, ...rest } = detail;
+  return { subject, stages, parties, ...(stageOwners ? { stageOwners } : {}), ...(parts ? { parts } : {}), ...rest };
 }

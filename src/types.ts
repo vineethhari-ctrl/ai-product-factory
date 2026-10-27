@@ -74,6 +74,18 @@ export interface BlueprintBrief {
   stageOwners?: string[];
   /** Child records from a "<things> such as a, b, c" list. */
   parts?: { name: string; types: string[] };
+  /** The BU's own statement of purpose ("Goal: ..."). */
+  goal?: string;
+  /** What goes wrong today ("Pain points: a; b; c"). */
+  painPoints?: string[];
+  /** Business rules the BU wrote down ("Rules: a; b; c"), one item each. */
+  rules?: string[];
+  /** How success is measured ("KPIs: a, b, c"). */
+  kpis?: string[];
+  /** Systems the product connects to ("Integrations: a, b, c"). */
+  integrations?: string[];
+  /** What each party does ("clerks log requests and file notes"), by party. */
+  partyDuties?: Record<string, string[]>;
 }
 
 /** Set when the BU input was thin and requirements were predicted from industry patterns. */

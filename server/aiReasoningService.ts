@@ -32,7 +32,7 @@ import {
 } from "./benchmark";
 import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, DesignResearchSchema, PrototypeUISchema } from "./aiSchemas";
 import { currentServedModel } from "./usage";
-import { ensureScreenUI } from "./blueprint";
+import { ensureScreenUI, lower } from "./blueprint";
 import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
 import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
@@ -300,8 +300,10 @@ function withLocalBlueprint(
   const subject = blueprint.subject;
   const bp = blueprintToUnderstanding(blueprint);
   const filled = new Set<string>();
+  // A brief that spells out the process is better evidence than the keyword extractor's guesses.
+  const structured = blueprint.brief.stages.length >= 3;
   const fill = (key: keyof typeof bp, current: BusinessUnderstanding["personas"]) => {
-    if (isPlaceholderSection(current)) {
+    if (structured || isPlaceholderSection(current)) {
       filled.add(key);
       return bp[key];
     }
@@ -337,14 +339,22 @@ function withLocalBlueprint(
   const clarifications = u.clarifications?.map((c) => ({ ...c, question: rename(c.question), impactIfIgnored: rename(c.impactIfIgnored) }));
   const { stages, parties } = blueprint.brief;
   const shape = stages.length >= 3
-    ? `built around the ${stages.length}-stage ${subject.toLowerCase()} lifecycle in the brief (${stages.join(" → ")})${parties.length ? `, shared by ${parties.join(", ")}` : ""}`
-    : `built around the ${subject.toLowerCase()} lifecycle: capture, triage, decide, close and oversee`;
-  const overallSummary = materials.length > 0 ? u.overallSummary
+    ? `built around the ${stages.length}-stage ${lower(subject)} lifecycle in the brief (${stages.join(" → ")})${parties.length ? `, shared by ${parties.join(", ")}` : ""}`
+    : `built around the ${lower(subject)} lifecycle: capture, triage, decide, close and oversee`;
+  const b = blueprint.brief;
+  const briefSummary = [
+    b.goal,
+    `The BU describes a ${stages.length}-stage ${lower(subject)} lifecycle (${stages.join(" → ")})${parties.length ? `, worked by ${parties.join(", ")}` : ""}.`,
+    b.painPoints?.length ? `Today: ${b.painPoints.map((x) => lower(x)).join("; ")}.` : "",
+    b.kpis?.length ? `Success is measured by ${b.kpis.map((x) => lower(x)).join(", ")}.` : "",
+  ].filter(Boolean).join(" ");
+  const overallSummary = materials.length > 0 ? (structured && b.goal ? briefSummary : u.overallSummary)
     : `${description ? `${description.trim().replace(/\.?$/, ".")} ` : ""}No materials were supplied for "${productName}" (${businessUnit}), so the product scope below is predicted from the brief, ${shape}. Every predicted item is marked INFERRED for BU review; add materials to replace predictions with evidence.`;
   return {
     ...u,
     blueprintBrief: blueprint.brief,
     overallSummary,
+    ...(structured && b.goal ? { businessObjective: { ...u.businessObjective, title: productName || u.businessObjective.title, description: briefSummary, status: "CONFIRMED" as const, evidenceReferences: materials.map((m) => m.filename).slice(0, 3) } } : {}),
     clarifications,
     personas: tag(sections.personas),
     modules: tag(sections.modules),

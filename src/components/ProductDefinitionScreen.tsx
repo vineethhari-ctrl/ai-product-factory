@@ -4,6 +4,7 @@ import { constraintSummary, withSystemFields } from '../services/validationEngin
 import { copyToClipboard } from '../services/clipboardUtils';
 import { AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
+import { BrdBody } from './BrdDocument';
 import { 
   CheckCircle, 
   FileCheck, 
@@ -338,7 +339,22 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   };
 
   const handleCopyBRDText = async () => {
-    const text = `=== BUSINESS REQUIREMENTS DOCUMENT (BRD) ===\nProduct: ${definition.productName}\nBusiness Unit: ${definition.businessUnit}\nVersion: ${definition.version}\nStatus: ${definition.isApproved ? 'Approved & Frozen' : 'Draft for BU Review'}\n\n1. EXECUTIVE SUMMARY & OBJECTIVES\n${definition.objective}\n\n2. FUNCTIONAL MODULES\n${definition.modules.map((m, idx) => `2.${idx + 1} ${m.name}\n${m.description}`).join('\n\n')}\n\n3. USER PERSONAS & SECURITY ACCESS (RBAC)\n${definition.personas.map(p => `• ${p.name} (${p.role}): ${p.keyGoals.join('; ')} | Permissions: ${p.permissions.join(', ')}`).join('\n')}\n\n4. BUSINESS GOVERNANCE RULES\n${definition.businessRules.map(r => `• [${r.code || 'RULE'}] ${r.rule} (Context: ${r.context})`).join('\n')}\n\n5. DATA ENTITIES\n${definition.dataEntities.map(d => `• ${d.name}: ${d.description}`).join('\n')}\n\n6. INTEGRATIONS\n${definition.integrations.map(i => `• ${i.system} (${i.protocol}): ${i.purpose}`).join('\n')}`;
+    const br = definition.blueprintBrief;
+    const list = (items: string[]) => items.map((x) => `• ${x}`).join('\n');
+    const text = [
+      `=== BUSINESS REQUIREMENTS DOCUMENT (BRD) ===\nProduct: ${definition.productName}\nBusiness Unit: ${definition.businessUnit}\nVersion: ${definition.version}\nStatus: ${definition.isApproved ? 'Approved & Frozen' : 'Draft for BU Review'}`,
+      `1. EXECUTIVE SUMMARY & OBJECTIVES\n${definition.objective}`,
+      br?.painPoints?.length ? `2. PROBLEMS TODAY\n${list(br.painPoints)}` : '',
+      br?.kpis?.length ? `SUCCESS MEASURES (KPIs)\n${list(br.kpis)}` : '',
+      `FUNCTIONAL MODULES\n${definition.modules.map((m, idx) => `${idx + 1}. ${m.name}: ${m.description}`).join('\n')}`,
+      br?.stages?.length ? `PROCESS & LIFECYCLE\n${br.stages.map((st, i) => `${i + 1}. ${st}${br.stageOwners?.[i] ? ` (${br.stageOwners[i]})` : ''}`).join('\n')}` : '',
+      `USER PERSONAS & SECURITY ACCESS (RBAC)\n${definition.personas.map(p => `• ${p.name} (${p.role}): ${p.keyGoals.join('; ')} | Permissions: ${p.permissions.join(', ')}`).join('\n')}`,
+      `USER JOURNEYS\n${definition.userJourneys.map(j => `• ${j.name} [${j.persona}]: ${j.steps.join(' > ')}. Outcome: ${j.outcome}`).join('\n')}`,
+      `SCREENS\n${definition.screens.map(s => `• ${s.name} (${s.module}, ${s.layoutType}): ${s.purpose}`).join('\n')}`,
+      `BUSINESS RULES\n${definition.businessRules.map(r => `• [${r.code || 'RULE'}] ${r.rule} (Applies to: ${r.context}; ${r.confidence})`).join('\n')}`,
+      `DATA DICTIONARY\n${definition.dataEntities.map(d => `• ${d.name}: ${d.description}\n${withSystemFields(d).fields.filter(f => f.source !== 'system').map(f => `    - ${f.name} (${f.constraints?.format ?? f.type}${f.required ? ', required' : ''}) ${constraintSummary(f).join(', ')}`).join('\n')}`).join('\n')}`,
+      `INTEGRATIONS\n${definition.integrations.map(i => `• ${i.system} (${i.protocol}): ${i.purpose}`).join('\n')}`,
+    ].filter(Boolean).join('\n\n');
 
     const success = await copyToClipboard(text);
     if (success) {
@@ -627,119 +643,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
               </div>
             </div>
 
-            {/* Section 1: Business Context & Objective */}
-            <div className="space-y-3">
-              <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center">1</span>
-                Executive Summary & Business Objectives
-              </h3>
-              <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
-                {definition.objective}
-              </p>
-            </div>
-
-            {/* Section 2: Functional Scope & Key Modules */}
-            <div className="space-y-3">
-              <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center">2</span>
-                Functional Scope & System Modules ({definition.modules.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                {definition.modules.map((m, idx) => (
-                  <div key={m.id || idx} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                    <div className="font-bold text-slate-900 flex items-center justify-between">
-                      <span>2.{idx + 1} {m.name}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded font-semibold">
-                        {m.confidence}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px] leading-relaxed">{m.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Section 3: User Personas & RBAC Permissions */}
-            <div className="space-y-3">
-              <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center">3</span>
-                User Personas & Security Access (RBAC)
-              </h3>
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase text-[10px]">
-                    <tr>
-                      <th className="p-3 px-4">Persona / Stakeholder</th>
-                      <th className="p-3 px-4">Role Title</th>
-                      <th className="p-3 px-4">Operational Goals</th>
-                      <th className="p-3 px-4">Granted System Permissions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {definition.personas.map((p, idx) => (
-                      <tr key={p.id || idx}>
-                        <td className="p-3 px-4 font-bold text-slate-900">{p.name}</td>
-                        <td className="p-3 px-4 text-indigo-700 font-semibold">{p.role}</td>
-                        <td className="p-3 px-4 text-[11px]">{p.keyGoals.join('; ')}</td>
-                        <td className="p-3 px-4 font-mono text-[11px]">{p.permissions.join(', ')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Section 4: Governance Rules & Constraints */}
-            <div className="space-y-3">
-              <h3 className="text-base font-bold text-slate-900 border-b border-slate-100 pb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center">4</span>
-                Business Governance Rules ({definition.businessRules.length})
-              </h3>
-              <div className="space-y-2 text-xs">
-                {definition.businessRules.map((rule, idx) => (
-                  <div key={rule.id || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-3">
-                    <span className="px-2 py-0.5 bg-slate-900 text-white font-mono font-bold text-[10px] rounded shrink-0 mt-0.5">
-                      {rule.code || `BR-${idx + 1}`}
-                    </span>
-                    <div className="space-y-0.5">
-                      <div className="font-semibold text-slate-900">{rule.rule}</div>
-                      <div className="text-slate-500 text-[11px]">Context: {rule.context}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Section 5: Data Entities & Integration Matrix */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-500">
-                  Data Dictionary Entities
-                </h4>
-                <div className="space-y-2 text-xs">
-                  {definition.dataEntities.map((e, idx) => (
-                    <div key={e.id || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                      <div className="font-bold font-mono text-slate-900">{e.name}</div>
-                      <p className="text-slate-600 text-[11px]">{e.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider text-slate-500">
-                  External System Integrations
-                </h4>
-                <div className="space-y-2 text-xs">
-                  {definition.integrations.map((i, idx) => (
-                    <div key={i.id || idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
-                      <div className="font-bold text-slate-900">{i.system} ({i.protocol})</div>
-                      <p className="text-slate-600 text-[11px]">{i.purpose}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <BrdBody definition={definition} />
 
             {/* Section 6: BU Sign-Off & Verification Footer */}
             <div className="border-t border-slate-200 pt-6 space-y-4">
