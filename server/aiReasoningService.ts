@@ -17,6 +17,7 @@ import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
 import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
 import { FIELD_INFERENCE_RULES, constraintOpenQuestion, normalizeDefinitionConstraints, validationRulesMarkdown } from "./constraints";
 import { entityToSQL, FIELD_FORMATS } from "../src/services/validationEngine";
+import { readableValue } from "../src/services/documentMath";
 import { cleanDocument, withDocuments } from "./documents";
 import {
   BENCHMARK_TAG,
@@ -1052,9 +1053,9 @@ function cleanUIBlocks(b: Pick<ScreenUISpec, "device" | "chart" | "board" | "tim
   if (b.chart) {
     const n = Math.min(b.chart.labels.length, b.chart.values.length, 12);
     const values = b.chart.values.slice(0, n).map((v) => (Number.isFinite(v) ? Math.max(0, v) : 0));
-    if (n >= 2 && values.some((v) => v > 0)) out.chart = { ...b.chart, labels: b.chart.labels.slice(0, n), values };
+    if (n >= 2 && values.some((v) => v > 0)) out.chart = { ...b.chart, labels: b.chart.labels.slice(0, n).map((l) => readableValue(l)), values };
   }
-  const columns = (b.board?.columns ?? []).filter((c) => c.title).slice(0, 8).map((c) => ({ ...c, cards: c.cards.slice(0, 6) }));
+  const columns = (b.board?.columns ?? []).filter((c) => c.title).slice(0, 8).map((c) => ({ ...c, title: readableValue(c.title), cards: c.cards.slice(0, 6) }));
   if (columns.length >= 2) out.board = { columns };
   if (b.timeline?.length) out.timeline = b.timeline.slice(0, 8);
   return out;

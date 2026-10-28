@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { documentSample, varySample } from '../services/documentSamples';
 import { ArrowLeft, Check, ChevronRight, FilePlus2, Link2, Lock, Plus, Search, Trash2 } from 'lucide-react';
 import type { DocumentAction, DocumentField, ScreenUISpec, TransactionDocument } from '../types';
-import { actionsFor, completedStates, documentTotals, formatMoney, hasAmounts, initialState, lineAmount, missingRequired, parseNumber } from '../services/documentMath';
+import { actionsFor, completedStates, documentTotals, humanizeDocumentStates, formatMoney, hasAmounts, initialState, lineAmount, missingRequired, parseNumber } from '../services/documentMath';
 import { StatusOrText } from './UIBlocks';
 
 /**
@@ -19,6 +19,8 @@ interface DocRecord {
   lines: string[][];
   history: Array<{ when: string; who: string; what: string }>;
   created: string[];
+  /** The cells of the sample row this record came from; shown for columns that match no header field. */
+  cells?: string[];
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -51,6 +53,7 @@ function recordsFromTable(ui: ScreenUISpec, doc: TransactionDocument): DocRecord
       lines: (doc.lines?.rows ?? []).map((r) => [...r]),
       history: [{ when: 'Earlier', who: 'System', what: `${doc.name} ${row[0] ?? ''} recorded as ${status}` }],
       created: [],
+      cells: row.map((c) => String(c ?? '')),
     };
   });
 }
@@ -67,7 +70,9 @@ function rowFor(ui: ScreenUISpec, doc: TransactionDocument, rec: DocRecord): str
     if (ci === 0) return rec.number;
     if (/status|state|stage/i.test(c) || ci === ui.table.columns.length - 1 && !ui.table.columns.some((x) => /status|state|stage/i.test(x))) return rec.status;
     const f = fieldsOf(doc).find((x) => norm(x.label) === norm(c));
-    if (f) return rec.values[f.label] ?? '';
+    if (f && rec.values[f.label]) return rec.values[f.label];
+    if (rec.cells?.[ci]) return rec.cells[ci];
+    if (f) return '';
     if (/total|amount|value/i.test(c) && total) return total;
     return '';
   });
@@ -138,7 +143,7 @@ export const TransactionScreen: React.FC<{ ui: ScreenUISpec & { document: Transa
   readOnly,
   userName = 'You',
 }) => {
-  const doc = ui.document;
+  const doc = useMemo(() => humanizeDocumentStates(ui.document), [ui.document]);
   const [records, setRecords] = useState<DocRecord[]>(() => recordsFromTable(ui, doc));
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [draft, setDraft] = useState<DocRecord | null>(null);

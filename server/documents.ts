@@ -12,6 +12,7 @@ import type {
 } from "../src/types";
 import { resolveFieldConstraints } from "../src/services/validationEngine";
 import { documentSample } from "../src/services/documentSamples";
+import { humanizeDocumentStates } from "../src/services/documentMath";
 import { codePrefix, deriveSubject, entityForScreen, humanize, stateLabel } from "./blueprint";
 
 /**
@@ -116,8 +117,11 @@ function prefixFor(name: string, raw: unknown): string {
  * statuses without duplicates and actions that go from and to real statuses. Undefined when there is nothing to
  * render (no named document or no header field).
  */
-export function cleanDocument(raw: Partial<TransactionDocument> | undefined, fallbackStates: string[] = [], entity?: DataEntityDefinition, entities: DataEntityDefinition[] = []): TransactionDocument | undefined {
-  if (!raw) return undefined;
+export function cleanDocument(rawIn: Partial<TransactionDocument> | undefined, fallbackStates: string[] = [], entity?: DataEntityDefinition, entities: DataEntityDefinition[] = []): TransactionDocument | undefined {
+  if (!rawIn) return undefined;
+  // Statuses as a person reads them (a model copies the record's UPPER_CASE values).
+  const raw = humanizeDocumentStates(rawIn);
+  fallbackStates = fallbackStates.map((x) => humanizeDocumentStates({ states: [x] }).states![0]);
   const name = clip(raw.name, 40);
   if (!name) return undefined;
   const seen = new Set<string>();

@@ -102,6 +102,33 @@ export function completedStates(doc: TransactionDocument, current: string): Set<
   return done;
 }
 
+const SHORT_WORDS = new Set(['IN', 'OF', 'ON', 'TO', 'AT', 'BY', 'OR', 'AND', 'FOR', 'NEW', 'OLD', 'ALL', 'END', 'OFF', 'OUT', 'SET', 'GET', 'NO', 'YES', 'UP', 'IS', 'AS', 'THE', 'DUE', 'PAY']);
+
+/**
+ * "PENDING_MANUAL_REVIEW" -> "Pending Manual Review". Only a value written as UPPER_CASE words is touched; anything with a
+ * lower-case letter, a dash or a space-separated sentence is left as written. Short words that are probably acronyms
+ * (EV, SLA, NMC) stay upper-case; a lone short token (LFP) is left alone unless `force` (a status).
+ */
+export function readableValue(s: string, force = false): string {
+  if (typeof s !== 'string') return s;
+  const t = s.trim();
+  if (!/^[A-Z][A-Z0-9]*(?:[_ ][A-Z0-9]+)*$/.test(t) || !/[A-Z]{2}/.test(t)) return s;
+  if (!force && !/[_ ]/.test(t) && t.length <= 4) return s;
+  return t.split(/[_ ]+/).map((w) => (/\d/.test(w) || (w.length <= 3 && !SHORT_WORDS.has(w) && !force) ? w : w[0] + w.slice(1).toLowerCase())).join(' ');
+}
+
+/** A status the way a person reads it. */
+export const readableState = (s: string): string => (/[a-z]/.test(s) ? s : readableValue(s, true));
+
+/** The document with every status written the way a person reads it (statuses, and the from/to of each action). Idempotent. */
+export function humanizeDocumentStates<T extends { states?: string[]; actions?: Array<{ from?: string[]; to?: string }> }>(doc: T): T {
+  return {
+    ...doc,
+    ...(doc.states ? { states: doc.states.map(readableState) } : {}),
+    ...(doc.actions ? { actions: doc.actions.map((a) => ({ ...a, ...(a.from ? { from: a.from.map(readableState) } : {}), ...(a.to ? { to: readableState(a.to) } : {}) })) } : {}),
+  };
+}
+
 export const initialState = (doc: TransactionDocument) => doc.states[0] ?? '';
 
 /** Actions offered in a status. An action without `from` is offered in every status except the last one. */

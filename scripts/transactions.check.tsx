@@ -233,6 +233,22 @@ async function main() {
     const done = [...math.completedStates(flow, "Approved")].sort();
     t("the stepper ticks only the path taken: an approved document did not pass a fraud flag or a rejection", done.join("|") === "Auto Approved|Draft|Submitted" && !done.includes("Flagged") && !done.includes("Rejected"), done.join("|"));
     t("a document at its first status has ticked nothing; a status with no path falls back to the list order", math.completedStates(flow, "Draft").size === 0 && [...math.completedStates({ ...flow, actions: [] }, "Approved")].length === 5);
+    // ── Raw UPPER_CASE values read as words; list columns that match no header field keep their sample cells ──
+    const { readableValue, readableState } = math;
+    const { normalizeUISpec } = await import("../server/benchmark");
+    t("UPPER_CASE_ENUMS read as words; codes, sentences, short acronyms and numbers are left alone", readableValue("USED_EV_LOAN_UNDERWRITING") === "Used EV Loan Underwriting" && readableValue("IN_VEHICLE_ACTIVE") === "In Vehicle Active" && readableValue("NMC_811") === "NMC 811" && readableValue("COMPLETED") === "Completed" && ["LFP", "WCL-2026-08914", "PLANT-DE-LEIPZIG-02", "4,125.0 kg", "Approved", "67.5%", "A+ / 92% SoH", ""].every((x) => readableValue(x) === x));
+    t("a status always reads as words, even a short one", readableState("NEW") === "New" && readableState("PENDING_MANUAL_REVIEW") === "Pending Manual Review" && readableState("Approved") === "Approved");
+    const shouty = cleanDocument({ name: "Claim", numberPrefix: "CL-", sections: [{ title: "x", fields: [{ label: "Ref", kind: "text" }] }], states: ["DRAFT", "PENDING_REVIEW", "APPROVED"], actions: [{ label: "Submit", from: ["DRAFT"], to: "PENDING_REVIEW" }, { label: "Approve", from: ["PENDING_REVIEW"], to: "APPROVED" }] } as any, []) as Doc;
+    t("a model's UPPER_CASE statuses are written as words and the workflow still connects", shouty.states.join("|") === "Draft|Pending Review|Approved" && shouty.actions.length === 2 && shouty.actions[0].to === "Pending Review", JSON.stringify(shouty));
+    const ui0: any = { kpis: [], filters: ["COMPLETED", "CONSENT_EXPIRED"], table: { title: "T", columns: ["Ref", "Customer & Region", "Purpose", "Status"], rows: [["R-1", "Acme / North", "USED_EV_LOAN", "COMPLETED"]] }, detailPanels: [{ title: "d", items: [{ label: "s", value: "SECOND_LIFE_REPURPOSED" }] }], primaryActions: [] };
+    const n0 = normalizeUISpec(ui0);
+    t("normalizeUISpec writes chips, cells and panel values as words", n0.filters.join("|") === "Completed|Consent Expired" && n0.table.rows[0][2] === "Used EV Loan" && n0.detailPanels[0].items[0].value === "Second Life Repurposed");
+    const root2 = createRoot(container);
+    const uiDoc: any = { ...n0, document: { name: "Log", numberPrefix: "LG-", sections: [{ title: "Details", fields: [{ label: "Ref", kind: "text", sample: "R-1" }] }], states: ["Completed", "Revoked"], actions: [] } };
+    await act(async () => { root2.render(React.createElement(TransactionScreen, { ui: uiDoc, readOnly: false, userName: "T" })); });
+    const text = container.textContent ?? "";
+    t("the list shows the sample cells of columns that match no header field (not blank dashes)", text.includes("Acme / North") && text.includes("Used EV Loan"), text.slice(0, 300));
+    await act(async () => root2.unmount());
   }
 }
 

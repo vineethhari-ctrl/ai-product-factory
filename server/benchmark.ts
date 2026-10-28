@@ -6,6 +6,7 @@ import type {
   ScreenUISpec,
   UploadedMaterial,
 } from "../src/types";
+import { readableValue } from "../src/services/documentMath";
 
 /**
  * Industry-benchmark inference.
@@ -114,10 +115,13 @@ export function normalizeUISpec(ui: ScreenUISpec): ScreenUISpec {
   const width = ui.table.columns.length;
   return {
     ...ui,
+    // A model copies the record's UPPER_CASE values into chips, cells and panels; people read them as words.
+    filters: (ui.filters ?? []).map((f) => readableValue(f)),
     table: {
       ...ui.table,
-      rows: ui.table.rows.map((row) => Array.from({ length: width }, (_, i) => row[i] ?? "")),
+      rows: ui.table.rows.map((row) => Array.from({ length: width }, (_, i) => readableValue(row[i] ?? ""))),
     },
+    detailPanels: (ui.detailPanels ?? []).map((p) => ({ ...p, items: p.items.map((it) => ({ ...it, value: readableValue(it.value) })) })),
   };
 }
 
