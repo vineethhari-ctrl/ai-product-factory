@@ -23,7 +23,8 @@
     "check:questions": "tsx scripts/questions.check.ts",
     "check:prototype": "tsx scripts/prototype.check.ts",
     "check:brief": "tsx scripts/brief-facts.check.ts",
-    "check:docs": "tsx scripts/quality-docs.check.ts"
+    "check:docs": "tsx scripts/quality-docs.check.ts",
+    "check:approach": "tsx scripts/approach-note.check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

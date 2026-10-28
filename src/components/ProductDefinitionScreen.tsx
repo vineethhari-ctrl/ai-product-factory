@@ -3,6 +3,7 @@ import { ProductDefinition, ConfidenceStatus } from '../types';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { currentTestSuite } from '../services/testSuite';
+import { buildApproachNote, approachNoteText } from '../services/approachNote';
 import { AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { BrdBody } from './BrdDocument';
@@ -119,62 +120,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
     ]
   );
 
-  // Automated Synthesized Approach Note Data derived dynamically from active definition
-  const approachNote = {
-    docId: `APN-${(definition.productName || 'SYS').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}-01`,
-    status: "DRAFT FOR ARCHITECTURE REVIEW",
-    executiveSummary: definition.objective || 
-      `The primary driver of ${definition.productName || 'this initiative'} is to streamline operational processes for ${definition.businessUnit || 'the enterprise'}, eliminate manual workarounds, and establish single-pane governance across business modules.`,
-    asIsProblemStatement: (definition.assumptions && definition.assumptions.length > 0)
-      ? definition.assumptions.map(a => a.statement)
-      : [
-          `Fragmented tools and manual tracking lead to delayed visibility in ${definition.businessUnit || 'operations'}.`,
-          `Lack of unified data validation causes compliance risks and operational bottlenecks.`,
-          `Cross-functional teams lack real-time status updates and standardized workflow execution.`
-        ],
-    toBeTargetArchitecture: (definition.modules && definition.modules.length > 0)
-      ? [
-          `Unified Event-Driven Web Platform implementing ${definition.modules.map(m => m.name).join(', ')}.`,
-          `Role-based security framework ensuring ${definition.personas?.map(p => p.name).join(', ') || 'authorized users'} operate within permissible scopes.`,
-          `Centralized data governance and automated rule enforcement for ${definition.productName || 'the platform'}.`
-        ]
-      : [
-          `Unified Web Application consolidating core business processes into a centralized dashboard.`,
-          `High-reliability architecture with automated data validation and workflow execution.`,
-          `Enterprise RBAC ensuring operational safety and strict audit trails across all modules.`
-        ],
-    phasedExecutionStrategy: [
-      {
-        phase: "Phase 1: Minimum Viable Product (MVP)",
-        focus: definition.modules?.[0] 
-          ? `Deploy ${definition.modules[0].name} module with core user workflows and RBAC controls.`
-          : `Deploy core dashboard and primary business workflow engine.`,
-        timeline: "Sprint 1 - 3"
-      },
-      {
-        phase: "Phase 2: Full Enterprise Rollout",
-        focus: definition.modules?.[1]
-          ? `Extend capabilities with ${definition.modules[1].name} and system integrations.`
-          : `Enable advanced reporting, external system integrations, and full automation.`,
-        timeline: "Sprint 4 - 6"
-      }
-    ],
-    keyRisksAndMitigations: (definition.openQuestions && definition.openQuestions.length > 0)
-      ? definition.openQuestions.map(q => ({
-          risk: q.question,
-          mitigation: `Structured discovery and automated rule enforcement during sprint planning.`
-        }))
-      : [
-          {
-            risk: `User onboarding and change management during legacy system transition.`,
-            mitigation: `Phased rollout with dual-run verification and interactive role-based UI guides.`
-          },
-          {
-            risk: `Data synchronization latency across legacy endpoints.`,
-            mitigation: `Asynchronous queue-based integration architecture with retry mechanisms.`
-          }
-        ]
-  };
+  // The note is written from the BRD by rules (src/services/approachNote.ts): every problem, module, risk and decision comes from the definition.
+  const approachNote = buildApproachNote(definition);
 
   // Use cases and test scenarios come from the same suite as the QA screen: written by the AI when it has been, else derived from the BRD.
   const suite = currentTestSuite(definition);
@@ -258,7 +205,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   };
 
   const handleCopyApproachNote = async () => {
-    const text = `=== SOLUTION APPROACH NOTE: ${definition.productName} ===\nDoc ID: ${approachNote.docId} | Version: ${definition.version}\n\n1. EXECUTIVE SUMMARY\n${approachNote.executiveSummary}\n\n2. AS-IS CURRENT CHALLENGES\n${approachNote.asIsProblemStatement.map(p => `• ${p}`).join('\n')}\n\n3. TO-BE PROPOSED ARCHITECTURE & SOLUTION\n${approachNote.toBeTargetArchitecture.map(t => `• ${t}`).join('\n')}\n\n4. PHASED ROLLOUT ROADMAP\n${approachNote.phasedExecutionStrategy.map(ph => `${ph.phase}: ${ph.focus} (${ph.timeline})`).join('\n')}\n\n5. IDENTIFIED RISKS & MITIGATIONS\n${approachNote.keyRisksAndMitigations.map(r => `Risk: ${r.risk}\nMitigation: ${r.mitigation}`).join('\n\n')}`;
+    const text = approachNoteText(definition, approachNote);
     
     const success = await copyToClipboard(text);
     if (success) {
@@ -722,7 +669,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-2xl border border-rose-200 p-6 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
-                <span>2. AS-IS: Operational Bottlenecks & Gaps</span>
+                <span>2. Problems Today</span>
               </h4>
               <ul className="space-y-2 text-xs text-slate-700">
                 {approachNote.asIsProblemStatement.map((prob, i) => (
@@ -736,7 +683,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
 
             <div className="bg-white rounded-2xl border border-emerald-200 p-6 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-                <span>3. TO-BE: Proposed Architecture & Capabilities</span>
+                <span>3. Proposed Solution</span>
               </h4>
               <ul className="space-y-2 text-xs text-slate-700">
                 {approachNote.toBeTargetArchitecture.map((sol, i) => (
@@ -753,9 +700,9 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-4">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Target className="w-4 h-4 text-indigo-600" />
-              <span>4. Phased Implementation Strategy</span>
+              <span>5. Phased Rollout (every module)</span>
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {approachNote.phasedExecutionStrategy.map((phase, idx) => (
                 <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                   <div className="flex items-center justify-between">
@@ -765,6 +712,11 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">{phase.focus}</p>
+                  {phase.delivers.length > 0 && (
+                    <ul className="text-[11px] text-slate-600 list-disc list-inside space-y-0.5">
+                      {phase.delivers.map((d, di) => <li key={di}>{d}</li>)}
+                    </ul>
+                  )}
                 </div>
               ))}
             </div>
@@ -773,17 +725,42 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
           {/* Section 4: Risks & Technical Mitigations */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              5. Delivery Risks & Architectural Mitigations
+              6. Delivery Risks & Mitigations
             </h4>
             <div className="space-y-2">
               {approachNote.keyRisksAndMitigations.map((r, idx) => (
                 <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
                   <p className="font-semibold text-slate-800"><strong>Risk:</strong> {r.risk}</p>
+                  {r.impact && <p className="text-slate-600"><strong>Impact:</strong> {r.impact}</p>}
                   <p className="text-emerald-700"><strong>Mitigation:</strong> {r.mitigation}</p>
                 </div>
               ))}
             </div>
           </div>
+
+          {approachNote.assumptions.length > 0 && (
+            <div className="bg-white rounded-2xl border border-amber-200 p-6 shadow-2xs space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700">4. Assumptions the BU must confirm</h4>
+              <ul className="space-y-1.5 text-xs text-slate-700 list-disc list-inside">
+                {approachNote.assumptions.map((a, i) => <li key={i}>{a}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {approachNote.decisions.length > 0 && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">7. Decisions needed, by team and date</h4>
+              <div className="space-y-2">
+                {approachNote.decisions.map((d, i) => (
+                  <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                    <span className="font-bold text-indigo-700">{d.team}</span>
+                    <span className="text-slate-400"> · {d.neededBy}</span>
+                    <p className="text-slate-800 mt-1">{d.question}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
