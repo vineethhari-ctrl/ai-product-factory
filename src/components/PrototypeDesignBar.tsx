@@ -1,3 +1,4 @@
+import { designedScreenCount } from '../services/prototypeState';
 import React, { useRef, useState } from 'react';
 import { ImagePlus, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import type { ProductDefinition } from '../types';
@@ -21,7 +22,7 @@ export const PrototypeDesignBar: React.FC<PrototypeDesignBarProps> = ({
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const total = definition.screens.length;
-  const byAI = definition.screens.filter((s) => s.ui?.origin === 'AI').length;
+  const byAI = designedScreenCount(definition);
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;

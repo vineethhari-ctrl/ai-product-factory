@@ -152,6 +152,8 @@ export interface ScreenUISpec {
   benchmarkNote?: string;
   /** Who designed it: an AI model ('AI') or the offline engine (absent or 'OFFLINE'). Build Prototype reuses only AI designs. */
   origin?: 'AI' | 'OFFLINE';
+  /** True only when the Build Prototype design step (research, then design) produced this screen. The BRD also writes a UI blueprint with origin 'AI'; that is a first draft, not the designed prototype. */
+  designed?: boolean;
   /** 'phone' for screens an outside party uses on a mobile phone; shown in a phone frame. */
   device?: 'desktop' | 'phone';
   /** One chart for the screen's main trend or split. Values are sample numbers. */

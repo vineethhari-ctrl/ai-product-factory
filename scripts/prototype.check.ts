@@ -101,7 +101,7 @@ try {
   restore();
   const s1 = ai.screens.find((s) => s.id === first.id)!;
   const s2 = ai.screens.find((s) => s.id === second.id)!;
-  t("AI screens are marked AI", s1.ui?.origin === "AI" && s2.ui?.origin === "AI");
+  t("AI screens are marked AI and as designed by the design step", s1.ui?.origin === "AI" && s2.ui?.origin === "AI" && s1.ui?.designed === true && s2.ui?.designed === true);
   t("AI layout is applied", s2.layoutType === "form-wizard");
   t("AI table rows are forced to the column count", s1.ui!.table.rows.every((r) => r.length === 3));
   t("form screen keeps a known entity", s2.ui?.entity === formEntity);
@@ -163,6 +163,15 @@ try {
   try { accepted = await runWithUsageContext("ba", "P5", () => quiet(() => generateProductDefinition({ ...u, extractedAt: "label-test" } as typeof u, "Label Test Product", "PV/EV", "v1.0"))); } catch (e) { rejected = e; }
   restore5();
   t("an unknown field format no longer rejects the whole definition", accepted !== null && rejected === null, String(rejected));
+  {
+    // The bug seen on a real run: a BRD written by the AI carries a UI draft marked origin AI; Build Prototype took it for the designed prototype and never called the AI.
+    const { isPrototypeDesigned, designedScreenCount } = await import("../src/services/prototypeState");
+    t("a BRD written by the AI carries origin AI drafts, none of them marked as designed", !!accepted && accepted.screens.length > 0 && accepted.screens.every((x) => x.ui?.origin === "AI" && !x.ui?.designed));
+    t("so Build Prototype does not treat a fresh BRD as an already designed prototype", !!accepted && !isPrototypeDesigned(accepted) && designedScreenCount(accepted) === 0);
+    const designedAll = accepted ? { ...accepted, screens: accepted.screens.map((x) => ({ ...x, confidence: "CONFIRMED" as const, ui: { ...x.ui!, origin: "AI" as const, designed: true } })) } : null;
+    t("once the design step has run on every screen, it is reused", !!designedAll && isPrototypeDesigned(designedAll));
+    t("one screen not designed (or a placeholder) sends it back to the AI", !!designedAll && !isPrototypeDesigned({ ...designedAll, screens: [{ ...designedAll.screens[0], ui: { ...designedAll.screens[0].ui!, designed: false } }, ...designedAll.screens.slice(1)] }) && !isPrototypeDesigned({ ...designedAll, screens: [{ ...designedAll.screens[0], confidence: "MISSING" as const }, ...designedAll.screens.slice(1)] }));
+  }
   delete process.env.GEMINI_API_KEY;
 
   // Reference image input

@@ -1,3 +1,4 @@
+import { isPrototypeDesigned, designedScreenCount } from './services/prototypeState';
 import React, { useState, useEffect, useRef } from 'react';
 import { AI_NOTICE_EVENT, AI_STATUS_EVENT, type AIStatus, newProjectId } from './services/aiSession';
 import { AIStatusBanner } from './components/AIStatusBanner';
@@ -327,9 +328,7 @@ export default function App() {
 
     // Reuse only screens the AI designed. Offline designs, placeholder screens and pre-blueprint UI
     // are always sent back to the AI, so an earlier AI outage never sticks.
-    const allDesignedByAI = productDefinition.screens.length > 0 &&
-      productDefinition.screens.every(s => s.confidence !== 'MISSING' && s.ui?.origin === 'AI');
-    if (allDesignedByAI && !force) {
+    if (isPrototypeDesigned(productDefinition) && !force) {
       showToast('Prototype loaded: every screen was designed by the AI.');
       return;
     }
@@ -345,7 +344,7 @@ export default function App() {
       if (response.ok) {
         const enrichedDefinition: ProductDefinition = await response.json();
         setProductDefinition(enrichedDefinition);
-        const byAI = enrichedDefinition.screens.filter(s => s.ui?.origin === 'AI').length;
+        const byAI = designedScreenCount(enrichedDefinition);
         showToast(byAI > 0
           ? `The AI designed ${byAI} of ${enrichedDefinition.screens.length} screens${referenceImage ? ', following your reference screen' : ''}.`
           : 'Prototype built by the offline engine.');

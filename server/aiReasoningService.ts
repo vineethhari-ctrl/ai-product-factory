@@ -967,6 +967,7 @@ async function generatePrototypeUnlabelled(
           ...(doc ? { document: doc } : {}),
           benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
           origin: "AI",
+          designed: true,
         };
         designed++;
       }

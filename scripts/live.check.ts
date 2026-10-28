@@ -116,7 +116,7 @@ for (const [i, [name, bu]] of products.entries()) {
     if (!d.value) return res;
     await pause(4000);
     const p = await step("Build Prototype", () => generatePrototypeUI(d.value!), (def) => [
-      ["every screen designed by the AI", def.screens.every((s) => s.ui?.origin === "AI")],
+      ["every screen designed by the AI design step (not just the BRD draft)", def.screens.every((s) => s.ui?.origin === "AI" && s.ui?.designed === true)],
       ["business document screens (at least 2)", def.screens.filter((s) => s.layoutType === "transaction" && s.ui?.document).length >= 2],
       ["documents have header fields and a workflow", def.screens.filter((s) => s.ui?.document).every((s) => s.ui!.document!.sections.length >= 1 && s.ui!.document!.actions.length >= 1)],
       ["at least one document with line items", def.screens.some((s) => (s.ui?.document?.lines?.columns.length ?? 0) >= 2)],
