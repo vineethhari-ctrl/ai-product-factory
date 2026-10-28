@@ -84,6 +84,18 @@ try {
     delete process.env.GEMINI_API_KEY;
   }
 
+  // Importance and kind are chosen separately.
+  {
+    const { QUESTION_TYPES, BusinessUnderstandingSchema } = await import("../server/aiSchemas");
+    const types = QUESTION_TYPES as readonly string[];
+    t("type is importance + kind, independent: a medium missing-logic and a low scope question are allowed", types.includes("MEDIUM: MISSING LOGIC") && types.includes("LOW: SCOPE") && types.includes("HIGH: POLICY CHOICE") && types.includes("MEDIUM: PERMISSION GAP"));
+    t("the old three labels are still valid", ["BLOCKER: CONTRADICTION", "HIGH: MISSING LOGIC", "MEDIUM: PERMISSION GAP"].every((x) => types.includes(x)));
+    t("a made-up label is not valid", !types.includes("HIGH: NONSENSE") && !types.includes("URGENT: MISSING LOGIC"));
+    const rules = (await import("../server/questions")).QUESTION_AUDIENCE_RULES;
+    t("the prompt explains importance and kind separately and asks for a ranked list", /IMPORTANCE is BLOCKER/.test(rules) && /KIND is CONTRADICTION/.test(rules) && /one third/.test(rules));
+    t("the schema takes a question of any importance and kind", BusinessUnderstandingSchema.shape.clarifications.unwrap().element.shape.type.safeParse("LOW: POLICY CHOICE").success);
+  }
+
   // Domain neutrality: no business-domain words in the question code
   const code = ["src/services/questionAudience.ts", "server/questions.ts"].map((f) => readFileSync(f, "utf8")).join("\n");
   const banned = /\b(genset|vehicle|patient|hospital|bank|loan|insurance|policyholder|warranty|dealer|invoice|shipment|freight|student|retail)\b/i;

@@ -48,9 +48,13 @@ export interface EvidenceItem {
   audience?: Audience;
 }
 
+export type QuestionImportance = 'BLOCKER' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type QuestionKind = 'CONTRADICTION' | 'MISSING LOGIC' | 'PERMISSION GAP' | 'POLICY CHOICE' | 'SCOPE';
+
 export interface ClarificationItem {
   id: string;
-  type: 'BLOCKER: CONTRADICTION' | 'HIGH: MISSING LOGIC' | 'MEDIUM: PERMISSION GAP';
+  /** How much a wrong guess costs, then what kind of question it is. The two are independent: any importance goes with any kind. */
+  type: `${QuestionImportance}: ${QuestionKind}`;
   question: string;
   impactIfIgnored: string;
   askedAt: string; // ISO timestamp or formatted

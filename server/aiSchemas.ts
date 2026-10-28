@@ -24,12 +24,17 @@ const EvidenceItemSchema = z.object({
 
 const Audience = z.enum(["BU", "TECH"]);
 
+/** "<importance>: <kind>": the two are independent (a missing-logic question can be Medium, a policy choice can be High). */
+const IMPORTANCE = ["BLOCKER", "HIGH", "MEDIUM", "LOW"] as const;
+const KIND = ["CONTRADICTION", "MISSING LOGIC", "PERMISSION GAP", "POLICY CHOICE", "SCOPE"] as const;
+export const QUESTION_TYPES = IMPORTANCE.flatMap((i) => KIND.map((k) => `${i}: ${k}` as `${typeof i}: ${typeof k}`)) as [`${typeof IMPORTANCE[number]}: ${typeof KIND[number]}`, ...`${typeof IMPORTANCE[number]}: ${typeof KIND[number]}`[]];
+
 /** Gaps and conflicts also say which team must resolve them (optional: the server labels unlabelled ones). */
 const GapItemSchema = EvidenceItemSchema.extend({ audience: Audience.optional() });
 
 const ClarificationSchema = z.object({
   audience: Audience,
-  type: z.enum(["BLOCKER: CONTRADICTION", "HIGH: MISSING LOGIC", "MEDIUM: PERMISSION GAP"]),
+  type: z.enum(QUESTION_TYPES),
   question: z.string(),
   impactIfIgnored: z.string(),
 });

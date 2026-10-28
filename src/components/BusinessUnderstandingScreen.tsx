@@ -335,7 +335,7 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                    item.type.includes('BLOCKER') ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-orange-100 text-orange-700 border border-orange-200'
+                    item.type.includes('BLOCKER') ? 'bg-rose-100 text-rose-700 border border-rose-200' : item.type.startsWith('LOW') ? 'bg-slate-100 text-slate-600 border border-slate-200' : item.type.startsWith('MEDIUM') ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-orange-100 text-orange-700 border border-orange-200'
                   }`}>
                     {item.type}
                   </span>
@@ -588,8 +588,9 @@ export const BusinessUnderstandingScreen: React.FC<BusinessUnderstandingScreenPr
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider flex items-center gap-1
                           ${item.type.includes('BLOCKER') ? 'bg-rose-100 text-rose-700 border border-rose-200' : ''}
-                          ${item.type.includes('HIGH') ? 'bg-orange-100 text-orange-700 border border-orange-200' : ''}
-                          ${item.type.includes('MEDIUM') ? 'bg-blue-100 text-blue-700 border border-blue-200' : ''}
+                          ${item.type.startsWith('HIGH') ? 'bg-orange-100 text-orange-700 border border-orange-200' : ''}
+                          ${item.type.startsWith('MEDIUM') ? 'bg-blue-100 text-blue-700 border border-blue-200' : ''}
+                          ${item.type.startsWith('LOW') ? 'bg-slate-100 text-slate-600 border border-slate-200' : ''}
                         `}>
                           <AlertTriangle className="w-3 h-3" />
                           {item.type}

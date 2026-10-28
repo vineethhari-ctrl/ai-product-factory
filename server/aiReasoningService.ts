@@ -205,13 +205,13 @@ Return ONLY a valid JSON object matching this schema:
   "clarifications": [
     {
       "audience": "BU",
-      "type": "BLOCKER: CONTRADICTION" | "HIGH: MISSING LOGIC" | "MEDIUM: PERMISSION GAP",
+      "type": "<IMPORTANCE>: <KIND>",
       "question": "A plain business question about a flow, rule, journey or KPI",
       "impactIfIgnored": "Business consequence, in plain words"
     },
     {
       "audience": "TECH",
-      "type": "BLOCKER: CONTRADICTION" | "HIGH: MISSING LOGIC" | "MEDIUM: PERMISSION GAP",
+      "type": "<IMPORTANCE>: <KIND>",
       "question": "A technical question about data design, interfaces, architecture or system limits",
       "impactIfIgnored": "What cannot be designed or built without the answer"
     }
@@ -226,6 +226,10 @@ Return ONLY a valid JSON object matching this schema:
     if (parsed) {
       const { inferredIndustry, clarifications, ...understanding } = parsed;
       const extractedAt = new Date().toISOString();
+      // Logged for the live check: a list where nearly everything is marked high has not been ranked.
+      const asked = clarifications ?? [];
+      const high = asked.filter((c) => /^(BLOCKER|HIGH)/.test(c.type)).length;
+      if (asked.length >= 6 && high / asked.length > 0.6) console.warn(`[Question ranking] ${high} of ${asked.length} questions are marked high or blocker: the model did not rank them.`);
       const result: BusinessUnderstanding = {
         ...understanding,
         extractedAt,
