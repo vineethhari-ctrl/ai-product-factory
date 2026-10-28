@@ -107,7 +107,9 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   // A product name alone is enough: thin input is completed from benchmark patterns and flagged for review.
   const isReading = materials.some((m) => m.status === 'processing');
-  const canAnalyze = (materials.length > 0 || productName.trim().length > 0) && !isReading;
+  // Pasted note text that was never saved would be left out of the analysis without a word: hold the button until it is saved or cleared.
+  const hasUnsavedNote = quickTextContent.trim().length > 0;
+  const canAnalyze = (materials.length > 0 || productName.trim().length > 0) && !isReading && !hasUnsavedNote;
 
   const getFileType = (filename: string, mime: string): MaterialType => {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -184,10 +186,11 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   }, [onLoadEnterpriseDemoPack]);
 
   const handleAddQuickNote = () => {
-    if (!quickTextTitle.trim() || !quickTextContent.trim()) return;
+    if (!quickTextContent.trim()) return;
+    const title = quickTextTitle.trim() || 'Business_Notes';
     const newMat: UploadedMaterial = {
       id: `mat-${Date.now()}`,
-      filename: quickTextTitle.trim().endsWith('.txt') ? quickTextTitle.trim() : `${quickTextTitle.trim()}.txt`,
+      filename: title.endsWith('.txt') ? title : `${title}.txt`,
       fileType: 'text',
       sizeBytes: quickTextContent.length,
       uploadedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -434,6 +437,11 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
               <span className="font-semibold text-slate-900">{materials.length} files</span>
             </div>
             
+            {hasUnsavedNote && (
+              <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Your pasted note is not saved yet, so the AI would not see it. Click <strong>Save Note</strong> first.
+              </p>
+            )}
             <button
               disabled={!canAnalyze || isAnalyzing}
               onClick={onAnalyze}
