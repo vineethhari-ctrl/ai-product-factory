@@ -47,6 +47,8 @@ interface ProductDefinitionScreenProps {
   onRegenerate: () => void;
   isRegenerating: boolean;
   onBuildPrototype: () => void;
+  /** Any AI request is running: the buttons that start one stay off until its answer arrives. */
+  aiBusy?: boolean;
   onNavigateToQASuite?: () => void;
 }
 
@@ -57,6 +59,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   onRegenerate,
   isRegenerating,
   onBuildPrototype,
+  aiBusy,
   onNavigateToQASuite,
 }) => {
   /**
@@ -366,7 +369,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
         ) : (
           <button
             onClick={onBuildPrototype}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer"
+            disabled={aiBusy}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span>Launch Prototype</span>
             <ArrowRight className="w-4 h-4" />
@@ -470,7 +474,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
             ) : (
               <button
                 onClick={onBuildPrototype}
-                className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            disabled={aiBusy}
+                className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <span>Build Prototype</span>
                 <ArrowRight className="w-4 h-4" />
@@ -611,7 +616,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                 ) : (
                   <button
                     onClick={onBuildPrototype}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer"
+            disabled={aiBusy}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <span>Launch Prototype</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1365,7 +1371,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
         {definition.isApproved ? (
           <button
             onClick={onBuildPrototype}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer"
+            disabled={aiBusy}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <span>Launch Working Prototype</span>
             <ArrowRight className="w-4 h-4" />

@@ -50,7 +50,7 @@ export const ChangeManagementModal: React.FC<ChangeManagementModalProps> = ({
 
   const handleAnalyze = async (presetText?: string) => {
     const textToAnalyze = presetText || naturalLanguageInput;
-    if (!textToAnalyze.trim()) return;
+    if (!textToAnalyze.trim() || isAnalyzing) return;
 
     if (presetText) {
       setNaturalLanguageInput(presetText);

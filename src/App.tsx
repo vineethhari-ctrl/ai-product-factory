@@ -216,6 +216,7 @@ export default function App() {
   // Step 1 -> 2: Understand Business
   const handleAnalyzeMaterials = async () => {
     if (materials.length === 0 && !productName.trim()) return;
+    if (isRetrying) return; // one AI request at a time: a second click would be billed twice
     setIsAnalyzing(true);
     setApiError(null);
     try {
@@ -246,6 +247,7 @@ export default function App() {
 
   // Step 2 -> 3: Generate Product Definition
   const handleGenerateDefinition = async () => {
+    if (isRetrying) return;
     setIsGeneratingDefinition(true);
     setApiError(null);
     try {
@@ -279,6 +281,7 @@ export default function App() {
 
   // Regenerate definition — real async call with loading state and error handling
   const handleRegenerateDefinition = async () => {
+    if (isRetrying) return;
     setIsRegenerating(true);
     setApiError(null);
     try {
@@ -318,7 +321,7 @@ export default function App() {
   // optionally following the reference screen. `force` redesigns even when the AI already did.
   const handleBuildPrototype = async (force = false) => {
     setActiveScreen('prototype');
-    if (!productDefinition) return;
+    if (!productDefinition || isRetrying) return;
 
     // Reuse only screens the AI designed. Offline designs, placeholder screens and pre-blueprint UI
     // are always sent back to the AI, so an earlier AI outage never sticks.
@@ -503,7 +506,7 @@ export default function App() {
 
   // Step 6: Test suite. The AI writes it from the BRD when one is configured; the rules-based suite stands in otherwise.
   const handleGenerateTests = async () => {
-    if (!productDefinition || isGeneratingTests) return;
+    if (!productDefinition || isRetrying) return;
     setIsGeneratingTests(true);
     const forDefinition = productDefinition;
     try {
@@ -535,15 +538,15 @@ export default function App() {
   useEffect(() => {
     if (activeScreen !== 'qasuite' || !productDefinition) return;
     const sig = testSuiteSignature(productDefinition);
-    if (productDefinition.testSuite?.basedOn === sig || suiteTried.current === sig) return;
+    if (productDefinition.testSuite?.basedOn === sig || suiteTried.current === sig || isRetrying) return;
     suiteTried.current = sig;
     handleGenerateTests();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeScreen, productDefinition]);
+  }, [activeScreen, productDefinition, isRetrying]);
 
   // Step 7: Engineering Package. The AI writes the architecture and delivery plan when one is configured.
   const handlePrepareEngineering = async () => {
-    if (!productDefinition || isPreparingEngineering) return;
+    if (!productDefinition || isRetrying) return;
     setIsPreparingEngineering(true);
     const body = JSON.stringify({ productDefinition, changeHistory: productDefinition?.changeHistory || [] });
     const post = (url: string) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
@@ -787,6 +790,7 @@ export default function App() {
               onRegenerate={handleRegenerateDefinition}
               isRegenerating={isRegenerating}
               onBuildPrototype={() => handleBuildPrototype()}
+              aiBusy={isRetrying}
               onNavigateToQASuite={() => setActiveScreen('qasuite')}
             />
           ) : (
@@ -905,7 +909,8 @@ export default function App() {
             </p>
             <button
               onClick={handlePrepareEngineering}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-xs cursor-pointer"
+              disabled={isRetrying}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-xl shadow-xs cursor-pointer"
             >
               Generate Engineering Package
             </button>
