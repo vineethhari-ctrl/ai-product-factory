@@ -48,6 +48,49 @@ It must talk to the core ledger, the identity service, and send SMS updates to a
   t("deterministic", JSON.stringify(buildApproachNote(def)) === JSON.stringify(buildApproachNote(def)));
   const src = readFileSync("src/services/approachNote.ts", "utf8");
   t("note code is domain-neutral", !/\b(vehicle|battery|loan|bank|dealer|claim|patient|invoice|warranty|policy)\b/i.test(src));
+  // ── AI: a model's note, checked ──────────────────────────────────────────
+  const { generateApproachNote } = await import("../server/approachNoteService");
+  const { buildApproachPrompt } = await import("../server/approachPrompt");
+  const { ApproachNoteSchema } = await import("../server/aiSchemas");
+  const { setProviderForTests, AIUnavailableError } = await import("../server/llmRouter");
+  const { providerOrder } = await import("../server/routing");
+  const { testSuiteSignature } = await import("../src/services/testSuite");
+  const { currentApproachNote } = await import("../src/services/approachNote");
+  process.env.GEMINI_API_KEY = "g";
+  const first = def.modules[0].name;
+  const modelNote = ApproachNoteSchema.parse({
+    executiveSummary: "A model-written summary.",
+    problems: ["Inferred: status is unknown to applicants"],
+    assumptions: ["Approvals above the limit go to the manager"],
+    solution: ["One paragraph per module."],
+    alternatives: [{ option: "Build or integrate the ledger", tradeoff: "Build is slower", recommendation: "Integrate; the core ledger exists" }],
+    // Leaves every module but the first out of the roadmap.
+    phases: [{ phase: "Phase 1", focus: `Build ${first}.`, timeline: "Sprint 1 - 3", delivers: ["A screen"], exitCriteria: ["Journey 1 passes"] }],
+    risks: [{ risk: "R-model", impact: "I", mitigation: "M" }],
+    recommendations: [{ ref: "Q1", recommendation: "Answer one" }, { ref: "Q99", recommendation: "Not a question" }],
+  });
+  const calls: Array<{ task: string; prompt: string }> = [];
+  let restore = setProviderForTests("gemini", async (task, prompt) => { calls.push({ task, prompt }); return task === "generate-approach-note" ? modelNote : null; });
+  const ai = await quiet(() => generateApproachNote(def));
+  restore();
+  t("a model is asked with the BRD's modules, rules and open questions in the prompt", calls[0]?.task === "generate-approach-note" && def.modules.every((m) => calls[0].prompt.includes(m.name)) && def.businessRules.every((r) => calls[0].prompt.includes(r.code)) && /Q1 \[/.test(calls[0].prompt));
+  t("the model's note is used (origin AI), tied to this BRD", ai.origin === "AI" && ai.executiveSummary === "A model-written summary." && ai.basedOn === testSuiteSignature(def));
+  t("the model's problems, options and risks replace the rules-based ones", ai.asIsProblemStatement[0].startsWith("Inferred:") && ai.alternatives.length === 1 && ai.keyRisksAndMitigations[0].risk === "R-model");
+  t("modules the model left out are added by the server, and the note says so", def.modules.length < 2 || (ai.addedForCoverage?.length === def.modules.length - 1 && def.modules.slice(1).every((m) => ai.phasedExecutionStrategy.map((p) => p.focus).join(" ").includes(m.name))));
+  t("recommendations attach to their own question; an unknown ref is ignored", ai.decisions[0]?.recommendation === "Answer one" && ai.decisions.slice(1).every((d) => !d.recommendation) && ai.decisions.length === n.decisions.length);
+  t("team and date of each decision come from the server, not the model", ai.decisions.every((d) => d.team && d.neededBy.startsWith("Before Phase")));
+  t("the stored note is shown for the BRD it was written for; a changed BRD falls back to rules", currentApproachNote({ ...def, approachNote: ai }).origin === "AI" && currentApproachNote({ ...def, version: "v9.9", approachNote: ai }).origin === "OFFLINE");
+  t("the prompt is domain-neutral", !/\b(vehicle|dealer|hospital|patient|airline|battery|warranty|insurance|pharmacy|retail)\b/i.test(buildApproachPrompt(def)));
+  t("Gemini first, Claude as backup", providerOrder("generate-approach-note").join(",") === "gemini,claude");
+  restore = setProviderForTests("gemini", async () => null);
+  let err: unknown; try { await quiet(() => generateApproachNote(def)); } catch (e) { err = e; }
+  restore();
+  t("keys set but every provider failed: AIUnavailableError (the browser keeps the old note and offers Retry)", err instanceof AIUnavailableError);
+  restore = setProviderForTests("gemini", async (task) => (task === "generate-approach-note" ? ApproachNoteSchema.parse({ ...modelNote, phases: [], solution: [] }) : null));
+  const empty = await quiet(() => generateApproachNote(def));
+  restore();
+  t("a model that wrote no phases and no solution: the rules-based note stands in", empty.origin === "OFFLINE");
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

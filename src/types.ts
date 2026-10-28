@@ -440,6 +440,7 @@ export interface ProductDefinition {
   risks?: Array<{ risk: string; impact: string; mitigation: string }>;
   /** The test suite for this BRD, once generated (by a model, or derived by rules). */
   testSuite?: TestSuite;
+  approachNote?: ApproachNote;
   /** KPIs: how success is measured. Baselines and targets are set by the BU. */
   successMetrics?: string[];
   personas: PersonaDefinition[];
@@ -541,6 +542,27 @@ export interface TestSuite {
 }
 
 /** Engineering plan: how to build what the BRD describes. Written by a model, or derived from the BRD by rules. */
+/** Solution Approach Note: written by a model from the finished BRD, or derived from it by rules when no model answers. */
+export interface ApproachNote {
+  origin: 'AI' | 'OFFLINE';
+  /** Fingerprint of the BRD it was written for (testSuiteSignature); a changed BRD makes it stale. */
+  basedOn?: string;
+  docId: string;
+  status: string;
+  executiveSummary: string;
+  asIsProblemStatement: string[];
+  assumptions: string[];
+  toBeTargetArchitecture: string[];
+  /** Real design choices for this product, the trade-off and the proposed pick. */
+  alternatives: Array<{ option: string; tradeoff: string; recommendation: string }>;
+  phasedExecutionStrategy: Array<{ phase: string; focus: string; timeline: string; delivers: string[]; exitCriteria?: string[] }>;
+  keyRisksAndMitigations: Array<{ risk: string; impact?: string; mitigation: string }>;
+  /** Open questions with the owning team, a date, and a proposed answer for the owner to confirm. */
+  decisions: Array<{ team: string; neededBy: string; question: string; recommendation?: string }>;
+  /** Modules the model left out of the roadmap and the server added. */
+  addedForCoverage?: string[];
+}
+
 export interface EngineeringPlan {
   origin: 'AI' | 'OFFLINE';
   architectureOverview: string;

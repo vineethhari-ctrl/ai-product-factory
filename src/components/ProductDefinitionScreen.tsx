@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ProductDefinition, ConfidenceStatus } from '../types';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { currentTestSuite } from '../services/testSuite';
-import { buildApproachNote, approachNoteText } from '../services/approachNote';
+import { currentApproachNote, approachNoteText } from '../services/approachNote';
+import { testSuiteSignature } from '../services/testSuite';
 import { AUDIENCE_HINT, AUDIENCE_LABEL, SECTION_TITLE, forAudience } from '../services/questionAudience';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { BrdBody } from './BrdDocument';
@@ -50,6 +51,9 @@ interface ProductDefinitionScreenProps {
   onBuildPrototype: () => void;
   /** Any AI request is running: the buttons that start one stay off until its answer arrives. */
   aiBusy?: boolean;
+  /** Writes the Solution Approach Note with the AI (when one is configured). */
+  onGenerateApproach?: () => void;
+  isGeneratingApproach?: boolean;
   onNavigateToQASuite?: () => void;
 }
 
@@ -61,6 +65,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   isRegenerating,
   onBuildPrototype,
   aiBusy,
+  onGenerateApproach,
+  isGeneratingApproach,
   onNavigateToQASuite,
 }) => {
   /**
@@ -120,8 +126,8 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
     ]
   );
 
-  // The note is written from the BRD by rules (src/services/approachNote.ts): every problem, module, risk and decision comes from the definition.
-  const approachNote = buildApproachNote(definition);
+  // The AI writes the note from the BRD when one is configured; src/services/approachNote.ts is the rules-based note that stands in.
+  const approachNote = currentApproachNote(definition);
 
   // Use cases and test scenarios come from the same suite as the QA screen: written by the AI when it has been, else derived from the BRD.
   const suite = currentTestSuite(definition);
@@ -136,6 +142,17 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
       expectedResult: (suite.testCases.find((c) => c.title === s.objective) ?? suite.testCases[i])?.expectedResult ?? `${s.riskRating} risk. ${s.verificationMethod}`,
     })),
   };
+
+  // Opening the approach tab asks the AI once per BRD to write the note (free when no AI is configured: the server answers by rules).
+  const approachTried = useRef<string>('');
+  useEffect(() => {
+    if (activeTab !== 'approach' || !onGenerateApproach || aiBusy) return;
+    const sig = testSuiteSignature(definition);
+    if (definition.approachNote?.basedOn === sig || approachTried.current === sig) return;
+    approachTried.current = sig;
+    onGenerateApproach();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, definition, aiBusy]);
 
   const handleFieldChange = (field: keyof ProductDefinition, val: any) => {
     setDefinition(prev => prev ? ({ ...prev, [field]: val }) : null);
@@ -654,6 +671,23 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
             </button>
           </div>
 
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs">
+            <span className="text-slate-600">
+              {approachNote.origin === 'AI' ? 'Written by the AI from this BRD.' : 'Derived from the BRD by rules. The AI has not written it yet.'}
+              {approachNote.addedForCoverage?.length ? ` The server added to the roadmap: ${approachNote.addedForCoverage.join('; ')}.` : ''}
+            </span>
+            {onGenerateApproach && (
+              <button
+                onClick={onGenerateApproach}
+                disabled={isGeneratingApproach || aiBusy}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{isGeneratingApproach ? 'Writing…' : approachNote.origin === 'AI' ? 'Rewrite with AI' : 'Write with AI'}</span>
+              </button>
+            )}
+          </div>
+
           {/* Section 1: Executive Summary */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-2xs space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -712,6 +746,9 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 leading-relaxed">{phase.focus}</p>
+                  {phase.exitCriteria && phase.exitCriteria.length > 0 && (
+                    <p className="text-[11px] text-slate-700"><strong>Done when:</strong> {phase.exitCriteria.join('; ')}</p>
+                  )}
                   {phase.delivers.length > 0 && (
                     <ul className="text-[11px] text-slate-600 list-disc list-inside space-y-0.5">
                       {phase.delivers.map((d, di) => <li key={di}>{d}</li>)}
@@ -738,6 +775,21 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
             </div>
           </div>
 
+          {approachNote.alternatives.length > 0 && (
+            <div className="bg-white rounded-2xl border border-violet-200 p-6 shadow-2xs space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-violet-700">Options considered and proposed pick</h4>
+              <div className="space-y-2">
+                {approachNote.alternatives.map((a, i) => (
+                  <div key={i} className="p-3 bg-violet-50/50 border border-violet-100 rounded-xl text-xs space-y-1">
+                    <p className="font-semibold text-slate-800">{a.option}</p>
+                    <p className="text-slate-600"><strong>Trade-off:</strong> {a.tradeoff}</p>
+                    <p className="text-violet-800"><strong>Proposed:</strong> {a.recommendation}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {approachNote.assumptions.length > 0 && (
             <div className="bg-white rounded-2xl border border-amber-200 p-6 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700">4. Assumptions the BU must confirm</h4>
@@ -756,6 +808,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
                     <span className="font-bold text-indigo-700">{d.team}</span>
                     <span className="text-slate-400"> · {d.neededBy}</span>
                     <p className="text-slate-800 mt-1">{d.question}</p>
+                    {d.recommendation && <p className="text-emerald-700 mt-1"><strong>Proposed answer:</strong> {d.recommendation}</p>}
                   </div>
                 ))}
               </div>

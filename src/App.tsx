@@ -10,7 +10,8 @@ import {
   EngineeringPackage, 
   EvidenceItem, 
   ChangeImpactAnalysis,
-  TestSuite
+  TestSuite,
+  ApproachNote
 } from './types';
 import { Header } from './components/Header';
 import { CreateProductScreen } from './components/CreateProductScreen';
@@ -123,6 +124,7 @@ export default function App() {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isGeneratingPrototype, setIsGeneratingPrototype] = useState(false);
   const [isGeneratingTests, setIsGeneratingTests] = useState(false);
+  const [isGeneratingApproach, setIsGeneratingApproach] = useState(false);
   const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
@@ -367,11 +369,12 @@ export default function App() {
       case 'generate-definition': return businessUnderstanding ? () => { setAiStatus(null); handleRegenerateDefinition(); } : undefined;
       case 'generate-prototype-ui': return productDefinition ? () => { setAiStatus(null); handleBuildPrototype(true); } : undefined;
       case 'generate-test-suite': return productDefinition ? () => { setAiStatus(null); handleGenerateTests(); } : undefined;
+      case 'generate-approach-note': return productDefinition ? () => { setAiStatus(null); handleGenerateApproach(); } : undefined;
       case 'generate-engineering': return productDefinition ? () => { setAiStatus(null); handlePrepareEngineering(); } : undefined;
       default: return undefined; // Change Impact: run the analysis again from the change window.
     }
   };
-  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isPreparingEngineering;
+  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isGeneratingApproach || isPreparingEngineering;
 
   // Step 6: Change Impact Analysis
   const handleAnalyzeChange = async (changeRequest: string): Promise<ChangeImpactAnalysis> => {
@@ -530,6 +533,32 @@ export default function App() {
       showToast('The test suite could not be written: the server did not answer.');
     } finally {
       setIsGeneratingTests(false);
+    }
+  };
+
+  // Solution Approach Note: the AI writes it from the BRD when one is configured; the rules-based note stands in otherwise.
+  const handleGenerateApproach = async () => {
+    if (!productDefinition || isRetrying) return;
+    setIsGeneratingApproach(true);
+    try {
+      const response = await fetch('/api/generate-approach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition }),
+      });
+      if (response.ok) {
+        const approachNote: ApproachNote = await response.json();
+        setProductDefinition((prev) => (prev ? { ...prev, approachNote } : prev));
+        showToast(approachNote.origin === 'AI' ? 'The AI wrote the Solution Approach Note from the BRD.' : 'Approach note derived from the BRD by rules.');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The approach note could not be written. Click Retry.', 9000);
+      }
+    } catch (err) {
+      console.error('Error generating the approach note:', err);
+      showToast('The approach note could not be written: the server did not answer.');
+    } finally {
+      setIsGeneratingApproach(false);
     }
   };
 
@@ -791,6 +820,8 @@ export default function App() {
               isRegenerating={isRegenerating}
               onBuildPrototype={() => handleBuildPrototype()}
               aiBusy={isRetrying}
+              onGenerateApproach={handleGenerateApproach}
+              isGeneratingApproach={isGeneratingApproach}
               onNavigateToQASuite={() => setActiveScreen('qasuite')}
             />
           ) : (

@@ -1,26 +1,29 @@
-import type { ProductDefinition } from '../types';
+import type { ApproachNote, ProductDefinition } from '../types';
+import { testSuiteSignature } from './testSuite';
 import { forAudience } from './questionAudience';
 
 /**
- * Solution Approach Note, derived from the finished BRD (no fixed wording, no domain words: every noun is the
+ * Solution Approach Note. A model writes it from the finished BRD when one is configured (server/approachNoteService.ts);
+ * this file is the rules-based note that answers otherwise: derived from the BRD (no fixed wording, no domain words: every noun is the
  * definition's own). Problems come from the BRD's problem statement, the plan covers every module, risks are the
  * BRD's own plus those the definition's state implies, and the open questions become decisions with an owner and a deadline.
  */
 
-export interface ApproachNote {
-  docId: string;
-  status: string;
-  executiveSummary: string;
-  asIsProblemStatement: string[];
-  assumptions: string[];
-  toBeTargetArchitecture: string[];
-  phasedExecutionStrategy: Array<{ phase: string; focus: string; timeline: string; delivers: string[] }>;
-  keyRisksAndMitigations: Array<{ risk: string; impact?: string; mitigation: string }>;
-  decisions: Array<{ team: string; neededBy: string; question: string }>;
-}
-
 const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]{5,}/g) ?? []);
 const overlap = (a: Set<string>, b: Set<string>) => [...a].filter((w) => b.has(w)).length;
+
+const due = (u?: string) => (u === 'blocking' ? 'Before Phase 1 starts' : u === 'important' ? 'Before Phase 2 starts' : 'Before Phase 3 starts');
+
+/** Every open question as a decision: BU Team first, then BA & Tech Team, each with a date from its urgency. */
+export function decisionsFor(def: ProductDefinition): ApproachNote['decisions'] {
+  const open = (def.openQuestions ?? []).filter((q) => q.status === 'open');
+  return (['BU', 'TECH'] as const).flatMap((aud) =>
+    forAudience(open, aud, (q) => q.question).map((q) => ({
+      team: aud === 'BU' ? 'BU Team' : 'BA & Tech Team',
+      neededBy: due(q.urgency),
+      question: q.question,
+    })));
+}
 
 export function buildApproachNote(def: ProductDefinition): ApproachNote {
   const brief = def.blueprintBrief;
@@ -96,21 +99,18 @@ export function buildApproachNote(def: ProductDefinition): ApproachNote {
     });
   }
 
-  const due = (u?: string) => (u === 'blocking' ? 'Before Phase 1 starts' : u === 'important' ? 'Before Phase 2 starts' : 'Before Phase 3 starts');
-  const decisions: ApproachNote['decisions'] = (['BU', 'TECH'] as const).flatMap((aud) =>
-    forAudience(open, aud, (q) => q.question).map((q) => ({
-      team: aud === 'BU' ? 'BU Team' : 'BA & Tech Team',
-      neededBy: due(q.urgency),
-      question: q.question,
-    })));
+  const decisions = decisionsFor(def);
 
   return {
+    origin: 'OFFLINE',
+    basedOn: testSuiteSignature(def),
     docId: `APN-${(def.productName || 'SYS').replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase()}-01`,
     status: 'DRAFT FOR ARCHITECTURE REVIEW',
     executiveSummary: def.objective,
     asIsProblemStatement: problems.length ? problems : ['The BU has not stated the problems yet; the BRD\'s open questions ask for them.'],
     assumptions: (def.assumptions ?? []).map((a) => `${a.statement} (risk ${a.riskLevel})`),
     toBeTargetArchitecture: architecture,
+    alternatives: [],
     phasedExecutionStrategy: phased,
     keyRisksAndMitigations: risks,
     decisions,
@@ -125,8 +125,14 @@ export function approachNoteText(def: ProductDefinition, n: ApproachNote = build
     `2. PROBLEMS TODAY\n${list(n.asIsProblemStatement)}`,
     n.assumptions.length ? `3. ASSUMPTIONS (to be confirmed by the BU)\n${list(n.assumptions)}` : '',
     `4. PROPOSED SOLUTION\n${list(n.toBeTargetArchitecture)}`,
-    `5. PHASED ROLLOUT\n${n.phasedExecutionStrategy.map((p) => `${p.phase} (${p.timeline})\n   ${p.focus}${p.delivers.length ? `\n   Delivers: ${p.delivers.join('; ')}` : ''}`).join('\n')}`,
+    n.alternatives.length ? `4b. OPTIONS CONSIDERED\n${n.alternatives.map((a) => `• ${a.option}\n   Trade-off: ${a.tradeoff}\n   Proposed: ${a.recommendation}`).join('\n')}` : '',
+    `5. PHASED ROLLOUT\n${n.phasedExecutionStrategy.map((p) => `${p.phase} (${p.timeline})\n   ${p.focus}${p.delivers.length ? `\n   Delivers: ${p.delivers.join('; ')}` : ''}${p.exitCriteria?.length ? `\n   Done when: ${p.exitCriteria.join('; ')}` : ''}`).join('\n')}`,
     `6. RISKS & MITIGATIONS\n${n.keyRisksAndMitigations.map((r) => `Risk: ${r.risk}${r.impact ? `\nImpact: ${r.impact}` : ''}\nMitigation: ${r.mitigation}`).join('\n\n')}`,
-    n.decisions.length ? `7. DECISIONS NEEDED\n${n.decisions.map((d) => `• [${d.team}, ${d.neededBy}] ${d.question}`).join('\n')}` : '',
+    n.decisions.length ? `7. DECISIONS NEEDED\n${n.decisions.map((d) => `• [${d.team}, ${d.neededBy}] ${d.question}${d.recommendation ? `\n   Proposed answer: ${d.recommendation}` : ''}`).join('\n')}` : '',
   ].filter(Boolean).join('\n\n');
+}
+
+/** The note to show: the stored one when it was written for this BRD, else the rules-based note. */
+export function currentApproachNote(def: ProductDefinition): ApproachNote {
+  return def.approachNote && def.approachNote.basedOn === testSuiteSignature(def) ? def.approachNote : buildApproachNote(def);
 }

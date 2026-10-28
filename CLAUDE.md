@@ -44,6 +44,7 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-4-argon + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
 | `generate-test-suite` (Use Cases & QA, opens once per BRD, or Generate with AI) | `/api/generate-tests` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Long structured document from a finished BRD; Gemini first so one Vertex setup runs everything | 65,536 / 32,768 |
 | `generate-engineering` (Engineering Package) | `/api/generate-engineering` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Same | 65,536 / 32,768 |
+| `generate-approach-note` (Approach Note tab, opens once per BRD, or Write with AI) | `/api/generate-approach` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | The leadership note from a finished BRD: reasoning (problems, options, phases, risks, proposed answers), not a template | 65,536 / 32,768 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call (`export-package` is the rules-based package).
 
@@ -185,6 +186,21 @@ derived from the BRD by rules otherwise. The screen says which (`origin`: "Writt
 - `npm run check:docs` covers it with model stand-ins (omitted rules, invented codes, bad JSON, empty answers, all providers failed).
   `npm run check:live` now also runs both steps and checks coverage, payload field names, contracts per record and quality targets.
   Nothing here has been run against a real model yet: run `npm run check:live` and read the report.
+
+## Solution Approach Note (AI-written, with a rules-based baseline)
+
+The Approach Note tab is written by a model from the finished BRD (Gemini first, Claude as backup; same router, cache, limits and
+Retry banner), and derived by rules when no model answers. The tab says which (`origin`).
+- **Prompt** (`server/approachPrompt.ts`, reads `definitionDigest`): executive summary, problems (stated first, inferred ones start with
+  "Inferred:"), unconfirmed assumptions, solution per module, 2-4 real design options with a proposed pick, three phases covering every
+  module with exit criteria, specific risks, and a proposed answer for every open question (`recommendations`, by Q-number).
+- **Service** (`server/approachNoteService.ts`): the server sets the owning team and date of each decision (`decisionsFor`, from the
+  question's audience and urgency), adds any module the model left out of the roadmap (`addedForCoverage`), ignores unknown question refs,
+  and falls back to the rules-based note when the model wrote no phases and no solution.
+- **Rules-based note** (`src/services/approachNote.ts`, `buildApproachNote`): problems from the BRD's problem statement, every module in
+  the roadmap, the BRD's own AI-written risks first, then risks implied by the definition's state. No fixed boilerplate wording.
+- Stored on `definition.approachNote` with `basedOn` (BRD fingerprint); a changed BRD makes it stale and it is rewritten when the tab is
+  opened. `npm run check:approach` covers it with model stand-ins.
 
 ## AI usage control (`server/usage.ts`)
 

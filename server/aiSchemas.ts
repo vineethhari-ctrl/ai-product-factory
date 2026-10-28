@@ -445,3 +445,15 @@ export const EngineeringPlanSchema = z.object({
     responseBodySample: z.string(),
   })),
 });
+
+/** Solution Approach Note written by a model from a finished BRD (the server adds origin, ids and the owning team / date of each decision). */
+export const ApproachNoteSchema = z.object({
+  executiveSummary: z.string(),
+  problems: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  solution: z.array(z.string()),
+  alternatives: z.array(z.object({ option: z.string(), tradeoff: z.string(), recommendation: z.string() })),
+  phases: z.array(z.object({ phase: z.string(), focus: z.string(), timeline: z.string(), delivers: z.array(z.string()), exitCriteria: z.array(z.string()) })),
+  risks: z.array(z.object({ risk: z.string(), impact: z.string(), mitigation: z.string() })),
+  recommendations: z.array(z.object({ ref: z.string(), recommendation: z.string() })),
+});

@@ -27,6 +27,7 @@ export const AI_BUTTONS: Record<AITask, string> = {
   "research-prototype": "Research similar apps",
   "generate-test-suite": "Generate Test Suite",
   "generate-engineering": "Engineering Package",
+  "generate-approach-note": "Approach Note",
 };
 
 const num = (name: string, fallback: number) => {

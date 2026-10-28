@@ -13,6 +13,7 @@ import {
 } from "./server/aiReasoningService";
 import { validateRecordHandler } from "./server/recordRoute";
 import { generateTestSuite } from "./server/testSuiteService";
+import { generateApproachNote } from "./server/approachNoteService";
 import { attachPlan, generateEngineeringPlan } from "./server/engineeringPlan";
 import { describeRouting } from "./server/routing";
 import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
@@ -206,6 +207,19 @@ async function startServer() {
       console.error("Error generating the engineering package:", err);
       if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to generate the engineering package" });
+    }
+  });
+
+  // Solution Approach Note for a finished BRD: written by a model when one is configured, derived by rules otherwise.
+  app.post("/api/generate-approach", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!definition?.businessRules || !definition?.personas) return res.status(400).json({ error: "Missing product definition." });
+      return res.json(await generateApproachNote(definition));
+    } catch (err: any) {
+      console.error("Error generating the approach note:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to generate the approach note" });
     }
   });
 

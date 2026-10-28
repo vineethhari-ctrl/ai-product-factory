@@ -19,7 +19,7 @@
  * Max-token ceilings for the two heavy routes are also raised; see MAX_TOKENS notes.
  */
 
-export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype" | "generate-test-suite" | "generate-engineering";
+export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype" | "generate-test-suite" | "generate-engineering" | "generate-approach-note";
 
 export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general" | "design-research" | "specification";
 
@@ -34,6 +34,7 @@ export const TASK_ROUTE: Record<AITask, RouteClass> = {
   "research-prototype": "design-research", // web research on comparable apps before Build Prototype designs
   "generate-test-suite": "specification", // use cases, scenarios, test cases and a Gherkin feature, traced to the BRD
   "generate-engineering": "specification", // architecture, API contracts, NFRs, security, backlog, risks
+  "generate-approach-note": "specification", // the leadership note: problems, solution, options, phases, risks, decisions
 };
 
 export interface GeminiRoute {
@@ -130,6 +131,7 @@ export const TASK_PROVIDER_ORDER: Record<AITask, Provider[]> = {
   // Long structured documents from a finished BRD; Gemini first (one Vertex setup runs everything), Claude as backup.
   "generate-test-suite": ["gemini", "claude"],
   "generate-engineering": ["gemini", "claude"],
+  "generate-approach-note": ["gemini", "claude"],
 };
 
 const envKey = (prefix: string, task: AITask) => `${prefix}_${task.toUpperCase().replace(/-/g, "_")}`;
