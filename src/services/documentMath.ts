@@ -73,6 +73,35 @@ export function formatMoney(n: number, currency?: string): string {
 }
 
 /** The status a new document starts in. */
+/**
+ * Statuses a document has passed through to reach `current`: the shortest path from the first status along the
+ * actions. A status on a branch it never took (a rejection, a flag) is not ticked. Without a path (an odd status),
+ * everything before it in the list counts.
+ */
+export function completedStates(doc: TransactionDocument, current: string): Set<string> {
+  const start = initialState(doc);
+  if (!current || current === start) return new Set();
+  const prev = new Map<string, string>();
+  const queue = [start];
+  const seen = new Set([start]);
+  while (queue.length) {
+    const at = queue.shift() as string;
+    for (const a of doc.actions) {
+      if (!a.from.includes(at) || seen.has(a.to)) continue;
+      seen.add(a.to);
+      prev.set(a.to, at);
+      queue.push(a.to);
+    }
+  }
+  if (!prev.has(current)) {
+    const i = doc.states.indexOf(current);
+    return new Set(i > 0 ? doc.states.slice(0, i) : []);
+  }
+  const done = new Set<string>();
+  for (let s = prev.get(current); s !== undefined; s = prev.get(s)) done.add(s);
+  return done;
+}
+
 export const initialState = (doc: TransactionDocument) => doc.states[0] ?? '';
 
 /** Actions offered in a status. An action without `from` is offered in every status except the last one. */

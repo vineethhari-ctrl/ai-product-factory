@@ -957,7 +957,7 @@ async function generatePrototypeUnlabelled(
         if (screenIdx === -1) continue;
         const { entity, device, chart, board, timeline, document, ...ui } = generated.ui;
         const states = updated.dataEntities.find((e) => e.name === entity)?.lifecycle?.states ?? [];
-        const doc = generated.layoutType === "transaction" ? cleanDocument(document, states) : undefined;
+        const doc = generated.layoutType === "transaction" ? cleanDocument(document, states, updated.dataEntities.find((e) => e.name === entity), updated.dataEntities) : undefined;
         updated.screens[screenIdx].layoutType = generated.layoutType;
         updated.screens[screenIdx].ui = {
           ...normalizeUISpec(ui),

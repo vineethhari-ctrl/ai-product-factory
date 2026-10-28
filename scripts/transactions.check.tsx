@@ -203,6 +203,37 @@ async function main() {
   await act(async () => { root.render(React.createElement(TransactionScreen, { key: "ro", ui, readOnly: true })); });
   t("ui: a view-only user cannot create documents", !!button(/New Agreement/)?.disabled);
   await act(async () => root.unmount());
+
+  // ── An opened document is never blank; the stepper follows the path taken ──
+  {
+    const { completeDocument } = await import("../server/documents");
+    const { documentSample } = await import("../src/services/documentSamples");
+    const mk = (name: string, fields: Array<{ name: string; format?: string; unique?: boolean }>) => ({
+      id: name, name, description: "", fields: fields.map((f) => ({ name: f.name, type: "string", required: true, constraints: { format: f.format ?? "free-text", ...(f.unique ? { unique: true } : {}) } })),
+    }) as any;
+    const pack = mk("Asset Pack", [{ name: "serial_no", format: "identifier", unique: true }]);
+    const claim = mk("Claim", [{ name: "claim_ref", format: "identifier", unique: true }, { name: "asset_pack_id", format: "uuid" }, { name: "org_tenant_id", format: "uuid" }, { name: "contact_email", format: "email" }, { name: "notes" }]);
+    const raw: any = { name: "Claim", numberPrefix: "CL-", sections: [{ title: "Details", fields: [
+      { label: "Claim ref", kind: "text" }, { label: "Asset pack id", kind: "text", required: true }, { label: "Org tenant id", kind: "text", required: true }, { label: "Contact email", kind: "email" }, { label: "Notes", kind: "long-text" },
+    ] }], states: ["Draft", "Submitted", "Approved"] };
+    const doc = cleanDocument(raw, [], claim, [claim, pack]) as Doc;
+    const fl = doc.sections.flatMap((x) => x.fields);
+    t("every field of an AI document gets a sample (none blank)", fl.every((f) => !!f.sample), JSON.stringify(fl.map((f) => f.sample)));
+    t("a field that points at another record becomes a lookup of that record's references", fl.find((f) => f.label === "Asset pack id")?.kind === "lookup" && (fl.find((f) => f.label === "Asset pack id")?.options?.length ?? 0) === 3);
+    t("a reference to something that is not a record is filled in by the system (read-only, not required)", !!fl.find((f) => f.label === "Org tenant id")?.readOnly && !fl.find((f) => f.label === "Org tenant id")?.required);
+    t("the sample email is an email", /@/.test(fl.find((f) => f.label === "Contact email")?.sample ?? ""));
+    t("a sample the model gave is kept", completeDocument({ ...doc, sections: [{ title: "x", fields: [{ label: "Notes", kind: "text", sample: "mine" }] }] }).sections[0].fields[0].sample === "mine");
+    t("rows differ: the sample changes with the row", documentSample("text", "Claim ref", undefined, 0) !== documentSample("text", "Claim ref", undefined, 1) && documentSample("money", "Amount", undefined, 0) !== documentSample("money", "Amount", undefined, 1));
+    const off = documentFromEntity(claim, "Claim");
+    t("offline documents get samples too", completeDocument(off, claim, [claim, pack]).sections.flatMap((x) => x.fields).every((f) => !!f.sample));
+    const flow: Doc = { name: "D", numberPrefix: "D-", sections: [], states: ["Draft", "Submitted", "Auto Approved", "Pending Review", "Flagged", "Approved", "Rejected", "Closed"], actions: [
+      { label: "a", from: ["Draft"], to: "Submitted" }, { label: "b", from: ["Submitted"], to: "Auto Approved" }, { label: "c", from: ["Submitted"], to: "Pending Review" },
+      { label: "d", from: ["Pending Review"], to: "Flagged" }, { label: "e", from: ["Pending Review", "Auto Approved", "Flagged"], to: "Approved" }, { label: "f", from: ["Pending Review", "Flagged"], to: "Rejected" }, { label: "g", from: ["Approved", "Rejected"], to: "Closed" },
+    ] };
+    const done = [...math.completedStates(flow, "Approved")].sort();
+    t("the stepper ticks only the path taken: an approved document did not pass a fraud flag or a rejection", done.join("|") === "Auto Approved|Draft|Submitted" && !done.includes("Flagged") && !done.includes("Rejected"), done.join("|"));
+    t("a document at its first status has ticked nothing; a status with no path falls back to the list order", math.completedStates(flow, "Draft").size === 0 && [...math.completedStates({ ...flow, actions: [] }, "Approved")].length === 5);
+  }
 }
 
 main()

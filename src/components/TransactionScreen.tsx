@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { documentSample, varySample } from '../services/documentSamples';
 import { ArrowLeft, Check, ChevronRight, FilePlus2, Link2, Lock, Plus, Search, Trash2 } from 'lucide-react';
 import type { DocumentAction, DocumentField, ScreenUISpec, TransactionDocument } from '../types';
-import { actionsFor, documentTotals, formatMoney, hasAmounts, initialState, lineAmount, missingRequired, parseNumber } from '../services/documentMath';
+import { actionsFor, completedStates, documentTotals, formatMoney, hasAmounts, initialState, lineAmount, missingRequired, parseNumber } from '../services/documentMath';
 import { StatusOrText } from './UIBlocks';
 
 /**
@@ -40,7 +41,7 @@ function recordsFromTable(ui: ScreenUISpec, doc: TransactionDocument): DocRecord
     const values: Record<string, string> = {};
     for (const f of fields) {
       const ci = cols.findIndex((c) => norm(c) === norm(f.label));
-      values[f.label] = ci >= 0 ? row[ci] ?? '' : f.sample ?? '';
+      values[f.label] = ci >= 0 ? row[ci] ?? '' : f.sample ? varySample(f.sample, ri) : documentSample(f.kind, f.label, f.options, ri);
     }
     const status = doc.states.find((s) => norm(s) === norm(row[statusIdx] ?? '')) ?? row[statusIdx] ?? initialState(doc);
     return {
@@ -201,6 +202,7 @@ export const TransactionScreen: React.FC<{ ui: ScreenUISpec & { document: Transa
     const totals = documentTotals(doc, draft.lines);
     const money = hasAmounts(doc);
     const stateIdx = doc.states.findIndex((s) => s === draft.status);
+    const passed = completedStates(doc, draft.status);
     const available = actionsFor(doc, draft.status);
     const editable = !readOnly && stateIdx <= 0;
     const lines = doc.lines;
@@ -293,10 +295,10 @@ export const TransactionScreen: React.FC<{ ui: ScreenUISpec & { document: Transa
               <li key={s} className="flex items-center gap-2">
                 <span
                   className={`w-6 h-6 rounded-full text-[11px] font-bold flex items-center justify-center ${
-                    stateIdx >= 0 && i < stateIdx ? 'bg-emerald-500 text-white' : i === stateIdx ? 'bg-[var(--brand)] text-white' : 'bg-slate-200 text-slate-500'
+                    passed.has(s) ? 'bg-emerald-500 text-white' : i === stateIdx ? 'bg-[var(--brand)] text-white' : 'bg-slate-200 text-slate-500'
                   }`}
                 >
-                  {stateIdx >= 0 && i < stateIdx ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                  {passed.has(s) ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className={`text-xs font-semibold ${i === stateIdx ? 'text-slate-900' : 'text-slate-500'}`}>{s}</span>
                 {i < doc.states.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-slate-300" />}

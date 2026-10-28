@@ -11,6 +11,7 @@ import type {
   TransactionDocument,
 } from "../src/types";
 import { resolveFieldConstraints } from "../src/services/validationEngine";
+import { documentSample } from "../src/services/documentSamples";
 import { codePrefix, deriveSubject, entityForScreen, humanize, stateLabel } from "./blueprint";
 
 /**
@@ -115,7 +116,7 @@ function prefixFor(name: string, raw: unknown): string {
  * statuses without duplicates and actions that go from and to real statuses. Undefined when there is nothing to
  * render (no named document or no header field).
  */
-export function cleanDocument(raw: Partial<TransactionDocument> | undefined, fallbackStates: string[] = []): TransactionDocument | undefined {
+export function cleanDocument(raw: Partial<TransactionDocument> | undefined, fallbackStates: string[] = [], entity?: DataEntityDefinition, entities: DataEntityDefinition[] = []): TransactionDocument | undefined {
   if (!raw) return undefined;
   const name = clip(raw.name, 40);
   if (!name) return undefined;
@@ -163,7 +164,7 @@ export function cleanDocument(raw: Partial<TransactionDocument> | undefined, fal
   const next = uniq((raw.related?.next ?? []).map((n) => clip(n, 40))).slice(0, 4);
   const from = clip(raw.related?.from, 40);
 
-  return {
+  return completeDocument({
     name,
     numberPrefix: prefixFor(name, raw.numberPrefix),
     sections,
@@ -172,7 +173,7 @@ export function cleanDocument(raw: Partial<TransactionDocument> | undefined, fal
     states,
     actions,
     ...(from || next.length ? { related: { ...(from ? { from } : {}), ...(next.length ? { next } : {}) } } : {}),
-  };
+  }, entity, entities);
 }
 
 const pct = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n * 100) / 100 : 0);
@@ -180,6 +181,40 @@ const pct = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n > 
 /** One action per step: "Move to <next status>" from each status to the next. */
 function stepActions(states: string[]): DocumentAction[] {
   return states.slice(0, -1).map((s, i) => ({ label: `Move to ${states[i + 1]}`, from: [s], to: states[i + 1] }));
+}
+
+// ─── Samples: an opened document is never blank ───────────────────────────────
+
+const flat = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Every field of a document gets a sample, whoever wrote the document (a model leaves them out, or the offline engine
+ * builds none). A field that points at another record becomes a lookup of that record's own references; a
+ * reference to something that is not a record of the product (an organisation or tenant the signed-in user belongs to)
+ * is filled in by the system, read-only.
+ */
+export function completeDocument(doc: TransactionDocument, entity?: DataEntityDefinition, entities: DataEntityDefinition[] = []): TransactionDocument {
+  return {
+    ...doc,
+    sections: doc.sections.map((sec) => ({
+      ...sec,
+      fields: sec.fields.map((f): DocumentField => {
+        const ef = entity?.fields.find((x) => flat(humanize(x.name)) === flat(f.label));
+        const isRef = !!ef && resolveFieldConstraints(ef).format === "uuid" && !/^id$/i.test(ef.name);
+        if (isRef && ef) {
+          const target = flat(ef.name.replace(/_?id$/i, ""));
+          const other = entities.find((e) => e.name !== entity?.name && target && (flat(e.name) === target || flat(e.name).endsWith(target) || target.endsWith(flat(e.name))));
+          if (other) {
+            const options = [0, 1, 2].map((k) => `${codePrefix(other.name)}-${1040 + k * 7}`);
+            return { ...f, kind: "lookup", options, sample: f.sample ?? options[0] };
+          }
+          const { required: _drop, ...rest } = f;
+          return { ...rest, readOnly: true, sample: f.sample ?? documentSample("text", f.label, undefined, 0, ef) };
+        }
+        return f.sample ? f : { ...f, sample: documentSample(f.kind, f.label, f.options, 0, ef) };
+      }),
+    })),
+  };
 }
 
 // ─── Offline: a document from a record's own fields ───────────────────────────
@@ -261,7 +296,7 @@ function withNewAction(actions: string[], docName: string): string[] {
 function documentForScreen(def: ProductDefinition, screen: ScreenDefinition): TransactionDocument | undefined {
   const entity = entityForScreen(screen, def.dataEntities);
   if (!entity) return undefined;
-  return documentFromEntity(entity, entity.name || deriveSubject(def.productName, def.businessUnit), def.blueprintBrief);
+  return completeDocument(documentFromEntity(entity, entity.name || deriveSubject(def.productName, def.businessUnit), def.blueprintBrief), entity, def.dataEntities);
 }
 
 /**
