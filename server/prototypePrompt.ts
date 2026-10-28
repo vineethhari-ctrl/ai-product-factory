@@ -200,6 +200,11 @@ HOW TO DESIGN EACH SCREEN:
    how long they wait). Realistic sample values and a short delta such as "+3 vs yesterday".
 5. Table: the record this screen works on. 4-7 columns taken from that record's fields (a reference number first,
    status last). 6 sample rows that look real for this business: plausible names, dates and amounts, all different.
+   SAMPLE DATA IS INVENTED: organisations, people, brands, codes and identifiers (serial numbers, vehicle or account
+   numbers, licence plates, tenant or partner codes) are made up. Never use a real company's name, a real brand, a
+   recognisable abbreviation of one, or the real issuing prefix of a manufacturer or registry. A reader must not be
+   able to say which real organisation a row is about. Write status and type values as words a person reads
+   ("Pending Review"), not as UPPER_CASE_CODES.
    Every row has exactly as many cells as there are columns. Status values come from the record's status values
    listed above when there are any. Where a stage has an owner, include who it is with.
 6. Filters: 3-5 chips a user would really click: "All" first, then status values or stages that appear in the rows.
