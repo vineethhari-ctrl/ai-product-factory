@@ -285,11 +285,13 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   const handleCopyBRDText = async () => {
     const br = definition.blueprintBrief;
     const list = (items: string[]) => items.map((x) => `• ${x}`).join('\n');
+    const problems = definition.problemStatement?.length ? definition.problemStatement : br?.painPoints ?? [];
+    const kpis = definition.successMetrics?.length ? definition.successMetrics : br?.kpis ?? [];
     const text = [
       `=== BUSINESS REQUIREMENTS DOCUMENT (BRD) ===\nProduct: ${definition.productName}\nBusiness Unit: ${definition.businessUnit}\nVersion: ${definition.version}\nStatus: ${definition.isApproved ? 'Approved & Frozen' : 'Draft for BU Review'}`,
       `1. EXECUTIVE SUMMARY & OBJECTIVES\n${definition.objective}`,
-      br?.painPoints?.length ? `2. PROBLEMS TODAY\n${list(br.painPoints)}` : '',
-      br?.kpis?.length ? `SUCCESS MEASURES (KPIs)\n${list(br.kpis)}` : '',
+      problems.length ? `2. PROBLEMS TODAY\n${list(problems)}` : '',
+      kpis.length ? `SUCCESS MEASURES (KPIs)\n${list(kpis)}` : '',
       `FUNCTIONAL MODULES\n${definition.modules.map((m, idx) => `${idx + 1}. ${m.name}: ${m.description}`).join('\n')}`,
       br?.stages?.length ? `PROCESS & LIFECYCLE\n${br.stages.map((st, i) => `${i + 1}. ${st}${br.stageOwners?.[i] ? ` (${br.stageOwners[i]})` : ''}`).join('\n')}` : '',
       `USER PERSONAS & SECURITY ACCESS (RBAC)\n${definition.personas.map(p => `• ${p.name} (${p.role}): ${p.keyGoals.join('; ')} | Permissions: ${p.permissions.join(', ')}`).join('\n')}`,
@@ -298,6 +300,12 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
       `BUSINESS RULES\n${definition.businessRules.map(r => `• [${r.code || 'RULE'}] ${r.rule} (Applies to: ${r.context}; ${r.confidence})`).join('\n')}`,
       `DATA DICTIONARY\n${definition.dataEntities.map(d => `• ${d.name}: ${d.description}\n${withSystemFields(d).fields.filter(f => f.source !== 'system').map(f => `    - ${f.name} (${f.constraints?.format ?? f.type}${f.required ? ', required' : ''}) ${constraintSummary(f).join(', ')}`).join('\n')}`).join('\n')}`,
       `INTEGRATIONS\n${definition.integrations.map(i => `• ${i.system} (${i.protocol}): ${i.purpose}`).join('\n')}`,
+      definition.validations.length ? `VALIDATIONS\n${definition.validations.map(v => `• ${v.field}: ${v.validationRule} -> "${v.errorMessage}"`).join('\n')}` : '',
+      definition.notifications.length ? `NOTIFICATIONS\n${definition.notifications.map(n => `• ${n.event} -> ${n.recipient} by ${n.channel}`).join('\n')}` : '',
+      definition.nonFunctionalRequirements?.length ? `NON-FUNCTIONAL REQUIREMENTS\n${list(definition.nonFunctionalRequirements.map(n => `${n.area}: ${n.requirement}${n.target ? ` (target: ${n.target})` : ''}`))}` : '',
+      definition.risks?.length ? `RISKS\n${list(definition.risks.map(r => `${r.risk} | Impact: ${r.impact} | Mitigation: ${r.mitigation}`))}` : '',
+      definition.assumptions.length ? `ASSUMPTIONS\n${definition.assumptions.map(a => `• ${a.statement} (risk ${a.riskLevel})`).join('\n')}` : '',
+      definition.openQuestions.length ? `OPEN QUESTIONS\n${['BU', 'TECH'].map(t => { const qs = forAudience(definition.openQuestions, t as 'BU' | 'TECH', q => q.question); return qs.length ? `${t === 'BU' ? 'BU Team' : 'BA & Tech Team'}:\n${qs.map(q => `• [${q.urgency}] ${q.question} (${q.status})`).join('\n')}` : ''; }).filter(Boolean).join('\n')}` : '',
     ].filter(Boolean).join('\n\n');
 
     const success = await copyToClipboard(text);
