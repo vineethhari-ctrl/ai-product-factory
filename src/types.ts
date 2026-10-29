@@ -155,7 +155,9 @@ export interface ScreenUISpec {
   /** True only when the Build Prototype design step (research, then design) produced this screen. The BRD also writes a UI blueprint with origin 'AI'; that is a first draft, not the designed prototype. */
   designed?: boolean;
   /** Shows this screen's table as a hash-chained record ledger (blocks linked by SHA-256, verifiable and tamperable in the prototype). */
-  chain?: { title: string; note?: string; ledgerOnly?: boolean };
+  chain?: { title: string; note?: string; ledgerOnly?: boolean; /** Who marked this screen as the ledger: the AI design, or the factory's own step. */ by?: 'AI' | 'FACTORY' };
+  /** Set when the whole screen was added by the factory, not designed by the AI (for example the ledger screen). */
+  addedBy?: 'FACTORY';
   /** 'phone' for screens an outside party uses on a mobile phone; shown in a phone frame. */
   device?: 'desktop' | 'phone';
   /** One chart for the screen's main trend or split. Values are sample numbers. */

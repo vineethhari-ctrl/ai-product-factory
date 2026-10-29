@@ -1,4 +1,4 @@
-import { designedScreenCount } from '../services/prototypeState';
+import { designedScreenCount, factoryScreenCount } from '../services/prototypeState';
 import React, { useRef, useState } from 'react';
 import { ImagePlus, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import type { ProductDefinition } from '../types';
@@ -21,7 +21,8 @@ export const PrototypeDesignBar: React.FC<PrototypeDesignBarProps> = ({
 }) => {
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const total = definition.screens.length;
+  const byFactory = factoryScreenCount(definition);
+  const total = definition.screens.length - byFactory;
   const byAI = designedScreenCount(definition);
 
   const onFile = async (file: File | undefined) => {
@@ -47,6 +48,7 @@ export const PrototypeDesignBar: React.FC<PrototypeDesignBarProps> = ({
               : byAI === total
                 ? `All ${total} screens designed by the AI`
                 : `${byAI} of ${total} screens designed by the AI`}
+            {byFactory > 0 && <span className="ml-2 px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[11px] font-semibold">+ {byFactory} added by the factory</span>}
           </p>
           <p className="text-slate-600">
             {byAI === total

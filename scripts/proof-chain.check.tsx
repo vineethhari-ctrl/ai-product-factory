@@ -88,10 +88,34 @@ async function main() {
   const proto = await quiet(() => generatePrototypeUI(chained));
   t("Build Prototype keeps exactly one ledger screen", proto.screens.filter((s) => s.ui?.chain).length === 1);
 
+  // ── Who did what ───────────────────────────────────────────────────────
+  const { isPrototypeDesigned, designedScreenCount, factoryScreenCount } = await import("../src/services/prototypeState");
+  const fscreen = chained.screens.find((x) => x.ui?.chain)!;
+  t("a screen the factory added says so (addedBy FACTORY, chain by FACTORY) and is not marked as designed by the AI", fscreen.ui!.addedBy === "FACTORY" && fscreen.ui!.chain!.by === "FACTORY" && fscreen.ui!.designed !== true);
+  const allAI = { ...chained, screens: chained.screens.map((x) => (x.ui?.addedBy === "FACTORY" ? x : { ...x, confidence: "CONFIRMED" as const, ui: { ...x.ui!, origin: "AI" as const, designed: true } })) };
+  t("the factory's own screen is not counted as the AI's, and does not stop the prototype counting as designed", isPrototypeDesigned(allAI) && factoryScreenCount(allAI) === 1 && designedScreenCount(allAI) === allAI.screens.length - 1);
+  t("one AI screen not designed still sends Build Prototype back to the AI", !isPrototypeDesigned({ ...allAI, screens: allAI.screens.map((x, i) => (i === 0 ? { ...x, ui: { ...x.ui!, designed: false } } : x)) }));
+
+  // The AI designs its own ledger screen: its marker wins, the factory's screen goes, and it is labelled the AI's.
+  process.env.GEMINI_API_KEY = "g";
+  const { setProviderForTests } = await import("../server/llmRouter");
+  const { PrototypeUISchema } = await import("../server/aiSchemas");
+  const target = chained.screens.find((x) => !x.ui?.chain && x.layoutType !== "transaction")!;
+  const aiAnswer = PrototypeUISchema.parse({
+    theme: { primaryColor: "#112233", accentColor: "#223344", sidebarStyle: "dark", density: "comfortable" },
+    screens: [{ screenId: target.id, inspiredBy: "x", layoutType: "table-detail", ui: { kpis: [], filters: ["All"], table: { title: "Sealed history", columns: ["Seq", "What happened", "Record"], rows: Array.from({ length: 6 }, (_, i) => [String(i + 1), `Step ${i + 1}`, `R-${1040 + i}`]) }, detailPanels: [], primaryActions: [], benchmarkNote: "n", entity: "", device: "desktop", chain: { title: "Sealed history", note: "What was recorded" } } }],
+  });
+  const restore = setProviderForTests("gemini", async (task) => (task === "research-prototype" ? null : aiAnswer));
+  const aiProto = await quiet(() => generatePrototypeUI(chained));
+  restore();
+  delete process.env.GEMINI_API_KEY;
+  const ledgers = aiProto.screens.filter((x) => x.ui?.chain);
+  t("when the AI designs its own ledger screen, there is exactly one ledger: the AI's, marked by the AI, with the factory's screen removed", ledgers.length === 1 && ledgers[0].id === target.id && ledgers[0].ui!.chain!.by === "AI" && ledgers[0].ui!.addedBy !== "FACTORY" && !aiProto.screens.some((x) => x.id.startsWith("scr-chain")) && !aiProto.navigation.some((n) => n.screenId.startsWith("scr-chain")), ledgers.map((x) => `${x.id}:${x.ui!.chain!.by}`).join());
+  t("the AI's own ledger screen counts as designed by the AI", designedScreenCount(aiProto) >= 1 && ledgers[0].ui!.designed === true);
+
   // ── The prompt ─────────────────────────────────────────────────────────
   const { buildPrototypePrompt } = await import("../server/prototypePrompt");
   t("the design prompt asks for the ledger only when the BRD needs one, and forbids invented hashes", buildPrototypePrompt(chained, false).includes("HASH-CHAINED LEDGER") && !buildPrototypePrompt(plain, false).includes("HASH-CHAINED LEDGER") && /Do NOT write hash values/.test(buildPrototypePrompt(chained, false)));
-  const { PrototypeUISchema } = await import("../server/aiSchemas");
   const okChain = PrototypeUISchema.safeParse({ theme: { primaryColor: "#112233", accentColor: "#223344", sidebarStyle: "dark", density: "comfortable" }, screens: [{ screenId: "s", inspiredBy: "x", layoutType: "table-detail", ui: { kpis: [], filters: [], table: { title: "t", columns: ["a", "b"], rows: [["1", "2"]] }, detailPanels: [], primaryActions: [], benchmarkNote: "n", entity: "", device: "desktop", chain: { title: "L", note: "n" } } }] });
   t("the design schema accepts a ledger marker", okChain.success, JSON.stringify((okChain as any).error?.issues?.[0]));
 
@@ -124,6 +148,13 @@ async function main() {
   await click(btn("Verify chain"));
   t("Reset restores the sealed ledger; a record appended after sealing is a valid extension", statuses().length === 6 && statuses().every((s) => s === "valid") && /Verified/.test(container.querySelector("[role=status]")?.textContent ?? ""), statuses().join());
   await act(async () => root.unmount());
+  for (const [prov, who] of [["ai", "Screen designed by the AI"], ["factory-screen", "Added by the AI Product Factory, not designed by the AI"], ["factory-marker", "Ledger added by the AI Product Factory to a screen the AI designed"]] as const) {
+    const r = createRoot(container);
+    await act(async () => { r.render(React.createElement(ProofChain, { title: "L", columns, rows: trows, provenance: prov })); });
+    const label = container.querySelector("[data-provenance]");
+    t(`the ledger says who did it (${prov}): "${who}"`, label?.getAttribute("data-provenance") === prov && (label?.textContent ?? "").includes(who) && /computed live in your browser/.test(label?.textContent ?? ""), label?.textContent ?? "none");
+    await act(async () => r.unmount());
+  }
 
   // ── Neutrality ─────────────────────────────────────────────────────────
   const code = ["src/services/sha256.ts", "src/services/proofChain.ts", "src/components/ProofChain.tsx", "server/proofChain.ts"].map((f) => readFileSync(f, "utf8")).join("\n") + (await import("../server/prototypePrompt")).LEDGER_RULES;

@@ -561,7 +561,7 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
       {screen.layoutType !== 'form-wizard' && kpiRow}
       {ui.chain?.ledgerOnly ? null : body}
       {ui.chain && (
-        <ProofChain key={`${screen.id}-chain`} title={ui.chain.title} note={ui.chain.note} columns={ui.table.columns} rows={ui.table.rows} readOnly={readOnly} />
+        <ProofChain key={`${screen.id}-chain`} title={ui.chain.title} note={ui.chain.note} columns={ui.table.columns} rows={ui.table.rows} readOnly={readOnly} provenance={ui.addedBy === 'FACTORY' ? 'factory-screen' : ui.chain.by === 'FACTORY' ? 'factory-marker' : 'ai'} />
       )}
 
     </div>

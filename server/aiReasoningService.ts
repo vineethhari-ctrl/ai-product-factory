@@ -967,7 +967,7 @@ async function generatePrototypeUnlabelled(
           ...cleanUIBlocks({ device, chart, board, timeline }),
           ...(doc ? { document: doc } : {}),
           // The AI's ledger screen: its table is the records in the order they were sealed; the hashes are computed in the browser.
-          ...(chain?.title?.trim() && ui.table.columns.length >= 2 && ui.table.rows.length >= 3 ? { chain: { title: chain.title.trim().slice(0, 80), ...(chain.note?.trim() ? { note: chain.note.trim().slice(0, 200) } : {}) } } : {}),
+          ...(chain?.title?.trim() && ui.table.columns.length >= 2 && ui.table.rows.length >= 3 ? { chain: { by: "AI" as const, title: chain.title.trim().slice(0, 80), ...(chain.note?.trim() ? { note: chain.note.trim().slice(0, 200) } : {}) } } : {}),
           benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
           origin: "AI",
           designed: true,

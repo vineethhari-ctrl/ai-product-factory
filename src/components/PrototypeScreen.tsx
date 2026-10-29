@@ -283,7 +283,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
           >
             <Settings2 className="w-3.5 h-3.5" />
             <span>Design tools</span>
-            {definition.screens.some((sc) => sc.ui?.origin !== 'AI') && <span className="w-2 h-2 rounded-full bg-amber-400" title="Some screens were made by the offline engine" />}
+            {definition.screens.some((sc) => sc.ui?.origin !== 'AI' && sc.ui?.addedBy !== 'FACTORY') && <span className="w-2 h-2 rounded-full bg-amber-400" title="Some screens were made by the offline engine" />}
           </button>
 
           <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700 text-xs">

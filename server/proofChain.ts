@@ -87,6 +87,17 @@ const NOTE = "Records are sealed in order and never edited: a correction is a ne
 
 /** Give the prototype its ledger screen when the BRD asks for hash-chained records. Idempotent. */
 export function withProofChain(def: ProductDefinition): ProductDefinition {
+  // The AI marked a screen as the ledger while a ledger screen the factory added earlier is still there: the AI's wins, the factory's goes.
+  const factoryLedgers = def.screens.filter((s) => s.ui?.addedBy === "FACTORY" && s.ui?.chain);
+  if (factoryLedgers.length && def.screens.some((s) => s.ui?.chain?.by === "AI")) {
+    const gone = new Set(factoryLedgers.map((s) => s.id));
+    return {
+      ...def,
+      screens: def.screens.filter((s) => !gone.has(s.id)),
+      navigation: (def.navigation ?? []).filter((n) => !gone.has(n.screenId)),
+      modules: def.modules.map((m) => ({ ...m, screens: m.screens.filter((id) => !gone.has(id)) })).filter((m) => m.screens.length > 0 || !m.id.startsWith("mod-scr-chain")),
+    };
+  }
   // The AI marked its own ledger screen, or an earlier pass added one: keep exactly one.
   const marked = def.screens.find((s) => s.ui?.chain);
   if (marked) return def;
@@ -98,14 +109,14 @@ export function withProofChain(def: ProductDefinition): ProductDefinition {
 
   // An earlier pass added a ledger screen and a later design replaced its layout: put the ledger back on it.
   if (added && usable(added)) {
-    return { ...def, screens: def.screens.map((s) => (s === added ? { ...s, ui: { ...s.ui!, chain: { title: s.name, note: NOTE, ledgerOnly: true } } } : s)) };
+    return { ...def, screens: def.screens.map((s) => (s === added ? { ...s, ui: { ...s.ui!, chain: { title: s.name, note: NOTE, ledgerOnly: true, by: "FACTORY" as const } } } : s)) };
   }
 
   // The chain record already has a screen with a table of its records: that screen shows the ledger.
   if (chain) {
     const bound = def.screens.find((s) => usable(s) && s.layoutType !== "transaction" && entityForScreen(s, def.dataEntities)?.name === chain.name && (s.ui?.entity === chain.name || `${s.name} ${s.purpose}`.toLowerCase().includes(chain.name.toLowerCase())));
     if (bound) {
-      return { ...def, screens: def.screens.map((s) => (s === bound ? { ...s, ui: { ...s.ui!, chain: { title: TITLE(chain.name), note: NOTE } } } : s)) };
+      return { ...def, screens: def.screens.map((s) => (s === bound ? { ...s, ui: { ...s.ui!, chain: { title: TITLE(chain.name), note: NOTE, by: "FACTORY" as const } } } : s)) };
     }
   }
 
@@ -116,7 +127,6 @@ export function withProofChain(def: ProductDefinition): ProductDefinition {
   let id = "scr-chain-1";
   while (def.screens.some((s) => s.id === id)) id += "x";
   const moduleName = (main && def.screens.find((s) => entityForScreen(s, def.dataEntities)?.name === main.name)?.module) || def.screens[0]?.module || "Ledger";
-  const allDesigned = def.screens.length > 0 && def.screens.every((s) => s.ui?.designed === true);
   const screen: ScreenDefinition = {
     id,
     name,
@@ -133,8 +143,8 @@ export function withProofChain(def: ProductDefinition): ProductDefinition {
       detailPanels: [],
       primaryActions: [],
       benchmarkNote: "Hash-chained record ledger: blocks linked by SHA-256, verifiable in the prototype.",
-      chain: { title: name, note: NOTE, ledgerOnly: true },
-      ...(allDesigned ? { origin: "AI" as const, designed: true } : {}),
+      chain: { title: name, note: NOTE, ledgerOnly: true, by: "FACTORY" as const },
+      addedBy: "FACTORY" as const,
     },
   };
   const mod = def.modules.find((m) => m.name === moduleName);

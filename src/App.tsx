@@ -1,4 +1,4 @@
-import { isPrototypeDesigned, designedScreenCount } from './services/prototypeState';
+import { isPrototypeDesigned, designedScreenCount, factoryScreenCount } from './services/prototypeState';
 import React, { useState, useEffect, useRef } from 'react';
 import { AI_NOTICE_EVENT, AI_STATUS_EVENT, type AIStatus, newProjectId } from './services/aiSession';
 import { AIStatusBanner } from './components/AIStatusBanner';
@@ -345,8 +345,9 @@ export default function App() {
         const enrichedDefinition: ProductDefinition = await response.json();
         setProductDefinition(enrichedDefinition);
         const byAI = designedScreenCount(enrichedDefinition);
+        const byFactory = factoryScreenCount(enrichedDefinition);
         showToast(byAI > 0
-          ? `The AI designed ${byAI} of ${enrichedDefinition.screens.length} screens${referenceImage ? ', following your reference screen' : ''}.`
+          ? `The AI designed ${byAI} of ${enrichedDefinition.screens.length - byFactory} screens${byFactory ? ` (the factory added ${byFactory} more)` : ''}${referenceImage ? ', following your reference screen' : ''}.`
           : 'Prototype built by the offline engine.');
       } else {
         const errData = await response.json().catch(() => ({}));

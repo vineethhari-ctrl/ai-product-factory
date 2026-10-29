@@ -17,12 +17,20 @@ export interface ProofChainProps {
   columns: string[];
   rows: string[][];
   readOnly?: boolean;
+  /** Who produced this: the AI designed the screen (and the factory supplies the hashing), the factory added the whole screen, or the factory added the ledger to a screen the AI designed. */
+  provenance?: 'ai' | 'factory-screen' | 'factory-marker';
 }
+
+export const PROVENANCE_TEXT = {
+  ai: { who: 'Screen designed by the AI', detail: 'The AI wrote this screen and its records. The hashing, verification and tamper test are the factory\'s own: the hashes are computed live in your browser, not by the AI.' },
+  'factory-screen': { who: 'Added by the AI Product Factory, not designed by the AI', detail: 'The BRD asks for tamper-evident, hash-chained records, so the factory added this working ledger. The record names come from the BRD; the hashes are computed live in your browser.' },
+  'factory-marker': { who: 'Ledger added by the AI Product Factory to a screen the AI designed', detail: 'The AI designed this screen. The BRD asks for tamper-evident records, so the factory added the working ledger below it; the hashes are computed live in your browser.' },
+} as const;
 
 const rowsToContent = (columns: string[], rows: string[][]) =>
   rows.map((r) => Object.fromEntries(columns.map((c, i) => [c, String(r[i] ?? '')])));
 
-export const ProofChain: React.FC<ProofChainProps> = ({ title, note, columns, rows, readOnly }) => {
+export const ProofChain: React.FC<ProofChainProps> = ({ title, note, columns, rows, readOnly, provenance = 'ai' }) => {
   const initial = useMemo(() => sealChain(rowsToContent(columns, rows)), [columns, rows]);
   const [blocks, setBlocks] = useState<ChainBlock[]>(initial);
   const anchorOf = (b: ChainBlock[]): Anchor => ({ hash: b.at(-1)?.hash ?? GENESIS, length: b.length });
@@ -110,6 +118,10 @@ export const ProofChain: React.FC<ProofChainProps> = ({ title, note, columns, ro
             <RotateCcw className="w-3.5 h-3.5" /> Reset
           </button>
         </div>
+      </div>
+
+      <div className={`mx-5 mt-4 rounded-lg border px-3 py-2 text-[11px] ${provenance === 'ai' ? 'border-violet-200 bg-violet-50 text-violet-900' : 'border-sky-200 bg-sky-50 text-sky-900'}`} data-provenance={provenance}>
+        <span className="font-bold">{PROVENANCE_TEXT[provenance].who}.</span> {PROVENANCE_TEXT[provenance].detail}
       </div>
 
       {banner && <div className={`mx-5 mt-4 rounded-lg border px-3 py-2 text-xs font-semibold ${banner.cls}`} role="status">{banner.text}</div>}

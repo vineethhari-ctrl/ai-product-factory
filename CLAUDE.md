@@ -218,7 +218,12 @@ records sealed first) no longer matches; a record appended later is a valid exte
   and offline) guarantees it: an AI-marked screen is kept, a screen bound to the chain record gets the marker, otherwise one dedicated
   `scr-chain-1` screen is added (columns from the chain record's business fields, or one row per lifecycle step). Idempotent; a later design that
   drops the marker gets it back on the same screen.
-- `ui.chain = { title, note?, ledgerOnly? }` (`ledgerOnly` hides the plain table). `npm run check:chain` (SHA-256 vs Node, chain logic, trigger,
+- **Who did what is always shown.** `ui.chain.by` is 'AI' (the design marked its own ledger screen) or 'FACTORY' (`withProofChain` attached it),
+  and `ui.addedBy = 'FACTORY'` marks a whole screen the factory added. The panel prints one of three labels (`PROVENANCE_TEXT`): screen designed by
+  the AI (hashing is the factory's), added by the factory (not designed by the AI), or ledger added by the factory to an AI screen. A factory screen
+  is never counted as the AI's (`designedScreenCount`, `factoryScreenCount`, `isPrototypeDesigned` in `src/services/prototypeState.ts`); the design bar
+  and the toast say "+ N added by the factory". If the AI marks its own ledger, the factory's earlier ledger screen is removed.
+- `ui.chain = { title, note?, ledgerOnly?, by? }` (`ledgerOnly` hides the plain table). `npm run check:chain` (SHA-256 vs Node, chain logic, trigger,
   screen, prompt, the real panel in jsdom, domain neutrality; needs jsdom like `check:ui`).
 
 ## AI usage control (`server/usage.ts`)
