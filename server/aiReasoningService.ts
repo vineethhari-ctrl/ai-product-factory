@@ -956,7 +956,7 @@ async function generatePrototypeUnlabelled(
           added++;
         }
         if (screenIdx === -1) continue;
-        const { entity, device, chart, board, timeline, document, ...ui } = generated.ui;
+        const { entity, device, chart, board, timeline, document, chain, ...ui } = generated.ui;
         const states = updated.dataEntities.find((e) => e.name === entity)?.lifecycle?.states ?? [];
         const doc = generated.layoutType === "transaction" ? cleanDocument(document, states, updated.dataEntities.find((e) => e.name === entity), updated.dataEntities) : undefined;
         updated.screens[screenIdx].layoutType = generated.layoutType;
@@ -966,6 +966,8 @@ async function generatePrototypeUnlabelled(
           ...(entity && entityNames.has(entity) ? { entity } : {}),
           ...cleanUIBlocks({ device, chart, board, timeline }),
           ...(doc ? { document: doc } : {}),
+          // The AI's ledger screen: its table is the records in the order they were sealed; the hashes are computed in the browser.
+          ...(chain?.title?.trim() && ui.table.columns.length >= 2 && ui.table.rows.length >= 3 ? { chain: { title: chain.title.trim().slice(0, 80), ...(chain.note?.trim() ? { note: chain.note.trim().slice(0, 200) } : {}) } } : {}),
           benchmarkNote: `AI design: ${generated.inspiredBy}. ${generated.ui.benchmarkNote}`,
           origin: "AI",
           designed: true,

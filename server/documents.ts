@@ -12,6 +12,7 @@ import type {
 } from "../src/types";
 import { resolveFieldConstraints } from "../src/services/validationEngine";
 import { documentSample } from "../src/services/documentSamples";
+import { withProofChain } from "./proofChain";
 import { humanizeDocumentStates } from "../src/services/documentMath";
 import { codePrefix, deriveSubject, entityForScreen, humanize, stateLabel } from "./blueprint";
 
@@ -325,5 +326,5 @@ export function withDocuments(def: ProductDefinition): ProductDefinition {
       }
     }
   }
-  return { ...def, screens };
+  return withProofChain({ ...def, screens });
 }

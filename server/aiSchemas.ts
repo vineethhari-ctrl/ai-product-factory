@@ -375,6 +375,8 @@ export const PrototypeUISchema = z.object({
         timeline: TimelineSchema.optional(),
         /** The business document of a 'transaction' screen. */
         document: DocumentSchema.optional(),
+        /** Set on the one screen that is the hash-chained ledger: its table is the records in the order they were sealed. */
+        chain: z.object({ title: z.string(), note: z.string().optional() }).optional(),
       }),
     })
   ),

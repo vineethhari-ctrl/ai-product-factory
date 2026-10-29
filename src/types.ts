@@ -154,6 +154,8 @@ export interface ScreenUISpec {
   origin?: 'AI' | 'OFFLINE';
   /** True only when the Build Prototype design step (research, then design) produced this screen. The BRD also writes a UI blueprint with origin 'AI'; that is a first draft, not the designed prototype. */
   designed?: boolean;
+  /** Shows this screen's table as a hash-chained record ledger (blocks linked by SHA-256, verifiable and tamperable in the prototype). */
+  chain?: { title: string; note?: string; ledgerOnly?: boolean };
   /** 'phone' for screens an outside party uses on a mobile phone; shown in a phone frame. */
   device?: 'desktop' | 'phone';
   /** One chart for the screen's main trend or split. Values are sample numbers. */

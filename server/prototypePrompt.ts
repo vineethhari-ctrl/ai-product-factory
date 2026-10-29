@@ -1,4 +1,5 @@
 import type { DesignResearch, ProductDefinition } from "../src/types";
+import { needsChain } from "./proofChain";
 
 /**
  * Prompt for Build Prototype: the AI designs every screen for its job in the BU's process, from the
@@ -140,6 +141,15 @@ G. For a "transaction" screen, table = the list of existing documents of that ki
    name. kpis: 0-3 small figures about this list (how many are open, value waiting for approval).
 `;
 
+/** Added only when the BRD says records are hash-chained, append-only or tamper-evident. */
+export const LEDGER_RULES = `HASH-CHAINED LEDGER: the BRD says some records are chained, append-only or tamper-evident. Make ONE screen the
+ledger of those records (an existing screen whose job fits, or add one with screenId "scr-chain-" plus a short name).
+On that screen set "chain": {"title": "<the records' name> ledger", "note": "one sentence on what is recorded"} and make
+its table the records in the order they were sealed, oldest first: the first column is the sequence number, then 3-5
+columns about the record (what happened, which record, when, who). 6-8 rows. Do NOT write hash values anywhere: the
+prototype computes real SHA-256 hashes itself and lets the user verify the chain and try to tamper with it.
+`;
+
 export function buildPrototypePrompt(def: ProductDefinition, hasReference: boolean, research?: DesignResearch): string {
   const screens = screenList(def);
   const personas = def.personas.map((p) => `- ${p.name} (${p.role}): goals ${list(p.keyGoals, 3)}`).join("\n");
@@ -183,7 +193,7 @@ SCREENS TO DESIGN (design every one; keep each screenId exactly):
 ${screens}
 
 ${DOCUMENT_RULES}
-HOW TO DESIGN EACH SCREEN:
+${needsChain(def) ? LEDGER_RULES : ""}HOW TO DESIGN EACH SCREEN:
 1. Start from the job. Ask: who opens this screen, at which stage of the process, and what must they decide or do
    here? Put what they need for that decision first.
 2. Use the BU's own words. Screen titles, KPI labels, column names, filters and actions use the nouns and verbs in
@@ -254,6 +264,7 @@ Return ONLY valid JSON in exactly this shape:
         "chart": {"title": "Chart title", "kind": "bar" | "line" | "donut", "labels": ["Label"], "values": [12]},
         "board": {"columns": [{"title": "Stage or status", "cards": [{"title": "R-1042", "subtitle": "Who or what", "tag": "High"}]}]},
         "timeline": [{"when": "Today 09:40", "who": "Person or party", "what": "What happened"}],
+        "chain": {"title": "Ledger title", "note": "What is recorded"},
         "document": {
           "name": "Document name", "numberPrefix": "AB",
           "sections": [{"title": "Section", "fields": [{"label": "Field", "kind": "text" | "long-text" | "number" | "money" | "percent" | "date" | "select" | "lookup" | "email" | "phone" | "checkbox", "required": true, "options": ["Option"], "sample": "Sample value", "readOnly": false}]}],

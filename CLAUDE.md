@@ -202,6 +202,25 @@ Retry banner), and derived by rules when no model answers. The tab says which (`
 - Stored on `definition.approachNote` with `basedOn` (BRD fingerprint); a changed BRD makes it stale and it is rewritten when the tab is
   opened. `npm run check:approach` covers it with model stand-ins.
 
+## Hash-chained ledger (generic; `server/proofChain.ts`, `src/services/proofChain.ts`, `src/components/ProofChain.tsx`)
+
+When the BRD says records are hash-chained, tamper-evident, Merkle-anchored or an append-only ledger, the prototype gets ONE ledger
+screen the user can try: blocks linked by a real SHA-256 (`src/services/sha256.ts`, computed in the browser), **Verify chain**,
+**Edit this record** (tamper), **Recompute all hashes (hide it)** and **Add record**. Editing a block breaks it and every block after
+it (hashes are recomputed forward from the genesis); recomputing every hash looks consistent but the published anchor (head hash of the
+records sealed first) no longer matches; a record appended later is a valid extension.
+- **Trigger** (`needsChain`): a record with a previous-hash field and its own hash field (`chainEntity`), or BRD text (objective, modules,
+  rules, screens, record descriptions, integrations) matching hash chain / tamper-evident / cryptographically chained / Merkle /
+  blockchain / an append-only ledger. A plain "append-only audit log" is boilerplate and does NOT trigger; the engine's own generic
+  blueprint wording (`br-bp-<n>`, `scr-bp-*`, `ent-bp*`, `mod-bp*`) is ignored.
+- **Who builds it**: the design prompt (`LEDGER_RULES`, only when `needsChain`) asks the AI to mark one screen `ui.chain` with its table
+  as the records in sealed order and never to write hashes; `withProofChain` (end of `withDocuments`, so after the BRD, after the design
+  and offline) guarantees it: an AI-marked screen is kept, a screen bound to the chain record gets the marker, otherwise one dedicated
+  `scr-chain-1` screen is added (columns from the chain record's business fields, or one row per lifecycle step). Idempotent; a later design that
+  drops the marker gets it back on the same screen.
+- `ui.chain = { title, note?, ledgerOnly? }` (`ledgerOnly` hides the plain table). `npm run check:chain` (SHA-256 vs Node, chain logic, trigger,
+  screen, prompt, the real panel in jsdom, domain neutrality; needs jsdom like `check:ui`).
+
 ## AI usage control (`server/usage.ts`)
 
 Who spent what, per BA and project, with limits, a monthly budget and a response cache. Settings in `.env.example`.

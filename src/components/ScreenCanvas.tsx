@@ -12,6 +12,7 @@ import {
 import { DataEntityDefinition, ScreenDefinition, ScreenUISpec } from '../types';
 import { EntityForm } from './EntityForm';
 import { TransactionScreen } from './TransactionScreen';
+import { ProofChain } from './ProofChain';
 import { BoardView, ChartCard, PhoneCanvas, StatusOrText, TimelineCard } from './UIBlocks';
 
 interface ScreenCanvasProps {
@@ -558,7 +559,10 @@ export const ScreenCanvas: React.FC<ScreenCanvasProps> = ({ screen, readOnly, en
       )}
 
       {screen.layoutType !== 'form-wizard' && kpiRow}
-      {body}
+      {ui.chain?.ledgerOnly ? null : body}
+      {ui.chain && (
+        <ProofChain key={`${screen.id}-chain`} title={ui.chain.title} note={ui.chain.note} columns={ui.table.columns} rows={ui.table.rows} readOnly={readOnly} />
+      )}
 
     </div>
   );
