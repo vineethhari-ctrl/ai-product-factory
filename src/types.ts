@@ -694,8 +694,8 @@ export interface RateCard {
   currency: string;
   /** Day rate per role, in `currency`. */
   rates: Record<ResourceRole, number>;
-  /** Contingency added on top of the estimate, percent (cost). */
-  contingencyPct: number;
+  /** Legacy, ignored: no contingency is added to the cost any more (the allowance is in the days). */
+  contingencyPct?: number;
   /** Estimating allowance, percent, built into every activity's days (not a separate line). Internal pricing. */
   allowancePct?: number;
   /** Productive share of a working day (meetings, leave). */
@@ -771,7 +771,6 @@ export interface Estimate {
   technicalDays: number;
   totalDays: number;
   subtotal: number;
-  contingency: number;
   total: number;
   durationWeeks: number;
   currency: string;

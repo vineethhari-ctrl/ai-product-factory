@@ -43,7 +43,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
   return {
     origin: 'OFFLINE',
     basedOn: scopeSignature(scope),
-    executiveSummary: `${vendor} proposes to deliver ${a.productName} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)} including ${state.rateCard.contingencyPct}% contingency.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
+    executiveSummary: `${vendor} proposes to deliver ${a.productName} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)}.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
     background: (a.problemStatement?.length ? a.problemStatement : [a.objective]).filter(Boolean),
     objectives: [a.objective, ...(a.successMetrics ?? []).map((m) => `Measure: ${m}`)].filter(Boolean),
     approach: est.phases.map(phaseLine),
@@ -87,7 +87,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
       'Escalation: project manager, then business owner, then sponsor.',
     ],
     commercialTerms: [
-      `Estimated fee: ${money(est.subtotal)} plus ${state.rateCard.contingencyPct}% contingency = ${money(est.total)}, in ${est.currency}, excluding ${taxes}.`,
+      `Estimated fee: ${money(est.total)}, in ${est.currency}, excluding ${taxes}.`,
       'Invoiced by milestone as shown in the payment schedule; work beyond the approved scope is charged at the rate card.',
       'The estimate is valid for 30 days from the date of this document.',
       'Standard terms for liability, intellectual property, confidentiality and termination are to be agreed with the vendor\'s and the client\'s legal teams.',

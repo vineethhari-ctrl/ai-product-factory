@@ -72,8 +72,8 @@ export function proposalSections(def: ProductDefinition, scope: ScopeBaseline, e
 
   s.push({ id: 'cost', title: 'Team and cost', blocks: [
     { kind: 'table', head: ['Role', 'Days', `Day rate (${est.currency})`, `Cost (${est.currency})`, 'Indicative people'],
-      rows: est.team.map((r) => [r.role, d1(r.days), String(r.rate), money(r.cost), d1(r.fte)]), foot: ['Subtotal', d1(est.totalDays), '', money(est.subtotal), ''],
-      note: `Contingency (${state.rateCard.contingencyPct}%): ${money(est.contingency)}. Total estimate: ${money(est.total)}, excluding ${est.currency === 'INR' ? 'GST and other applicable taxes' : 'taxes'}.${state.rateCard.isDefault ? ' Day rates are the tool\'s illustrative defaults and must be replaced with the vendor\'s rates.' : ''}` },
+      rows: est.team.map((r) => [r.role, d1(r.days), String(r.rate), money(r.cost), d1(r.fte)]), foot: ['Total', d1(est.totalDays), '', money(est.total), ''],
+      note: `Total estimate: ${money(est.total)}, excluding ${est.currency === 'INR' ? 'GST and other applicable taxes' : 'taxes'}.${state.rateCard.isDefault ? ' Day rates are the tool\'s illustrative defaults and must be replaced with the vendor\'s rates.' : ''}` },
   ] });
 
   s.push({ id: 'rasic', title: 'Responsibility matrix (RASIC)', blocks: [

@@ -30,7 +30,6 @@ export function defaultRateCard(): RateCard {
       'Project Manager': 12000, 'Business Analyst': 9000, 'Solution Architect': 15000, 'UX Designer': 9000,
       'Frontend Developer': 8000, 'Backend Developer': 9000, 'QA Engineer': 6500, 'DevOps Engineer': 9500,
     },
-    contingencyPct: 15,
     allowancePct: DEFAULT_ALLOWANCE_PCT,
     utilisation: 0.85,
     maxPerRole: 4,
@@ -52,7 +51,8 @@ export function currentProposalState(saved?: ProposalState): ProposalState {
 }
 
 type Mix = Partial<Record<ResourceRole, number>>;
-const round1 = (n: number) => Math.round(n * 10) / 10;
+// Half-up to one decimal; the small epsilon stops binary floating point turning 8.05 into 8.0.
+const round1 = (n: number) => Math.round(n * 10 + 1e-9) / 10;
 
 /** Effort units (person-days) per screen layout: [functional, technical]. */
 const SCREEN_DAYS: Record<string, [number, number]> = {
@@ -209,8 +209,11 @@ export function estimateActivities(def: ProductDefinition, state?: ProposalState
   const k = 1 + Math.max(0, state?.rateCard.allowancePct ?? DEFAULT_ALLOWANCE_PCT) / 100;
   const withAdj = base.map((a) => {
     const o = adj[a.id];
-    const functionalDays = o?.functionalDays !== undefined ? o.functionalDays : round1(a.functionalDays * k);
-    const technicalDays = o?.technicalDays !== undefined ? o.technicalDays : round1(a.technicalDays * k);
+    // Scale the activity's total, then split it, so the activity grows by exactly the allowance (10 days -> 11.5).
+    const scaledTotal = round1((a.functionalDays + a.technicalDays) * k);
+    const scaledF = round1(a.functionalDays * k);
+    const functionalDays = o?.functionalDays !== undefined ? o.functionalDays : scaledF;
+    const technicalDays = o?.technicalDays !== undefined ? o.technicalDays : round1(scaledTotal - scaledF);
     return { ...a, functionalDays, technicalDays, adjusted: o?.functionalDays !== undefined || o?.technicalDays !== undefined };
   });
   const sum = withAdj.reduce((n, a) => n + a.functionalDays + a.technicalDays, 0);
@@ -269,8 +272,8 @@ export function buildEstimate(def: ProductDefinition, scope: ScopeBaseline, stat
   const costOf = (a: EstimateActivity) => (Object.entries(a.roleDays) as Array<[ResourceRole, number]>).reduce((n, [r, d]) => n + d * rate(r), 0);
 
   const subtotal = Math.round(ROLES.reduce((n, r) => n + roleDays[r] * rate(r), 0));
-  const contingency = Math.round(subtotal * (rc.contingencyPct / 100));
-  const total = subtotal + contingency;
+  // The price is days x rate: no contingency is added to the cost and rates are never adjusted. The allowance lives in the days.
+  const total = subtotal;
 
   // Indicative duration: the busiest role works with at most `maxPerRole` people at the productive share of a week.
   const perWeek = 5 * (rc.utilisation > 0 ? rc.utilisation : 0.85);
@@ -312,7 +315,7 @@ export function buildEstimate(def: ProductDefinition, scope: ScopeBaseline, stat
   return {
     activities, phases, team, milestones, rasic: rasicFor(activities),
     functionalDays, technicalDays, totalDays: round1(functionalDays + technicalDays),
-    subtotal, contingency, total, durationWeeks: phaseWeeks.reduce((n, w) => n + w, 0), currency: rc.currency || 'USD',
+    subtotal, total, durationWeeks: phaseWeeks.reduce((n, w) => n + w, 0), currency: rc.currency || 'USD',
   };
 }
 

@@ -30,7 +30,7 @@ NUMBERS ALREADY COMPUTED (use exactly these, never change or add one):
 - Effort: ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical)
 - The effort estimates include a general allowance for clarification, rework and risk within the approved scope. You may say that an allowance is included, but never give a percentage, a number of days or a line for it.
 - Indicative duration: ${est.durationWeeks} weeks
-- Estimated fee ${money(est.subtotal)} + ${state.rateCard.contingencyPct}% contingency ${money(est.contingency)} = ${money(est.total)} (${est.currency}, excluding taxes)
+- Estimated fee ${money(est.total)} (${est.currency}, excluding taxes)
 - Phases: ${est.phases.map((p) => `${p.phase} (${p.weeks} weeks, ${Math.round(p.days)} days)`).join("; ")}
 - Milestones: ${est.milestones.map((m) => `${m.name} (week ${m.weekNumber}, ${m.percent}%)`).join("; ")}
 - Activities: ${est.activities.map((a) => a.name).join("; ")}

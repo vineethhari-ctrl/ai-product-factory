@@ -409,10 +409,10 @@ The BU may trim the BRD before approving it, so the proposal is built from the *
   percentage appears in the document, the screens' text, the AI prompt or the AI's text (tests enforce it); the document says only that the
   estimates "include an allowance for clarification, rework and risk within the approved scope" and that new requirements need an approved
   change request. 'How estimated' names what an activity depends on (counts), never the arithmetic. The percent is edited under
-  "Internal pricing" on the Cost & team tab (collapsed). A figure the BA types is final (not scaled). Separate from the cost contingency %,
-  which is a visible line. The BA can change any figure
+  "Internal pricing" on the Cost & team tab (collapsed). A figure the BA types is final (not scaled). The price is exactly days x rate: there is no cost contingency and
+  rates are never adjusted (an activity of 10 days is shown as 11.5; the total is scaled then split, half-up to one decimal). The BA can change any figure
   (`proposal.adjustments`, flagged "adjusted"). `ROLES` (8), `defaultRateCard` (illustrative INR day rates, Indian digit grouping via `formatMoney`; `isDefault` until edited, `currentProposalState` upgrades an untouched old USD default;
-  currency, contingency %, utilisation, max people per role). Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
+  currency, utilisation, max people per role). Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
   management spread by share), milestones (payment %, amounts add up to the total exactly), duration, **RASIC** (`RASIC_PARTIES` x
   activity type; one A and at least one R per row). Numbers are never asked of a model.
 - **Words** (`src/services/proposalNarrative.ts`, rules-based baseline; `server/proposalService.ts` + `server/proposalPrompt.ts`, task
