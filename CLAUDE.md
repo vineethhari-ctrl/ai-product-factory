@@ -66,7 +66,8 @@ was written). Logs print `output N of ceiling` per call and warn when a response
 the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
-- Gemini: 429/503 retried 3x with backoff per model. Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
+- Gemini: 429/503 and dropped connections retried 3x per model (`retryDelay`: a 429 waits 10 s then 25 s, because the fallback model is weaker;
+  503 / network 1.5 s, 3 s; `AI_RETRY_SCALE` scales the waits). A retry or failure logs the error and the stream timing (first / last data). Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
   schema-invalid response, the **second Gemini model** is tried (`geminiModels`: Argon -> Pro, Pro -> Flash, Flash -> Pro, also when `AI_GEMINI_MODEL_<TASK>` is set;
   `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
   skips the second model.

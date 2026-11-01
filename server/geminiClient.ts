@@ -91,6 +91,17 @@ function fail(model: string, kind: ProviderFailure["kind"], task: AITask, detail
 
 const isTransient = (kind: ProviderFailure["kind"]) => kind === "busy" || kind === "quota";
 
+/**
+ * Wait before the next attempt on the same model. A rate limit (429) usually clears within seconds to a minute, so it waits
+ * longer (10 s, then 25 s) than a busy model or a dropped connection (1.5 s, 3 s): falling back to the second, weaker model
+ * costs answer quality, a short wait does not. AI_RETRY_SCALE scales every wait (0 in tests).
+ */
+export function retryDelay(kind: ProviderFailure["kind"], attempt: number): number {
+  const scale = Number(process.env.AI_RETRY_SCALE ?? "1");
+  const base = kind === "quota" ? (attempt === 1 ? 10_000 : 25_000) : attempt * 1500;
+  return Math.round(base * (Number.isFinite(scale) && scale >= 0 ? scale : 1));
+}
+
 type Interpreted<T> = { ok: true; data: T; repairs: string[] } | { ok: false; detail: string; problems: string[] };
 
 /** Read a model's text as the schema's data: parse loosely, reshape (`coerce`), then repair small mistakes. */
@@ -275,7 +286,7 @@ async function callModel<S extends z.ZodType>(
       // A dropped connection is worth another try; a missing sign-in is not.
       const dropped = kind === "network" && /fetch failed|terminated|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket|other side closed|UND_ERR/i.test(errorText(err));
       if ((isTransient(kind) || dropped) && attempt < MAX_ATTEMPTS) {
-        const delay = attempt * 1500;
+        const delay = retryDelay(dropped && kind === "network" ? "network" : kind, attempt);
         console.warn(`[AI Engine] ${task}: ${model} ${kind} on attempt ${attempt} (${errorText(err).replace(/\s+/g, " ").slice(0, 160)}${err?.streamInfo ? `; ${err.streamInfo}` : ""}); retrying in ${delay}ms.`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;

@@ -109,6 +109,15 @@ t("fallback override", geminiModels("generate-definition").join() === "gemini-4-
 delete process.env.AI_GEMINI_FALLBACK_GENERATE_DEFINITION;
 
 t("503 is classed as busy", classifyGeminiError({ status: 503, message: "The model is overloaded" }) === "busy");
+{
+  const { retryDelay } = await import("../server/geminiClient");
+  const prev = process.env.AI_RETRY_SCALE; delete process.env.AI_RETRY_SCALE;
+  t("a rate limit (429) waits 10 s then 25 s before giving up on the model", retryDelay("quota", 1) === 10_000 && retryDelay("quota", 2) === 25_000);
+  t("a busy model or dropped connection retries quickly (1.5 s, 3 s)", retryDelay("busy", 1) === 1500 && retryDelay("network", 2) === 3000);
+  process.env.AI_RETRY_SCALE = "0";
+  t("AI_RETRY_SCALE=0 removes the waits (tests)", retryDelay("quota", 2) === 0);
+  if (prev === undefined) delete process.env.AI_RETRY_SCALE; else process.env.AI_RETRY_SCALE = prev;
+}
 t("429 is classed as quota", classifyGeminiError({ message: '{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}' }) === "quota");
 t("404 is classed as model not available", classifyGeminiError({ status: 404, message: "models/x is not found" }) === "unavailable-model");
 t("bad key is classed as key", classifyGeminiError({ status: 400, message: "API key not valid. Please pass a valid API key." }) === "key");
