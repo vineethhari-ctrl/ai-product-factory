@@ -28,6 +28,8 @@ export const AI_BUTTONS: Record<AITask, string> = {
   "generate-test-suite": "Generate Test Suite",
   "generate-engineering": "Engineering Package",
   "generate-approach-note": "Approach Note",
+  "generate-proposal": "Proposal & SOW",
+  "reconcile-scope": "Match final BRD",
 };
 
 const num = (name: string, fallback: number) => {

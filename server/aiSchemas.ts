@@ -464,3 +464,26 @@ export const ApproachNoteSchema = z.object({
   risks: z.array(z.object({ risk: z.string(), impact: z.string(), mitigation: z.string() })),
   recommendations: z.array(z.object({ ref: z.string(), recommendation: z.string() })),
 });
+
+/** Proposal / SOW narrative written by a model for the approved scope. Numbers are never asked of the model: the server computes them. */
+export const ProposalNarrativeSchema = z.object({
+  executiveSummary: z.string(),
+  background: z.array(z.string()),
+  objectives: z.array(z.string()),
+  approach: z.array(z.string()),
+  deliverables: z.array(z.string()),
+  assumptions: z.array(z.string()),
+  exclusions: z.array(z.string()),
+  clientResponsibilities: z.array(z.string()),
+  risks: z.array(z.object({ risk: z.string(), impact: z.string(), mitigation: z.string() })),
+  acceptanceCriteria: z.array(z.string()),
+  changeControl: z.array(z.string()),
+  governance: z.array(z.string()),
+  commercialTerms: z.array(z.string()),
+});
+
+/** Which draft-BRD items the BU's final BRD keeps, and what it adds. Items are referred to by the id the prompt gives. */
+export const ScopeReconcileSchema = z.object({
+  decisions: z.array(z.object({ id: z.string(), keep: z.boolean(), note: z.string() })),
+  added: z.array(z.object({ kind: z.enum(["module", "screen", "record", "rule", "integration", "journey"]), name: z.string(), detail: z.string() })),
+});

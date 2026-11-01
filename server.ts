@@ -14,6 +14,7 @@ import {
 import { validateRecordHandler } from "./server/recordRoute";
 import { generateTestSuite } from "./server/testSuiteService";
 import { generateApproachNote } from "./server/approachNoteService";
+import { generateProposalNarrative, reconcileScope } from "./server/proposalService";
 import { attachPlan, generateEngineeringPlan } from "./server/engineeringPlan";
 import { describeRouting } from "./server/routing";
 import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
@@ -220,6 +221,37 @@ async function startServer() {
       console.error("Error generating the approach note:", err);
       if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to generate the approach note" });
+    }
+  });
+
+  // Proposal / SOW words for the BU-approved scope. Effort and cost are computed in the browser and on the server from
+  // the same engine; only the narrative is written by a model.
+  app.post("/api/generate-proposal", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      const scope = req.body.scope, proposal = req.body.proposal;
+      if (!definition?.businessRules || !definition?.personas) return res.status(400).json({ error: "Missing product definition." });
+      if (!Array.isArray(scope?.items) || !proposal?.rateCard?.rates) return res.status(400).json({ error: "Missing approved scope or proposal settings." });
+      return res.json(await generateProposalNarrative(definition, scope, proposal));
+    } catch (err: any) {
+      console.error("Error generating the proposal:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to generate the proposal" });
+    }
+  });
+
+  // Match the BU's final BRD (text read in the browser) to the draft BRD's items: kept, removed, added.
+  app.post("/api/reconcile-scope", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      const scope = req.body.scope, text = req.body.text;
+      if (!definition?.businessRules || !Array.isArray(scope?.items)) return res.status(400).json({ error: "Missing product definition or scope." });
+      if (typeof text !== "string" || text.trim().length < 20) return res.status(400).json({ error: "The final BRD has no readable text." });
+      return res.json(await reconcileScope(definition, scope, text.slice(0, 120_000), typeof req.body.fileName === "string" ? req.body.fileName : undefined));
+    } catch (err: any) {
+      console.error("Error matching the final BRD:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to match the final BRD" });
     }
   });
 

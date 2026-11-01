@@ -90,6 +90,69 @@ Integrations: Dealer management system; vehicle master; finance ERP.`;
   t("each activity has exactly one Accountable and at least one Responsible", rows.every((r) => r.cells.filter((c) => c === "A").length === 1 && r.cells.filter((c) => c === "R").length >= 1), JSON.stringify(rows.filter((r) => r.cells.filter((c) => c === "A").length !== 1)));
   t("only R A S I C or blank are used", rows.every((r) => r.cells.every((c) => ["R", "A", "S", "I", "C", ""].includes(c))));
 
+  // ── narrative, document, AI path ──
+  const N = await import("../src/services/proposalNarrative");
+  const D = await import("../src/services/proposalDoc");
+  const { generateProposalNarrative, reconcileScope } = await import("../server/proposalService");
+  const { buildProposalPrompt, buildReconcilePrompt } = await import("../server/proposalPrompt");
+  const { setProviderForTests, AIUnavailableError } = await import("../server/llmRouter");
+  const { ProposalNarrativeSchema, ScopeReconcileSchema } = await import("../server/aiSchemas");
+  const { providerOrder } = await import("../server/routing");
+  const estCut = E.buildEstimate(def, cut, state);
+  const nOff = N.buildProposalNarrative(def, cut, estCut, state);
+  t("offline narrative says what the business removed, and states the real total", nOff.origin === "OFFLINE" && nOff.exclusions.some((x) => x.includes(mod.name)) && nOff.executiveSummary.includes(E.formatMoney(estCut.total, "USD")) && nOff.executiveSummary.includes(mod.name));
+  const secs = D.proposalSections(def, cut, estCut, state, nOff);
+  const flat = JSON.stringify(secs);
+  const firstCol = (id: string) => (secs.find((x) => x.id === "scope")!.blocks.filter((b): b is Extract<typeof b, { kind: "table" }> => b.kind === "table" && b.head[0] === id).flatMap((b) => b.rows.map((r) => r[0])));
+  t("the scope section's module and screen tables hold approved items only", !firstCol("Module").includes(mod.name) && firstCol("Module").length === def.modules.length - 1 && cutScreens.every((sc) => !firstCol("Screen").includes(sc.name)) && firstCol("Screen").length === def.screens.length - cutScreens.length);
+  t("the out-of-scope section names what the business removed", JSON.stringify(secs.find((x) => x.id === "out")).includes(mod.name));
+  t("the document carries effort, team, RASIC, milestones and sign-off", ["effort", "cost", "rasic", "timeline", "signoff", "acceptance", "commercial"].every((id) => secs.some((x) => x.id === id)));
+  const md = D.proposalMarkdown(def, state, secs), html = D.proposalHtml(def, state, secs);
+  t("markdown and Word versions carry the same total", md.includes(E.formatMoney(estCut.total, "USD")) && html.includes(E.formatMoney(estCut.total, "USD")) && html.includes("<table>") && md.includes("| ---"));
+  t("a marked-up cell cannot break the Markdown table", !D.proposalMarkdown(def, state, [{ id: "x", title: "T", blocks: [{ kind: "table", head: ["a"], rows: [["x|y\nz"]] }] }]).includes("x|y"));
+  t("html escapes what the business typed", D.proposalHtml(def, state, [{ id: "x", title: "<b>", blocks: [{ kind: "p", text: "<script>" }] }]).includes("&lt;script&gt;"));
+  t("a stored narrative is shown only for the scope it was written for", D.currentNarrative(def, cut, estCut, { ...state, narrative: { ...nOff, origin: "AI" } }).narrative.origin === "AI" && D.currentNarrative(def, all, est, { ...state, narrative: { ...nOff, origin: "AI" } }).stale === true);
+
+  const modelN = ProposalNarrativeSchema.parse({
+    executiveSummary: "A model-written summary.", background: ["B1"], objectives: ["O1"], approach: ["A1"], deliverables: ["D1"],
+    assumptions: ["As1"], exclusions: ["Hosting is excluded."], clientResponsibilities: ["C1"], risks: [{ risk: "R-model", impact: "I", mitigation: "M" }],
+    acceptanceCriteria: ["Ac1"], changeControl: ["Cc1"], governance: ["G1"], commercialTerms: ["The price is USD 5 only.", "Invoiced by milestone."],
+  });
+  const calls: Array<{ task: string; prompt: string }> = [];
+  const offlineFirst = await quiet(() => generateProposalNarrative(def, cut, state));
+  t("with no model the rules-based narrative answers", offlineFirst.origin === "OFFLINE");
+  process.env.GEMINI_API_KEY = "g";
+  let restore = setProviderForTests("gemini", async (task, prompt) => { calls.push({ task, prompt }); return task === "generate-proposal" ? modelN : null; });
+  const ai = await quiet(() => generateProposalNarrative(def, cut, state));
+  restore();
+  const prompt = calls[0]?.prompt ?? "";
+  const approvedPart = prompt.slice(prompt.indexOf("APPROVED SCOPE"), prompt.indexOf("REMOVED BY THE BUSINESS"));
+  t("a model is asked with the approved scope: the cut module's screens are absent; the removal is listed under REMOVED", calls[0]?.task === "generate-proposal" && (() => { const scr = approvedPart.slice(approvedPart.indexOf("SCREENS:"), approvedPart.indexOf("INTEGRATIONS:")); return cutScreens.every((sc) => !scr.includes(`- ${sc.name} [`)) && !scr.includes(`[${mod.name},`); })() && /NOT\./.test(prompt) && prompt.slice(prompt.indexOf("REMOVED BY THE BUSINESS")).includes(mod.name));
+  t("the prompt carries the computed numbers and says never to change them", prompt.includes(E.formatMoney(estCut.total, "USD")) && prompt.includes(`${Math.round(estCut.totalDays)} person-days`) && /never change or add one/i.test(prompt));
+  t("the model's narrative is used (origin AI) for this approved scope", ai.origin === "AI" && ai.executiveSummary === "A model-written summary." && ai.basedOn === S.scopeSignature(cut) && ai.risks[0].risk === "R-model");
+  t("what the business removed is always stated, whatever the model wrote", ai.exclusions.some((x) => x.includes(mod.name)) && ai.exclusions.includes("Hosting is excluded."));
+  t("the fee line is the engine's; a figure the model invented is dropped", ai.commercialTerms[0].includes(E.formatMoney(estCut.total, "USD")) && !ai.commercialTerms.some((x) => x.includes("USD 5")) && ai.commercialTerms.includes("Invoiced by milestone."));
+  t("the prompt is domain-neutral", !/\b(vehicle|dealer|hospital|patient|airline|battery|warranty|insurance|pharmacy|retail)\b/i.test(buildProposalPrompt(S.applyScope(def, all), all, est, state).replace(new RegExp(def.productName, "gi"), "").replace(new RegExp(def.businessUnit, "gi"), "").split("APPROVED SCOPE")[0]));
+  t("Gemini first, Claude as backup, for both new tasks", providerOrder("generate-proposal").join(",") === "gemini,claude" && providerOrder("reconcile-scope").join(",") === "gemini,claude");
+  restore = setProviderForTests("gemini", async () => null);
+  let err: unknown; try { await quiet(() => generateProposalNarrative(def, cut, state)); } catch (e) { err = e; }
+  restore();
+  t("keys set but every provider failed: AIUnavailableError (the browser keeps the old text and offers Retry)", err instanceof AIUnavailableError);
+
+  // reconcile with a model: one id decided, one unknown id ignored, one item skipped (decided by name matching), one addition
+  const target = all.items.find((i) => i.kind === "screen")!;
+  const modelR = ScopeReconcileSchema.parse({ decisions: [{ id: target.id, keep: false, note: "Deferred to phase 2" }, { id: "screen:does-not-exist", keep: false, note: "x" }], added: [{ kind: "integration", name: "Loyalty Points Service", detail: "Award points" }] });
+  restore = setProviderForTests("gemini", async (task, p) => { calls.push({ task, prompt: p }); return task === "reconcile-scope" ? modelR : null; });
+  const rec2 = await quiet(() => reconcileScope(def, all, finalText, "final.docx"));
+  restore();
+  t("the model's decision cuts that screen with its note; matchedBy AI; not yet confirmed", rec2.matchedBy === "AI" && !rec2.confirmed && rec2.items.find((i) => i.id === target.id)!.change === "REMOVED" && rec2.items.find((i) => i.id === target.id)!.note === "Deferred to phase 2");
+  t("an unknown id is ignored; the model's addition is NEW", !rec2.items.some((i) => i.id === "screen:does-not-exist") && rec2.items.some((i) => i.name === "Loyalty Points Service" && i.change === "NEW"));
+  t("an item the model skipped is decided by name matching, not silently kept", rec2.items.filter((i) => i.change === "REMOVED").length > 1);
+  t("the reconcile prompt lists every draft item id and the final text", all.items.every((i) => buildReconcilePrompt(all, finalText).includes(i.id)) && buildReconcilePrompt(all, finalText).includes("Final approved BRD"));
+  delete process.env.GEMINI_API_KEY;
+  const rec3 = await quiet(() => reconcileScope(def, all, finalText, "final.docx"));
+  t("with no model, name matching answers (matchedBy RULES)", rec3.matchedBy === "RULES" && rec3.items.some((i) => i.change === "REMOVED"));
+
   // ── neutrality ──
   const src = (await import("node:fs")).readFileSync("src/services/estimate.ts", "utf8") + (await import("node:fs")).readFileSync("src/services/scope.ts", "utf8");
   t("no business domain named in the engine", !/\b(warranty|dealer|vehicle|bank|loan|hospital|patient|insurance|retail|airline)\b/i.test(src));
