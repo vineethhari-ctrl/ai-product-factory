@@ -24,6 +24,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
   const vendor = state.vendorName?.trim() || 'The vendor';
   const client = state.clientName?.trim() || def.businessUnit || 'the client';
   const money = (n: number) => formatMoney(n, est.currency);
+  const taxes = est.currency === 'INR' ? 'GST and other applicable taxes' : 'taxes';
   const cutModules = scope.items.filter((i) => i.kind === 'module' && !i.included).map((i) => i.name);
   const phaseLine = (p: (typeof est.phases)[number]) => `${p.phase}: about ${p.weeks} week${p.weeks === 1 ? '' : 's'}, ${Math.round(p.days)} days of effort.`;
   const removed = removedItems(scope);
@@ -85,7 +86,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
       'Escalation: project manager, then business owner, then sponsor.',
     ],
     commercialTerms: [
-      `Estimated fee: ${money(est.subtotal)} plus ${state.rateCard.contingencyPct}% contingency = ${money(est.total)}, in ${est.currency}, excluding taxes.`,
+      `Estimated fee: ${money(est.subtotal)} plus ${state.rateCard.contingencyPct}% contingency = ${money(est.total)}, in ${est.currency}, excluding ${taxes}.`,
       'Invoiced by milestone as shown in the payment schedule; work beyond the approved scope is charged at the rate card.',
       'The estimate is valid for 30 days from the date of this document.',
       'Standard terms for liability, intellectual property, confidentiality and termination are to be agreed with the vendor\'s and the client\'s legal teams.',

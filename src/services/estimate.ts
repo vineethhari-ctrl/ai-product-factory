@@ -18,10 +18,11 @@ export const ROLES: ResourceRole[] = [
 
 export function defaultRateCard(): RateCard {
   return {
-    currency: 'USD',
+    currency: 'INR',
+    // Illustrative day rates in INR; the BA replaces them with the vendor's own.
     rates: {
-      'Project Manager': 500, 'Business Analyst': 420, 'Solution Architect': 650, 'UX Designer': 400,
-      'Frontend Developer': 380, 'Backend Developer': 400, 'QA Engineer': 320, 'DevOps Engineer': 420,
+      'Project Manager': 12000, 'Business Analyst': 9000, 'Solution Architect': 15000, 'UX Designer': 9000,
+      'Frontend Developer': 8000, 'Backend Developer': 9000, 'QA Engineer': 6500, 'DevOps Engineer': 9500,
     },
     contingencyPct: 15,
     utilisation: 0.85,
@@ -32,6 +33,13 @@ export function defaultRateCard(): RateCard {
 
 export function defaultProposalState(): ProposalState {
   return { docKind: 'Proposal', rateCard: defaultRateCard() };
+}
+
+/** A saved proposal whose rate card is still the untouched old USD default gets the current (INR) default; edited cards are kept. */
+export function currentProposalState(saved?: ProposalState): ProposalState {
+  if (!saved) return defaultProposalState();
+  if (saved.rateCard.isDefault && saved.rateCard.currency === 'USD') return { ...saved, rateCard: defaultRateCard() };
+  return saved;
 }
 
 type Mix = Partial<Record<ResourceRole, number>>;
@@ -273,6 +281,8 @@ export function buildEstimate(def: ProductDefinition, scope: ScopeBaseline, stat
 }
 
 export function formatMoney(amount: number, currency: string): string {
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount); }
-  catch { return `${currency} ${Math.round(amount).toLocaleString('en-US')}`; }
+  // Indian digit grouping (lakh, crore) for rupees; the usual grouping for other currencies.
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  try { return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount); }
+  catch { return `${currency} ${Math.round(amount).toLocaleString(locale)}`; }
 }

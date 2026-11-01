@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Briefcase, CheckCircle2, Download, FileText, Plus, Sparkles, Trash2, Upload, AlertTriangle, Copy, RotateCcw } from 'lucide-react';
 import type { ProductDefinition, ProposalState, ResourceRole, ScopeBaseline, ScopeKind } from '../types';
 import { addScopeItem, currentScope, removeNewItem, scopeCounts, setIncluded, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from '../services/scope';
-import { buildEstimate, defaultProposalState, formatMoney, ROLES } from '../services/estimate';
+import { buildEstimate, currentProposalState, formatMoney, ROLES } from '../services/estimate';
 import { currentNarrative, documentTitle, proposalHtml, proposalMarkdown, proposalSections } from '../services/proposalDoc';
 import type { Block } from '../services/proposalDoc';
 import { extractMaterialText } from '../services/materialExtractor';
@@ -48,7 +48,7 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { scope, stale } = currentScope(definition);
-  const state: ProposalState = definition.proposal ?? defaultProposalState();
+  const state: ProposalState = currentProposalState(definition.proposal);
   const counts = useMemo(() => scopeCounts(scope), [scope]);
   const est = useMemo(() => buildEstimate(definition, scope, state), [definition, scope, state]);
   const { narrative, stale: narrativeStale } = useMemo(() => currentNarrative(definition, scope, est, state), [definition, scope, est, state]);
@@ -250,7 +250,7 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
               <tfoot className="bg-slate-50 font-bold text-slate-900">
                 <tr><td className="px-3 py-2">Subtotal</td><td className="px-3 py-2 text-center">{d1(est.totalDays)}</td><td /><td className="px-3 py-2 text-center">{money(est.subtotal)}</td><td /></tr>
                 <tr><td className="px-3 py-2" colSpan={3}>Contingency ({state.rateCard.contingencyPct}%)</td><td className="px-3 py-2 text-center">{money(est.contingency)}</td><td /></tr>
-                <tr className="text-indigo-900"><td className="px-3 py-2" colSpan={3}>Total estimate (excluding taxes)</td><td className="px-3 py-2 text-center">{money(est.total)}</td><td /></tr>
+                <tr className="text-indigo-900"><td className="px-3 py-2" colSpan={3}>Total estimate (excluding {est.currency === 'INR' ? 'GST' : 'taxes'})</td><td className="px-3 py-2 text-center">{money(est.total)}</td><td /></tr>
               </tfoot>
             </table>
           </div>

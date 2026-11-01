@@ -26,7 +26,7 @@ import { QASuiteScreen } from './components/QASuiteScreen';
 import { EngineeringPackageScreen } from './components/EngineeringPackageScreen';
 import { ProposalScreen } from './components/ProposalScreen';
 import { currentScope } from './services/scope';
-import { defaultProposalState } from './services/estimate';
+import { currentProposalState } from './services/estimate';
 import { ServiceDesignScreen } from './components/ServiceDesignScreen';
 import { EvidenceViewerModal } from './components/EvidenceViewerModal';
 import { SAMPLE_DATASET_FLEET } from './data/sampleMaterials';
@@ -577,7 +577,7 @@ export default function App() {
   const handleGenerateProposal = async () => {
     if (!productDefinition || isRetrying) return;
     const scope = currentScope(productDefinition).scope;
-    const proposal = productDefinition.proposal ?? defaultProposalState();
+    const proposal = currentProposalState(productDefinition.proposal);
     setIsGeneratingProposal(true);
     try {
       const response = await fetch('/api/generate-proposal', {
