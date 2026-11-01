@@ -5,6 +5,10 @@
 //   npm run check:live -- 4            all 4 sample products
 //   npm run check:live -- "My product" your own product name(s); the report then contains AI text about it
 //
+// Per product: Understand Business, BRD, Build Prototype, Test Suite, Engineering Package, then Part 2: the final approved
+// BRD is matched to the draft (a stand-in final document drops a module and a rule and adds a screen) and the proposal
+// words are written for the trimmed scope.
+//
 // Costs real tokens (roughly 100-250k per product). Usage limits are off for this run and it is not added to the
 // team's usage log. The report is written to live-check-report.md (not committed to git).
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -24,6 +28,10 @@ const { AIUnavailableError } = await import("../server/llmRouter");
 const { generateTestSuite } = await import("../server/testSuiteService");
 const { generateEngineeringPlan, attachPlan } = await import("../server/engineeringPlan");
 const { generateEngineeringPackageData } = await import("../server/aiReasoningService");
+const { reconcileScope, generateProposalNarrative } = await import("../server/proposalService");
+const Scope = await import("../src/services/scope");
+const Est = await import("../src/services/estimate");
+const Doc = await import("../src/services/proposalDoc");
 const { runWithUsageContext, currentAICalls, usageReport } = await import("../server/usage");
 type AIStatus = ReturnType<typeof currentAICalls>[number];
 
@@ -88,6 +96,7 @@ for (const l of describeRouting()) out(`- ${l}`);
 
 let totalTokens = 0, totalCost = 0;
 const lastPrototype = new Map<string, string[]>();
+const part2Notes = new Map<string, string>();
 for (const [i, [name, bu]] of products.entries()) {
   const user = `live-check-${i + 1}`, project = `live-${i + 1}`;
   console.log(`\n=== ${name} (${bu}) ===`);
@@ -149,6 +158,83 @@ for (const [i, [name, bu]] of products.entries()) {
       ["architecture overview of 250+ words", (pkg.plan?.architectureOverview.split(/\s+/).length ?? 0) >= 250],
     ]);
     res.push(eng.result);
+
+    // ── Part 2: approved scope, proposal ────────────────────────────────────────────────────────────────────────
+    // A stand-in "final approved BRD" is written from the real BRD: the last module (and its screens) and the last rule are
+    // dropped, one new screen is added. The AI must find exactly that, then write the proposal for the trimmed scope.
+    const draftScope = Scope.buildScopeFromDefinition(forDocs);
+    const cutModule = forDocs.modules.length >= 2 ? forDocs.modules[forDocs.modules.length - 1] : undefined;
+    const cutScreens = new Set(forDocs.screens.filter((x) => cutModule && (cutModule.screens?.includes(x.id) || x.module === cutModule.name || x.module === cutModule.id)).map((x) => x.id));
+    const cutRule = forDocs.businessRules.length >= 3 ? forDocs.businessRules[forDocs.businessRules.length - 1] : undefined;
+    const NEW_SCREEN = "Audit Export Console";
+    const finalText = [
+      `Final approved requirements: ${forDocs.productName}`,
+      "Approved by the business after review. Items not listed here are out of scope.",
+      "",
+      "Modules",
+      ...forDocs.modules.filter((m) => m !== cutModule).map((m) => `- ${m.name}: ${m.description}`),
+      "",
+      "Screens",
+      ...forDocs.screens.filter((x) => !cutScreens.has(x.id)).map((x) => `- ${x.name}: ${x.purpose}`),
+      `- ${NEW_SCREEN}: lets an auditor export the activity history of any record as a file`,
+      "",
+      "Records",
+      ...forDocs.dataEntities.map((e) => `- ${e.name}: ${e.description}`),
+      "",
+      "Business rules",
+      ...forDocs.businessRules.filter((r) => r !== cutRule).map((r) => `- ${r.code}: ${r.rule}`),
+      "",
+      "Integrations",
+      ...forDocs.integrations.map((i) => `- ${i.system}: ${i.purpose}`),
+      "",
+      "Journeys",
+      ...forDocs.userJourneys.map((j) => `- ${j.name}: ${j.outcome}`),
+    ].join("\n");
+    await pause(4000);
+    let matched: ReturnType<typeof Scope.buildScopeFromDefinition> = draftScope;
+    const rec = await step("Match final BRD (Part 2)", () => reconcileScope(forDocs, draftScope, finalText, "final-approved.txt"), (m) => {
+      matched = m;
+      const old = m.items.filter((i) => i.change !== "NEW");
+      const keptOthers = old.filter((i) => !(i.id === `module:${cutModule?.id}` || (i.kind === "screen" && cutScreens.has(i.id.replace("screen:", ""))) || i.id === `rule:${cutRule?.id}`));
+      return [
+        ["decided by the AI, not by name matching", m.matchedBy === "AI"],
+        ["the dropped module is marked removed", !cutModule || m.items.find((i) => i.id === `module:${cutModule.id}`)?.included === false],
+        ["the dropped module's screens are removed with it", [...cutScreens].every((id) => m.items.find((i) => i.id === `screen:${id}`)?.included === false)],
+        ["the dropped rule is marked removed", !cutRule || m.items.find((i) => i.id === `rule:${cutRule.id}`)?.included === false],
+        ["at least 90% of what stayed is kept", keptOthers.length === 0 || keptOthers.filter((i) => i.included).length / keptOthers.length >= 0.9],
+        ["the new screen is found and marked added", m.items.some((i) => i.change === "NEW" && i.kind === "screen" && /audit/i.test(i.name))],
+        ["every decided item carries a short note", old.filter((i) => i.note).length >= old.length * 0.8],
+        ["nothing is confirmed until the BA does it", m.confirmed === false],
+      ];
+    });
+    res.push(rec.result);
+    const scopeForProposal = { ...matched, confirmed: true, approvedBy: "Live check", approvedOn: "today" };
+    const pstate = Est.defaultProposalState();
+    const estLive = Est.buildEstimate(forDocs, scopeForProposal, pstate);
+    const removedNames = [cutModule?.name, cutRule?.code].filter((x): x is string => !!x);
+    await pause(4000);
+    const prop = await step("Write Proposal & SOW (Part 2)", () => generateProposalNarrative(forDocs, scopeForProposal, pstate), (n) => {
+      const delivered = [...n.approach, ...n.deliverables, ...n.acceptanceCriteria].join(" ");
+      const all = JSON.stringify(n);
+      const sections = Doc.proposalSections(forDocs, scopeForProposal, estLive, pstate, n);
+      const docText = JSON.stringify(sections) + Doc.proposalMarkdown(forDocs, pstate, sections) + Doc.proposalHtml(forDocs, pstate, sections);
+      return [
+        ["written by the AI, not the rules-based stand-in", n.origin === "AI"],
+        ["executive summary of 40+ words that uses the engine's effort figure", n.executiveSummary.split(/\s+/).length >= 40 && n.executiveSummary.includes(String(Math.round(estLive.totalDays)))],
+        ["what the business removed is stated as excluded", removedNames.every((x) => n.exclusions.join(" ").includes(x))],
+        ["what the business removed is not described as delivered", removedNames.every((x) => !delivered.includes(x))],
+        ["no money figure written by the model (only the engine's fee line)", n.commercialTerms.slice(1).every((x) => !/[$€£₹]\s?\d|\b(inr|usd|eur|gbp|rs\.?)\s*\d|\d[\d,.]*\s*(inr|usd|eur|gbp|lakh|crore)/i.test(x))],
+        ["no allowance percentage, buffer or contingency in the words", !/buffer|contingency/i.test(all) && !/allowance[^"]{0,60}\d+\s*%|\d+\s*%[^"]{0,20}allowance/i.test(all)],
+        ["5+ assumptions, 5+ risks, 5+ acceptance criteria", n.assumptions.length >= 5 && n.risks.length >= 5 && n.acceptanceCriteria.length >= 5],
+        ["every phase of the plan is described", estLive.phases.every((p) => n.approach.join(" ").toLowerCase().includes(p.phase.split(":")[0].toLowerCase()) || n.approach.length >= estLive.phases.length)],
+        ["change control says work starts only after written approval", /approv/i.test(n.changeControl.join(" "))],
+        ["the finished document has the person-months section and the DRAFT mark is gone once confirmed", sections.some((x) => x.id === "months") && !docText.includes("DRAFT")],
+        ["the printed document names no buffer, contingency or allowance percentage", !/buffer|contingency/i.test(docText) && !/allowance[^"<]{0,60}\d+\s*%/i.test(docText)],
+      ];
+    });
+    res.push(prop.result);
+    // Part 2 numbers (no AI): shown in the report so the estimate can be sanity-checked against past projects.
+    part2Notes.set(name, `Part 2 estimate for the trimmed scope: ${Math.round(estLive.totalDays)} person-days (${Est.toMonths(estLive.totalDays, estLive.daysPerMonth).toFixed(1)} person-months), about ${estLive.durationWeeks} weeks, ${Est.formatMoney(estLive.total, estLive.currency)}; ${estLive.activities.length} activities; RASIC rows with one Accountable each: ${estLive.rasic.rows.every((r) => r.cells.filter((c) => c === "A").length === 1)}`);
     if (p.value) {
       lastPrototype.set(name, p.value.screens.filter((s) => s.ui?.document).map((s) => {
         const d = s.ui!.document!;
@@ -172,6 +258,7 @@ for (const [i, [name, bu]] of products.entries()) {
     const calls = r.calls.map((c) => `${c.task}: ${c.outcome}${c.model ? ` (${c.model})` : ""}${c.corrected ? ", corrected" : ""}${c.repairs?.length ? `, ${c.repairs.length} fixes` : ""}`).join("; ");
     out(`| ${r.step} | ${r.error ? "FAILED" : r.ok ? "ok" : "ok, but checks failed"} | ${r.seconds}s | ${calls || "-"} |`);
   }
+  if (part2Notes.get(name)) { out(""); out(part2Notes.get(name)!); }
   const docs = lastPrototype.get(name) ?? [];
   if (docs.length) {
     out("");
