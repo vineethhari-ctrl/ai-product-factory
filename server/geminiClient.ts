@@ -4,7 +4,7 @@ import { AITask, type GeminiAuth, geminiAuth, geminiModels, geminiRoute } from "
 import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
 import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
 import { depthDirective } from "./depth";
-import type { AIImage } from "./llmRouter";
+import type { AIImage, Refinement } from "./llmRouter";
 
 /**
  * Gemini provider. Uses GEMINI_API_KEY. The task's models are tried in order (routing.ts
@@ -216,14 +216,14 @@ export function completeAnswer(text: string | undefined): string | null {
   }
 }
 
-/** One corrective turn: the original request, the model's answer, and the list of problems. Text, or null. */
-async function askForCorrection(
+/** One follow-up turn: the original request, the model's answer, and what to change. Text, or null. */
+async function askAgain(
   ai: GoogleGenAI,
   task: AITask,
   model: string,
   contents: string | Array<{ role: string; parts: unknown[] }>,
   previous: string,
-  problems: string[],
+  followUp: string,
   temperature: number | undefined,
   maxTokens: number
 ): Promise<string | null> {
@@ -231,7 +231,7 @@ async function askForCorrection(
   try {
     const response = await generate(ai, {
       model,
-      contents: [userTurn, { role: "model", parts: [{ text: previous }] }, { role: "user", parts: [{ text: correctionPrompt(problems) }] }] as any,
+      contents: [userTurn, { role: "model", parts: [{ text: previous }] }, { role: "user", parts: [{ text: followUp }] }] as any,
       config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens, ...systemFor(task) },
     });
     const usage = response.usageMetadata;
@@ -244,6 +244,10 @@ async function askForCorrection(
   }
 }
 
+/** One corrective turn: the answer did not match the format; the list of problems says what to fix. */
+const askForCorrection = (ai: GoogleGenAI, task: AITask, model: string, contents: string | Array<{ role: string; parts: unknown[] }>, previous: string, problems: string[], temperature: number | undefined, maxTokens: number) =>
+  askAgain(ai, task, model, contents, previous, correctionPrompt(problems), temperature, maxTokens);
+
 /** One model: up to MAX_ATTEMPTS on transient errors. Returns the data, or the failure kind. */
 async function callModel<S extends z.ZodType>(
   ai: GoogleGenAI,
@@ -253,7 +257,8 @@ async function callModel<S extends z.ZodType>(
   schema: S,
   coerce: ((raw: unknown) => unknown) | undefined,
   images: AIImage[] | undefined,
-  webSearch = false
+  webSearch = false,
+  refine?: Refinement
 ): Promise<{ data: z.infer<S> } | { kind: ProviderFailure["kind"] }> {
   const { temperature, maxTokens } = geminiRoute(task);
   const contents = images?.length
@@ -295,9 +300,26 @@ async function callModel<S extends z.ZodType>(
       const sources = chunks.flatMap((c) => (c.web?.uri ? [{ title: c.web.title || c.web.uri, url: c.web.uri }] : []));
       const first = interpret(response.text, schema, coerce, sources);
       if (first.ok) {
+        let data: z.infer<S> = first.data;
+        let rewritten = 0;
+        // Quality bar: ask once, in the same click, for a rewrite of only the weak items. The first answer stands unless the
+        // rewrite is usable.
+        const weak = refine ? refine.check(first.data) : [];
+        if (refine && weak.length) {
+          console.warn(`[AI Engine] ${task}: ${model} answer is valid but ${weak.length} item(s) are too weak; asking it to rewrite only those.`);
+          const patchText = await askAgain(ai, task, model, contents, response.text, `${refine.ask}\n${weak.map((w) => `- ${w}`).join("\n")}`, temperature, Math.min(maxTokens, 16_384));
+          const patch = patchText ? parseJsonLoose(patchText) : undefined;
+          if (patch !== undefined) {
+            try {
+              const merged = schema.safeParse(refine.merge(first.data, patch));
+              if (merged.success) { data = merged.data; rewritten = weak.length - refine.check(merged.data).length; }
+            } catch { /* keep the first answer */ }
+          }
+        }
         recordAnswerRepairs(first.repairs);
         logServed(task, model, started, usage, maxTokens, first.repairs);
-        return { data: first.data };
+        if (weak.length) console.log(`[AI Engine] ${task}: ${model} quality rewrite fixed ${rewritten} of ${weak.length} weak item(s).`);
+        return { data };
       }
 
       // Still unusable after repair: show the model its mistakes once and use its corrected answer.
@@ -347,14 +369,15 @@ export async function callGeminiJSON<S extends z.ZodType>(
   schema: S,
   coerce?: (raw: unknown) => unknown,
   images?: AIImage[],
-  webSearch = false
+  webSearch = false,
+  refine?: Refinement
 ): Promise<z.infer<S> | null> {
   const ai = getClient();
   if (!ai) return null;
 
   const models = geminiModels(task);
   for (const [i, model] of models.entries()) {
-    const outcome = await callModel(ai, task, model, prompt, schema, coerce, images, webSearch);
+    const outcome = await callModel(ai, task, model, prompt, schema, coerce, images, webSearch, refine);
     if ("data" in outcome) {
       recordServedModel(model);
       return outcome.data;

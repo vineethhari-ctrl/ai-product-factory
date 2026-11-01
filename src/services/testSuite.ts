@@ -372,3 +372,16 @@ export function buildTestSuite(def: ProductDefinition): TestSuite {
   };
   return { ...suite, coverage: computeCoverage(def, suite) };
 }
+
+
+/** A test case a QA lead would send back: fewer than 3 steps, or an expected result too short to be measurable. */
+export const TEST_CASE_MIN_STEPS = 3;
+export const TEST_CASE_MIN_RESULT_CHARS = 31;
+export function weakTestCases<T extends { id: string; title?: string; executionSteps: string[]; expectedResult: string }>(cases: T[]): Array<{ id: string; title: string; reasons: string }> {
+  return cases.flatMap((t) => {
+    const reasons: string[] = [];
+    if (t.executionSteps.length < TEST_CASE_MIN_STEPS) reasons.push(`only ${t.executionSteps.length} execution step(s); it needs ${TEST_CASE_MIN_STEPS} to 7`);
+    if (t.expectedResult.trim().length < TEST_CASE_MIN_RESULT_CHARS) reasons.push("the expected result is not measurable (name the status the record ends in, the message the user sees, the audit entry written)");
+    return reasons.length ? [{ id: t.id, title: t.title ?? "", reasons: reasons.join("; ") }] : [];
+  });
+}

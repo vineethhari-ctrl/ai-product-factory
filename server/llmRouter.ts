@@ -32,8 +32,20 @@ export interface AIImage {
   data: string;
 }
 
+/**
+ * A quality bar the first answer is held to. The answer is already valid; `check` lists what is too weak (empty = fine).
+ * Gemini then asks the same model ONCE, in the same click, to rewrite only those items (`ask` says how and what to return)
+ * and `merge` puts the rewrite into the answer. The first answer is kept whenever the rewrite is unusable or no better.
+ */
+export interface Refinement {
+  check(data: any): string[];
+  ask: string;
+  merge(data: any, patch: unknown): unknown;
+}
+
 export interface LLMOptions {
   images?: AIImage[];
+  refine?: Refinement;
   /**
    * Let the model search the web first (Gemini: Google Search grounding; Claude: web search tool).
    * The answer is JSON in text, validated against the schema; pages read are added as `sources`.
@@ -55,7 +67,7 @@ export const offlineOnFailure = () => /^(1|true|yes)$/i.test((process.env.AI_OFF
 type ProviderCall = (task: AITask, prompt: string, schema: z.ZodType, coerce?: (raw: unknown) => unknown, options?: LLMOptions) => Promise<unknown | null>;
 
 const PROVIDERS: Record<Provider, ProviderCall> = {
-  gemini: (task, prompt, schema, coerce, options) => callGeminiJSON(task, prompt, schema, coerce, options?.images, options?.webSearch),
+  gemini: (task, prompt, schema, coerce, options) => callGeminiJSON(task, prompt, schema, coerce, options?.images, options?.webSearch, options?.refine),
   claude: (task, prompt, schema, _coerce, options) => callClaudeJSON(task, prompt, schema, options?.images, options?.webSearch),
 };
 

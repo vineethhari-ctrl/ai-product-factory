@@ -13,7 +13,7 @@ import type {
 import { resolveFieldConstraints } from "../src/services/validationEngine";
 import { documentSample } from "../src/services/documentSamples";
 import { withProofChain } from "./proofChain";
-import { humanizeDocumentStates } from "../src/services/documentMath";
+import { humanizeDocumentStates, readableOption } from "../src/services/documentMath";
 import { codePrefix, deriveSubject, entityForScreen, humanize, stateLabel } from "./blueprint";
 
 /**
@@ -50,7 +50,8 @@ function cleanField(f: Partial<DocumentField> | undefined): DocumentField | null
   const label = clip(f?.label, 60);
   if (!label) return null;
   let kind = kindOf(f?.kind);
-  const options = uniq((f?.options ?? []).map((o) => clip(o, 60))).slice(0, 20);
+  // Same limit as the sample (120): a sample cut shorter than its own option, or an option cut shorter than the sample, would not match.
+  const options = uniq((f?.options ?? []).map((o) => clip(o, 120))).slice(0, 20);
   if (kind === "select" && options.length < 2) kind = options.length ? "lookup" : "text";
   return {
     label,
@@ -256,7 +257,7 @@ export function documentFromEntity(entity: DataEntityDefinition, subject: string
       label: humanize(f.name),
       kind,
       ...(f.required && f !== key ? { required: true } : {}),
-      ...(kind === "select" && c.enumValues?.length ? { options: c.enumValues.map((v) => (/[a-z]/.test(v) ? v : stateLabel(v))) } : {}),
+      ...(kind === "select" && c.enumValues?.length ? { options: c.enumValues.map((v) => (/[a-z]/.test(v) ? readableOption(v) : stateLabel(v))) } : {}),
       ...(f === key ? { readOnly: true } : {}),
     };
   };

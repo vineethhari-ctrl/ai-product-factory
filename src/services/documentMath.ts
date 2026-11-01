@@ -120,12 +120,59 @@ export function readableValue(s: string, force = false): string {
 /** A status the way a person reads it. */
 export const readableState = (s: string): string => (/[a-z]/.test(s) ? s : readableValue(s, true));
 
-/** The document with every status written the way a person reads it (statuses, and the from/to of each action). Idempotent. */
-export function humanizeDocumentStates<T extends { states?: string[]; actions?: Array<{ from?: string[]; to?: string }> }>(doc: T): T {
+/**
+ * One choice from a list, the way a person reads it. A model copies the record's codes into choice lists
+ * ("CRITICAL_SAFETY_HAZARD", "EQUIPMENT_ASSET - Reciprocating Compressor"): the code part is written as words and a
+ * descriptive tail after " - " is kept as written. Short acronyms stay upper-case ("SLA_BREACH" -> "SLA Breach", "EV" stays).
+ * Anything that already has a lower-case letter in its code part is left exactly as written. Idempotent.
+ */
+export function readableOption(s: string): string {
+  if (typeof s !== 'string') return s;
+  const m = s.trim().match(/^([A-Z][A-Z0-9]*(?:[_ ][A-Z0-9]+)*)(\s[-\u2013\u2014]\s.+)?$/);
+  if (!m || !/[A-Z]{2}/.test(m[1])) return s;
+  const [, head, tail = ''] = m;
+  const words = head.split(/[_ ]+/);
+  // A lone word of 4+ letters is a value (HIGH, NONE, NORMAL), a lone short one is an acronym (EV, SLA).
+  if (words.length === 1) return (words[0].length <= 3 || /\d/.test(words[0]) ? words[0] : words[0][0] + words[0].slice(1).toLowerCase()) + tail;
+  return words.map((w) => (/\d/.test(w) ? w : w.length <= 3 && !SHORT_WORDS.has(w) ? w : w[0] + w.slice(1).toLowerCase())).join(' ') + tail;
+}
+
+interface HumanizableDoc {
+  states?: string[];
+  actions?: Array<{ from?: string[]; to?: string }>;
+  sections?: Array<{ fields?: Array<{ options?: string[]; sample?: string }> }>;
+  lines?: { columns?: Array<{ options?: string[] }>; rows?: string[][] };
+}
+
+/**
+ * The document with every status, choice list and sample written the way a person reads it (statuses, the from/to of each
+ * action, the options of select fields and line columns, and the sample picked from them). Idempotent, so it runs both when
+ * a document is cleaned on the server and when one is shown (which also fixes projects saved before).
+ */
+export function humanizeDocumentStates<T extends HumanizableDoc>(doc: T): T {
   return {
     ...doc,
     ...(doc.states ? { states: doc.states.map(readableState) } : {}),
     ...(doc.actions ? { actions: doc.actions.map((a) => ({ ...a, ...(a.from ? { from: a.from.map(readableState) } : {}), ...(a.to ? { to: readableState(a.to) } : {}) })) } : {}),
+    ...(doc.sections ? {
+      sections: doc.sections.map((sec) => ({
+        ...sec,
+        ...(sec.fields ? { fields: sec.fields.map((f) => ({
+          ...f,
+          ...(f.options ? { options: f.options.map(readableOption) } : {}),
+          // A sample that is one of the options is written the same way, so it still matches its option.
+          ...(typeof f.sample === 'string' && f.options?.length ? { sample: readableOption(f.sample) } : {}),
+        })) } : {}),
+      })),
+    } : {}),
+    ...(doc.lines?.columns ? {
+      lines: {
+        ...doc.lines,
+        columns: doc.lines.columns.map((c) => (c.options ? { ...c, options: c.options.map(readableOption) } : c)),
+        // The sample lines of a select column hold the same choices, written the same way.
+        ...(doc.lines.rows ? { rows: doc.lines.rows.map((r) => r.map((cell, i) => (doc.lines!.columns![i]?.options ? readableOption(cell) : cell))) } : {}),
+      },
+    } : {}),
   };
 }
 

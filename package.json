@@ -30,6 +30,7 @@
     "check:depth": "tsx scripts/depth.check.ts",
     "check:stream": "tsx scripts/stream.check.ts",
     "check:skeleton": "tsx scripts/skeleton.check.ts",
+    "check:quality": "tsx scripts/testcase-quality.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {

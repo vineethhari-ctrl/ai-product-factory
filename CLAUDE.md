@@ -95,6 +95,12 @@ the numbers can be tightened toward the spec once real usage is visible.
   usage log) and writes `live-check-report.md` (gitignored): per step the outcome, model, time, fixes, failures and
   simple output checks. Use it to find all real-model problems in one pass. The BRD is still one request; split it
   only if the report shows cut-offs or repeated unrepairable answers (splitting triples the AI calls per click).
+- **Quality bar** (`Refinement`, llmRouter.ts; `callModel`, geminiClient.ts): an answer that is valid but has weak items is held to a bar by an
+  optional `refine: { check, ask, merge }`. Gemini asks the SAME model once, in the same click (no extra button count), to rewrite only the
+  weak items (a small follow-up, not the whole document), `merge` puts them in, and the first answer is kept if the rewrite is unusable,
+  fails the schema or is not better. Used for test cases (`testCaseRefinement`, testSuiteService.ts): 3 to 7 steps and a measurable expected
+  result (`weakTestCases`, src/services/testSuite.ts; the prompt also demands both and tells the model to self-check). Claude has no
+  follow-up path, so a Claude-written suite is not refined. `npm run check:quality` covers it.
 - **Streaming** (`generate` in geminiClient.ts): Gemini answers are read as a stream. A long answer from a thinking model
   (minutes) otherwise exceeds the HTTP client's 5-minute wait for the first byte and fails with `fetch failed`. A dropped
   connection (`fetch failed`, reset, socket) is retried like a busy model; a missing Google sign-in is not. The live check
@@ -324,7 +330,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -394,6 +400,11 @@ The core of every prototype: the documents users create and move through the pro
   screen's record (`documentFromEntity`: business fields only, never system/status/id fields; lines from the brief's
   parts; states and actions from the lifecycle) and turns the first register screen into a transaction screen when
   there is none (its KPI tiles are dropped). The first action is "New <document>".
+- **Readable choices**: a model copies the record's codes into choice lists (`CRITICAL_SAFETY_HAZARD`, `EQUIPMENT_ASSET - Reciprocating Compressor`).
+  `readableOption` (documentMath.ts) writes the code part as words (acronyms stay: `SLA_BREACH` -> `SLA Breach`) and keeps a descriptive tail;
+  `humanizeDocumentStates` applies it to statuses, the options and samples of select fields, line-column options and the sample lines under
+  them, on the server (`cleanDocument`) and again when a document is shown, so projects saved earlier are fixed too. Option and sample
+  share one length limit so a sample is always one of its options.
 - **UI** (`TransactionScreen.tsx`): document list with status chips and search -> New / open -> header fields, line
   grid with Add line and live totals, workflow buttons (reason when needed; required fields checked before leaving
   the first status; fields lock after it), status stepper, document chain, history. Transaction screens come first.

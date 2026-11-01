@@ -28,6 +28,7 @@ const { AIUnavailableError } = await import("../server/llmRouter");
 const { generateTestSuite } = await import("../server/testSuiteService");
 const { generateEngineeringPlan, attachPlan } = await import("../server/engineeringPlan");
 const { generateApproachNote } = await import("../server/approachNoteService");
+const { weakTestCases } = await import("../src/services/testSuite");
 const { approachNoteText } = await import("../src/services/approachNote");
 const { buildProjectFile } = await import("../src/services/projectFile");
 const { generateEngineeringPackageData } = await import("../server/aiReasoningService");
@@ -101,7 +102,7 @@ for (const l of describeRouting()) out(`- ${l}`);
 
 
 /** A test case a QA lead would send back: fewer than 3 steps, or an expected result too short to be measurable. */
-const weakTestCase = (t: { executionSteps: string[]; expectedResult: string }) => t.executionSteps.length < 3 || t.expectedResult.trim().length <= 30;
+const weakTestCase = (t: { id: string; executionSteps: string[]; expectedResult: string }) => weakTestCases([t]).length > 0;
 
 /** The test suite as a readable document. */
 function testSuiteMarkdown(name: string, ts: any): string {
