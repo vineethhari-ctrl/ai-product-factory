@@ -33,10 +33,21 @@ export function setGeminiClientForTests(client: unknown): () => void {
   return () => { testClient = null; };
 }
 
+/**
+ * How long one Gemini request may take (default 15 minutes; AI_GEMINI_TIMEOUT_MS overrides). Setting it makes the SDK
+ * (1) raise Node's built-in 300 s wait for the first byte, which a thinking model can exceed before it starts writing, and
+ * (2) send X-Server-Timeout so Google keeps working on a long answer: without it, long answers were cut at about 370 s.
+ */
+export function geminiTimeoutMs(): number {
+  const v = Number(process.env.AI_GEMINI_TIMEOUT_MS);
+  return Number.isFinite(v) && v >= 60_000 ? v : 15 * 60 * 1000;
+}
+
 /** SDK options for the chosen service. `vertexai` is always explicit, so a PC-wide Google variable cannot flip it. */
 export function geminiClientOptions(auth: GeminiAuth) {
-  if (auth.backend === "api") return { vertexai: false, apiKey: auth.apiKey };
-  return auth.apiKey ? { vertexai: true, apiKey: auth.apiKey } : { vertexai: true, project: auth.project, location: auth.location };
+  const httpOptions = { timeout: geminiTimeoutMs() };
+  if (auth.backend === "api") return { vertexai: false, apiKey: auth.apiKey, httpOptions };
+  return auth.apiKey ? { vertexai: true, apiKey: auth.apiKey, httpOptions } : { vertexai: true, project: auth.project, location: auth.location, httpOptions };
 }
 
 function getClient(): GoogleGenAI | null {

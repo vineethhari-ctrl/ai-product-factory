@@ -68,6 +68,9 @@ the numbers can be tightened toward the spec once real usage is visible.
 ### Failure handling
 - Gemini: 429/503 and dropped connections retried 3x per model (`retryDelay`: a 429 waits 10 s then 25 s, because the fallback model is weaker;
   503 / network 1.5 s, 3 s; `AI_RETRY_SCALE` scales the waits). A retry or failure logs the error and the stream timing (first / last data).
+  **Request allowance** (`geminiTimeoutMs`, default 15 min, `AI_GEMINI_TIMEOUT_MS`): passed as `httpOptions.timeout`, which makes the SDK
+  lift Node's 300 s first-byte wait (a thinking model sent nothing for 300 s on a big design prompt: `fetch failed`) and send
+  `X-Server-Timeout` to Google (without it long answers were cut at about 370 s).
   **A dropped stream keeps a complete answer** (`completeAnswer`): long answers were seen to arrive in full and lose the connection before
   the stream's final message (cut at ~370 s in the cloud test environment). If the delivered text parses strictly as one whole JSON document
   (a cut-off one never does) and fits the schema with no field invented, it is used and tokens are estimated; otherwise the attempt is

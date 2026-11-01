@@ -222,8 +222,16 @@ rmSync(dir, { recursive: true, force: true });
   const { geminiClientOptions } = await import("../server/geminiClient");
   const { GoogleGenAI } = await import("@google/genai");
   const vertexProject = geminiClientOptions(geminiAuth()!);
-  t("client options: Vertex project mode", JSON.stringify(vertexProject) === JSON.stringify({ vertexai: true, project: "proj-1", location: "global" }));
+  t("client options: Vertex project mode", JSON.stringify(vertexProject) === JSON.stringify({ vertexai: true, project: "proj-1", location: "global", httpOptions: { timeout: 900_000 } }));
   t("client options: the regular API says so explicitly", geminiClientOptions({ backend: "api", apiKey: "k" }).vertexai === false);
+  {
+    const prev = process.env.AI_GEMINI_TIMEOUT_MS; delete process.env.AI_GEMINI_TIMEOUT_MS;
+    const all = [vertexProject, geminiClientOptions({ backend: "vertex", apiKey: "k" }), geminiClientOptions({ backend: "api", apiKey: "k" })] as Array<{ httpOptions?: { timeout?: number } }>;
+    t("every Gemini client gets a 15-minute request allowance (lifts Node's 300 s first-byte wait, sends X-Server-Timeout)", all.every((o) => o.httpOptions?.timeout === 900_000));
+    process.env.AI_GEMINI_TIMEOUT_MS = "1200000";
+    t("AI_GEMINI_TIMEOUT_MS overrides it; nonsense is ignored", (geminiClientOptions({ backend: "api", apiKey: "k" }) as any).httpOptions.timeout === 1_200_000 && ((process.env.AI_GEMINI_TIMEOUT_MS = "5"), (geminiClientOptions({ backend: "api", apiKey: "k" }) as any).httpOptions.timeout === 900_000));
+    if (prev === undefined) delete process.env.AI_GEMINI_TIMEOUT_MS; else process.env.AI_GEMINI_TIMEOUT_MS = prev;
+  }
   const built = [vertexProject, geminiClientOptions({ backend: "vertex", apiKey: "k" }), geminiClientOptions({ backend: "api", apiKey: "k" })].map((o) => { try { return new GoogleGenAI(o as any); } catch (e) { return String(e); } });
   t("the Google library accepts every option set (a PC-wide Vertex variable does not break the regular API)", built.every((b) => typeof b !== "string") && (built[2] as any).vertexai === false && (built[1] as any).vertexai === true, built.filter((b) => typeof b === "string").join("; "));
   delete process.env.GOOGLE_CLOUD_PROJECT;
