@@ -44,6 +44,8 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | `research-prototype` (first half of Build Prototype) | `/api/generate-prototype` | gemini-4-argon + Google Search (temp 0.4) | claude-sonnet-5-5 + web search (effort medium) | Web research on comparable apps; Gemini searches natively | 16,384 / 16,000 |
 | `generate-test-suite` (Use Cases & QA, opens once per BRD, or Generate with AI) | `/api/generate-tests` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Long structured document from a finished BRD; Gemini first so one Vertex setup runs everything | 65,536 / 32,768 |
 | `generate-engineering` (Engineering Package) | `/api/generate-engineering` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Same | 65,536 / 32,768 |
+| `generate-proposal` (Proposal & SOW, Write with AI) | `/api/generate-proposal` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | The words of the proposal for the approved scope; numbers come from the estimate engine | 65,536 / 32,768 |
+| `reconcile-scope` (Upload final BRD) | `/api/reconcile-scope` | gemini-4-argon (temp 0.2) | claude-sonnet-5-5 (effort medium) | Reads a large document and matches it to the draft's items | 24,576 / 16,384 |
 | `generate-approach-note` (Approach Note tab, opens once per BRD, or Write with AI) | `/api/generate-approach` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | The leadership note from a finished BRD: reasoning (problems, options, phases, risks, proposed answers), not a template | 65,536 / 32,768 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call (`export-package` is the rules-based package).
@@ -388,6 +390,35 @@ The session is auto-saved only in the browser (`localStorage`, one project at a 
 **Export** (downloads the whole session as `<Product>_<date>.json`: kind/version/exportedAt + the saved state) and **Import**
 (file picker; checks kind, version and the shape of each part, confirms before replacing open work, starts a new AI-usage project id).
 No login or server storage involved: the file is the copy. `npm run check:project` covers the file format.
+
+## Part 2: approved scope, effort, cost, RASIC and the Proposal / SOW (step 9 "Proposal & SOW")
+
+The BU may trim the BRD before approving it, so the proposal is built from the **approved scope**, never from the first draft.
+- **Scope baseline** (`src/services/scope.ts`, `definition.scopeBaseline`): every BRD item (modules, screens, records, rules,
+  integrations, journeys) is an in/out flag. `setIncluded` (a module cut cuts its screens), `addScopeItem` (BU additions, change `NEW`),
+  `applyScope` (the BRD as approved: cut items gone, added items present), `scopeSignature` (a changed scope makes the written text
+  stale), `currentScope` (stored baseline only while it matches the BRD's `testSuiteSignature`, else a fresh all-kept one + `stale`).
+  The BA confirms it (`confirmed`, `approvedBy`, `approvedOn`); until then the document is marked DRAFT.
+- **Final BRD upload**: read in the browser (`extractMaterialText`), sent to `POST /api/reconcile-scope`; a model (`reconcile-scope`,
+  Gemini first) says per draft item kept/removed and lists additions; `matchScopeToText` (name / word matching) answers with no key and
+  decides any item the model skips. Unknown ids are ignored. Decisions are suggestions: the BA reviews each line, then confirms.
+- **Estimate** (`src/services/estimate.ts`, pure, browser + server): high-level person-days per activity, split **functional /
+  technical**, each row with its `basis`: mobilise, requirements, architecture, UX design, platform, one build activity per module
+  (screens by layout + share of records and rules), one per integration, hardening, test (~2 cases per rule + 1 per screen/journey),
+  performance/security, UAT, training, deploy, hypercare, project management (12% of the rest). The BA can change any figure
+  (`proposal.adjustments`, flagged "adjusted"). `ROLES` (8), `defaultRateCard` (illustrative USD rates, `isDefault` until edited;
+  currency, contingency %, utilisation, max people per role). Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
+  management spread by share), milestones (payment %, amounts add up to the total exactly), duration, **RASIC** (`RASIC_PARTIES` x
+  activity type; one A and at least one R per row). Numbers are never asked of a model.
+- **Words** (`src/services/proposalNarrative.ts`, rules-based baseline; `server/proposalService.ts` + `server/proposalPrompt.ts`, task
+  `generate-proposal`, Gemini first): executive summary, background, objectives, approach, deliverables, assumptions, exclusions,
+  client responsibilities, risks, acceptance criteria, governance, change control, commercial terms. The server keeps what a model must
+  not own: what the business removed is always listed as excluded, the fee line is the engine's, and a model sentence carrying a money
+  figure is dropped. Standard terms are starting wording for legal review. Stored on `proposal.narrative` with `basedOn` (scope signature).
+- **Document** (`src/services/proposalDoc.ts`): one section model rendered as the on-screen document, Markdown and Word (HTML saved as
+  `.doc`, no library). Doc kind: Proposal / RFP Response / Statement of Work.
+- Everything lives on the definition (`scopeBaseline`, `proposal`), so Export / Import carries it. `npm run check:proposal` covers scope,
+  estimate maths, RASIC, narrative, document, the AI path (model stand-ins) and domain neutrality.
 
 ## Conventions
 - Output shapes are zod schemas in `server/aiSchemas.ts`: enforced by Claude structured outputs

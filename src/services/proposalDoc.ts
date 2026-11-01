@@ -31,7 +31,10 @@ export function proposalSections(def: ProductDefinition, scope: ScopeBaseline, e
   const removed = removedItems(scope);
   const s: Section[] = [];
 
-  s.push({ id: 'summary', title: 'Executive summary', blocks: [{ kind: 'p', text: narrative.executiveSummary }] });
+  s.push({ id: 'summary', title: 'Executive summary', blocks: [
+    ...(scope.confirmed ? [] : [{ kind: 'p', text: 'DRAFT: the scope below has not yet been confirmed as the business-approved scope.' } as Block]),
+    { kind: 'p', text: narrative.executiveSummary },
+  ] });
   s.push({ id: 'background', title: 'Background and objectives', blocks: [
     { kind: 'p', text: 'Why this work is needed:' }, { kind: 'ul', items: narrative.background },
     { kind: 'p', text: 'What it must achieve:' }, { kind: 'ul', items: narrative.objectives },

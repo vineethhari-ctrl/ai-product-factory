@@ -17,7 +17,8 @@ import {
   CheckSquare,
   RotateCcw,
   Download,
-  Upload
+  Upload,
+  Briefcase
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -124,6 +125,14 @@ export const Header: React.FC<HeaderProps> = ({
       icon: Package,
       isEnabled: !!productDefinition,
       isDone: false,
+    },
+    {
+      id: 'proposal',
+      number: 9,
+      title: 'Proposal & SOW',
+      icon: Briefcase,
+      isEnabled: !!productDefinition,
+      isDone: !!productDefinition?.proposal?.narrative,
     },
   ];
 

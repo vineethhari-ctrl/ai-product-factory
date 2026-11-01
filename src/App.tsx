@@ -12,7 +12,9 @@ import {
   EvidenceItem, 
   ChangeImpactAnalysis,
   TestSuite,
-  ApproachNote
+  ApproachNote,
+  ProposalNarrative,
+  ScopeBaseline
 } from './types';
 import { Header } from './components/Header';
 import { CreateProductScreen } from './components/CreateProductScreen';
@@ -22,6 +24,9 @@ import { PrototypeScreen } from './components/PrototypeScreen';
 import { ChangeManagementModal } from './components/ChangeManagementModal';
 import { QASuiteScreen } from './components/QASuiteScreen';
 import { EngineeringPackageScreen } from './components/EngineeringPackageScreen';
+import { ProposalScreen } from './components/ProposalScreen';
+import { currentScope } from './services/scope';
+import { defaultProposalState } from './services/estimate';
 import { ServiceDesignScreen } from './components/ServiceDesignScreen';
 import { EvidenceViewerModal } from './components/EvidenceViewerModal';
 import { SAMPLE_DATASET_FLEET } from './data/sampleMaterials';
@@ -127,6 +132,8 @@ export default function App() {
   const [isGeneratingPrototype, setIsGeneratingPrototype] = useState(false);
   const [isGeneratingTests, setIsGeneratingTests] = useState(false);
   const [isGeneratingApproach, setIsGeneratingApproach] = useState(false);
+  const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
+  const [isMatchingScope, setIsMatchingScope] = useState(false);
   const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
@@ -371,11 +378,12 @@ export default function App() {
       case 'generate-prototype-ui': return productDefinition ? () => { setAiStatus(null); handleBuildPrototype(true); } : undefined;
       case 'generate-test-suite': return productDefinition ? () => { setAiStatus(null); handleGenerateTests(); } : undefined;
       case 'generate-approach-note': return productDefinition ? () => { setAiStatus(null); handleGenerateApproach(); } : undefined;
+      case 'generate-proposal': return productDefinition ? () => { setAiStatus(null); handleGenerateProposal(); } : undefined;
       case 'generate-engineering': return productDefinition ? () => { setAiStatus(null); handlePrepareEngineering(); } : undefined;
       default: return undefined; // Change Impact: run the analysis again from the change window.
     }
   };
-  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isGeneratingApproach || isPreparingEngineering;
+  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isGeneratingApproach || isGeneratingProposal || isMatchingScope || isPreparingEngineering;
 
   // Step 6: Change Impact Analysis
   const handleAnalyzeChange = async (changeRequest: string): Promise<ChangeImpactAnalysis> => {
@@ -560,6 +568,65 @@ export default function App() {
       showToast('The approach note could not be written: the server did not answer.');
     } finally {
       setIsGeneratingApproach(false);
+    }
+  };
+
+  // Part 2: the proposal's words for the BU-approved scope. Effort and cost are computed from the same scope in the browser.
+  const updateDefinition = (fn: (d: ProductDefinition) => ProductDefinition) => setProductDefinition((prev) => (prev ? fn(prev) : prev));
+
+  const handleGenerateProposal = async () => {
+    if (!productDefinition || isRetrying) return;
+    const scope = currentScope(productDefinition).scope;
+    const proposal = productDefinition.proposal ?? defaultProposalState();
+    setIsGeneratingProposal(true);
+    try {
+      const response = await fetch('/api/generate-proposal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition, scope, proposal }),
+      });
+      if (response.ok) {
+        const narrative: ProposalNarrative = await response.json();
+        setProductDefinition((prev) => (prev ? { ...prev, scopeBaseline: scope, proposal: { ...(prev.proposal ?? proposal), narrative } } : prev));
+        showToast(narrative.origin === 'AI' ? 'The AI wrote the proposal text for the approved scope.' : 'Proposal text derived from the approved scope by rules.');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The proposal could not be written. Click Retry.', 9000);
+      }
+    } catch (err) {
+      console.error('Error generating the proposal:', err);
+      showToast('The proposal could not be written: the server did not answer.');
+    } finally {
+      setIsGeneratingProposal(false);
+    }
+  };
+
+  // The BU's final BRD, read in the browser, is matched to the draft's items (kept / removed / added) for the BA to confirm.
+  const handleReconcileScope = async (text: string, fileName: string) => {
+    if (!productDefinition || isRetrying) return;
+    const scope = currentScope(productDefinition).scope;
+    setIsMatchingScope(true);
+    try {
+      const response = await fetch('/api/reconcile-scope', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition, scope, text, fileName }),
+      });
+      if (response.ok) {
+        const matched: ScopeBaseline = await response.json();
+        setProductDefinition((prev) => (prev ? { ...prev, scopeBaseline: matched } : prev));
+        const removed = matched.items.filter((i) => i.change === 'REMOVED').length;
+        const added = matched.items.filter((i) => i.change === 'NEW').length;
+        showToast(`${matched.matchedBy === 'AI' ? 'The AI' : 'Name matching'} compared the final BRD: ${removed} removed, ${added} added. Review each line, then confirm.`, 8000);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The final BRD could not be matched.', 9000);
+      }
+    } catch (err) {
+      console.error('Error matching the final BRD:', err);
+      showToast('The final BRD could not be matched: the server did not answer.');
+    } finally {
+      setIsMatchingScope(false);
     }
   };
 
@@ -983,6 +1050,19 @@ export default function App() {
               </button>
             </div>
           )
+        )}
+
+        {activeScreen === 'proposal' && productDefinition && (
+          <ProposalScreen
+            definition={productDefinition}
+            updateDefinition={updateDefinition}
+            aiBusy={isRetrying}
+            onGenerateProposal={handleGenerateProposal}
+            isGeneratingProposal={isGeneratingProposal}
+            onReconcile={handleReconcileScope}
+            isMatchingScope={isMatchingScope}
+            onToast={showToast}
+          />
         )}
 
         {activeScreen === 'engineering' && engineeringPackage && (
