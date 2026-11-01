@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AITask, type GeminiAuth, geminiAuth, geminiModels, geminiRoute } from "./routing";
 import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
 import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
+import { depthDirective } from "./depth";
 import type { AIImage } from "./llmRouter";
 
 /**
@@ -14,6 +15,12 @@ import type { AIImage } from "./llmRouter";
  */
 
 const MAX_ATTEMPTS = 3;
+
+/** The depth directive as Gemini's system instruction (server/depth.ts); nothing for tasks that do not take it. */
+function systemFor(task: AITask): { systemInstruction?: string } {
+  const directive = depthDirective(task);
+  return directive ? { systemInstruction: directive } : {};
+}
 
 let cachedClient: GoogleGenAI | null = null;
 let cachedKey = "";
@@ -168,7 +175,7 @@ async function askForCorrection(
     const response = await generate(ai, {
       model,
       contents: [userTurn, { role: "model", parts: [{ text: previous }] }, { role: "user", parts: [{ text: correctionPrompt(problems) }] }] as any,
-      config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
+      config: { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens, ...systemFor(task) },
     });
     const usage = response.usageMetadata;
     recordTokens(task, model, usage?.promptTokenCount ?? 0, (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0));
@@ -205,8 +212,8 @@ async function callModel<S extends z.ZodType>(
         // Google Search grounding cannot be combined with JSON mode on every model, so a searching call
         // asks for JSON in the prompt and is validated below like any other answer.
         config: webSearch
-          ? { tools: [{ googleSearch: {} }], temperature, maxOutputTokens: maxTokens }
-          : { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens },
+          ? { tools: [{ googleSearch: {} }], temperature, maxOutputTokens: maxTokens, ...systemFor(task) }
+          : { responseMimeType: "application/json", temperature, maxOutputTokens: maxTokens, ...systemFor(task) },
       });
 
       // Billed whether or not the answer is usable; thinking tokens are billed as output.

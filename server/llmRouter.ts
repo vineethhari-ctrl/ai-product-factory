@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { callGeminiJSON } from "./geminiClient";
 import { callClaudeJSON } from "./claudeClient";
 import { type AITask, type Provider, hasProviderKey, providerOrder } from "./routing";
+import { DEPTH_VERSION } from "./depth";
 import { type ProviderFailure, beginAICall, cacheKey, currentFailures, currentServedModel, endAICall, readCache, setAIStatus, writeCache } from "./usage";
 
 /**
@@ -67,10 +68,18 @@ export function setProviderForTests(provider: Provider, call: ProviderCall): () 
 
 /** Images and web search change the answer, so they are part of the cache key (images by hash, not content). */
 function cachePrompt(prompt: string, options?: LLMOptions) {
+  // The depth directive is sent as the system instruction: its version is part of the key, so answers written under an
+  // older directive are never served again.
+  prompt = `${prompt}\n[${DEPTH_VERSION}]`;
   const images = options?.images;
   const withSearch = options?.webSearch ? `${prompt}\n[web search]` : prompt;
   if (!images?.length) return withSearch;
   return `${withSearch}\n[images: ${images.map((i) => createHash("sha256").update(i.data).digest("hex")).join(",")}]`;
+}
+
+/** The response-cache key the router uses for a request (task, prompt, depth version, search and images). */
+export function routerCacheKey(task: AITask, prompt: string, options?: LLMOptions): string {
+  return cacheKey(task, cachePrompt(prompt, options));
 }
 
 export async function callLLMJSON<S extends z.ZodType>(
@@ -87,7 +96,7 @@ export async function callLLMJSON<S extends z.ZodType>(
     return null;
   }
 
-  const key = cacheKey(task, cachePrompt(prompt, options));
+  const key = routerCacheKey(task, prompt, options);
   const cached = readCache(task, key);
   if (cached !== undefined) {
     const parsed = schema.safeParse(cached);

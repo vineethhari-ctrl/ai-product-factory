@@ -9,7 +9,7 @@ process.env.DATA_DIR = dir;
 Object.assign(process.env, { AI_PROJECT_BUTTON_LIMIT: "3", AI_USER_BUTTON_LIMIT: "3", AI_USER_DAILY_TOKENS: "100000", AI_MONTHLY_BUDGET_USD: "5" });
 
 const usage = await import("../server/usage");
-const { callLLMJSON } = await import("../server/llmRouter");
+const { callLLMJSON, routerCacheKey } = await import("../server/llmRouter");
 const { runWithUsageContext: as, beginAICall, recordTokens, endAICall, currentNotices, usageReport, blockedReason, cacheKey, writeCache, priceFor } = usage;
 
 let pass = 0, fail = 0;
@@ -73,11 +73,11 @@ t("no key: router returns null without metering", (await quiet(() => as("jo", "J
 
 // Router with a key: the cache answers identical requests for free, without reaching any provider
 process.env.GEMINI_API_KEY = "test-key-not-used";
-writeCache(cacheKey("analyze-change", "same prompt"), { answer: "saved" });
+writeCache(routerCacheKey("analyze-change", "same prompt"), { answer: "saved" });
 const hit = await as("kim", "K", async () => ({ r: await callLLMJSON("analyze-change", "same prompt", schema), n: [...currentNotices()] }));
 t("cache hit returns the saved result", hit.r?.answer === "saved");
 t("cache hit is announced and not counted", /reused \(free, not counted\)/.test(hit.n.join("")) && usageReport("kim", "K").buttons.every((b) => b.user.used === 0) && usageReport("kim", "K").me.cacheHits === 1);
-t("a different prompt is not a cache hit", cacheKey("analyze-change", "same prompt") !== cacheKey("analyze-change", "same prompt!") && cacheKey("analyze-change", "x") !== cacheKey("generate-definition", "x"));
+t("a different prompt is not a cache hit", routerCacheKey("analyze-change", "same prompt") !== routerCacheKey("analyze-change", "same prompt!") && routerCacheKey("analyze-change", "x") !== routerCacheKey("generate-definition", "x"));
 
 // Router with a key, over a limit: answers null (offline) without calling any provider
 for (let i = 0; i < 3; i++) await spend("lee", "L", "generate-definition", 10, 10);

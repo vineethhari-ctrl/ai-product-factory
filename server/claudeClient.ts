@@ -5,6 +5,7 @@ import { AITask, claudeRoute, providerKey } from "./routing";
 import { type ProviderFailure, recordAnswerRepairs, recordProviderFailure, recordServedModel, recordTokens } from "./usage";
 import { describeIssues, parseJsonLoose, repairToSchema } from "./answerRepair";
 import type { AIImage } from "./llmRouter";
+import { depthDirective } from "./depth";
 
 export type { AITask };
 
@@ -24,8 +25,22 @@ export type { AITask };
 let cachedClient: Anthropic | null = null;
 let cachedKey = "";
 let warnedMissingKey = false;
+let testClient: Anthropic | null = null;
+
+/** For tests: answer with a stand-in client (only `messages.stream` is used). Returns a restore function. */
+export function setClaudeClientForTests(client: unknown): () => void {
+  testClient = client as Anthropic;
+  return () => { testClient = null; };
+}
+
+/** The depth directive as Claude's system prompt (server/depth.ts); nothing for tasks that do not take it. */
+function systemFor(task: AITask): { system?: string } {
+  const directive = depthDirective(task);
+  return directive ? { system: directive } : {};
+}
 
 function getClient(): Anthropic | null {
+  if (testClient) return testClient;
   const apiKey = providerKey("claude");
   if (cachedClient && cachedKey === apiKey) return cachedClient;
   if (!apiKey) {
@@ -88,6 +103,7 @@ export async function callClaudeJSON<S extends z.ZodType>(
     const stream = client.messages.stream({
       model: route.model,
       max_tokens: route.maxTokens,
+      ...systemFor(task),
       // effort and temperature are only sent where the model accepts them (see routing.ts).
       ...(route.temperature !== undefined ? { temperature: route.temperature } : {}),
       output_config: {
@@ -163,6 +179,7 @@ async function callClaudeWithSearch<S extends z.ZodType>(
       const stream = client.messages.stream({
         model: route.model,
         max_tokens: route.maxTokens,
+        ...systemFor(task),
         ...(route.temperature !== undefined ? { temperature: route.temperature } : {}),
         ...(route.effort ? { output_config: { effort: route.effort } } : {}),
         tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],

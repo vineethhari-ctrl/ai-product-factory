@@ -316,7 +316,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -426,6 +426,18 @@ The BU may trim the BRD before approving it, so the proposal is built from the *
   `.doc`, no library). Doc kind: Proposal / RFP Response / Statement of Work.
 - Everything lives on the definition (`scopeBaseline`, `proposal`), so Export / Import carries it. `npm run check:proposal` covers scope,
   estimate maths, RASIC, narrative, document, the AI path (model stand-ins) and domain neutrality.
+
+## Depth rule: the best answer on every AI click (owner's standing instruction; `server/depth.ts`)
+
+Every substantial AI task is sent a deep-dive directive as the **system instruction** (Gemini `systemInstruction`, Claude `system`) on
+every path: the normal call, the web-search call and Gemini's corrective retry. It tells the model to read all the input, work as the
+best expert at that task would, stay specific to the input's own names, never invent facts or cite real companies, meet every count
+and coverage requirement, self-check point by point before answering, and answer only in the asked format; the task prompt's own rules
+win. Each task also gets one line saying what "the best answer" means for it (`FOCUS`). Change Impact (`analyze-change`, small fast
+model, 2,048-token ceiling) is left out. `DEPTH_VERSION` is part of the router's cache key (`routerCacheKey`), so answers written under an
+older directive are never served again: bump it whenever the wording changes. New AI tasks must get a `FOCUS` line. Deeper reasoning uses
+more output tokens (thinking counts toward the ceiling): watch the `output N of ceiling` log lines and raise a ceiling in routing.ts
+rather than shorten the directive. `npm run check:depth` covers it (both providers via stand-in clients, all three paths, the cache key).
 
 ## Conventions
 - Output shapes are zod schemas in `server/aiSchemas.ts`: enforced by Claude structured outputs
