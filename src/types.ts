@@ -451,6 +451,10 @@ export interface ProductDefinition {
   /** The test suite for this BRD, once generated (by a model, or derived by rules). */
   testSuite?: TestSuite;
   approachNote?: ApproachNote;
+  /** The scope the BU approved (the final BRD), as in/out decisions on this BRD's items. Drives the proposal. */
+  scopeBaseline?: ScopeBaseline;
+  /** Proposal / SOW settings and narrative; effort and cost are always recomputed from the approved scope. */
+  proposal?: ProposalState;
   /** KPIs: how success is measured. Baselines and targets are set by the BU. */
   successMetrics?: string[];
   personas: PersonaDefinition[];
@@ -643,4 +647,130 @@ export type ActiveScreen =
   | 'demo' 
   | 'changes' 
   | 'qasuite'
-  | 'engineering';
+  | 'engineering'
+  | 'proposal';
+
+
+// ─── Part 2: approved scope, effort, cost, RASIC and the Proposal / SOW ──────────────────────────
+
+export type ScopeKind = 'module' | 'screen' | 'rule' | 'integration' | 'record' | 'journey';
+
+/** One thing in the BRD the BU can keep or cut. NEW = added by the BU in the final BRD (not in the draft). */
+export interface ScopeItem {
+  id: string;
+  kind: ScopeKind;
+  name: string;
+  /** Module a screen belongs to (screens are cut with their module). */
+  parent?: string;
+  detail?: string;
+  /** Screen layout, for items the BU added. */
+  layoutType?: ScreenDefinition['layoutType'];
+  included: boolean;
+  change: 'KEPT' | 'REMOVED' | 'NEW';
+  note?: string;
+}
+
+export interface ScopeBaseline {
+  /** Fingerprint of the BRD it was made from (testSuiteSignature). */
+  basedOn: string;
+  source: 'manual' | 'upload';
+  fileName?: string;
+  /** Who approved the final scope and when (typed by the BA from the BU's sign-off). */
+  approvedBy?: string;
+  approvedOn?: string;
+  /** The BA has reviewed the list and confirms it is the BU-approved scope. */
+  confirmed: boolean;
+  /** How the upload was matched: AI or by name matching. */
+  matchedBy?: 'AI' | 'RULES';
+  items: ScopeItem[];
+  notes?: string;
+}
+
+export type ResourceRole =
+  | 'Project Manager' | 'Business Analyst' | 'Solution Architect' | 'UX Designer'
+  | 'Frontend Developer' | 'Backend Developer' | 'QA Engineer' | 'DevOps Engineer';
+
+export interface RateCard {
+  currency: string;
+  /** Day rate per role, in `currency`. */
+  rates: Record<ResourceRole, number>;
+  /** Contingency added on top of the estimate, percent. */
+  contingencyPct: number;
+  /** Productive share of a working day (meetings, leave). */
+  utilisation: number;
+  /** Most people the vendor puts on one role at once (sets the indicative duration). */
+  maxPerRole: number;
+  /** Rates are the app's illustrative defaults until the BA edits them. */
+  isDefault?: boolean;
+}
+
+export interface ProposalNarrative {
+  origin: 'AI' | 'OFFLINE';
+  /** Fingerprint of the approved scope it was written for. */
+  basedOn: string;
+  executiveSummary: string;
+  background: string[];
+  objectives: string[];
+  approach: string[];
+  deliverables: string[];
+  assumptions: string[];
+  exclusions: string[];
+  clientResponsibilities: string[];
+  risks: Array<{ risk: string; impact: string; mitigation: string }>;
+  acceptanceCriteria: string[];
+  changeControl: string[];
+  governance: string[];
+  commercialTerms: string[];
+}
+
+export interface ProposalState {
+  docKind: 'Proposal' | 'RFP Response' | 'Statement of Work';
+  /** Name of the client / sponsor and the vendor, as they should read in the document. */
+  clientName?: string;
+  vendorName?: string;
+  rateCard: RateCard;
+  /** Days the BA changed by hand, by activity id. */
+  adjustments?: Record<string, { functionalDays?: number; technicalDays?: number }>;
+  narrative?: ProposalNarrative;
+}
+
+export type ActivityType = 'mobilise' | 'requirements' | 'architecture' | 'design' | 'build' | 'integration' | 'qa' | 'uat' | 'deploy' | 'training' | 'management';
+
+export interface EstimateActivity {
+  id: string;
+  phase: string;
+  type: ActivityType;
+  name: string;
+  /** What it covers, in the product's own words. */
+  covers: string;
+  /** How the days were worked out (so a reader can challenge them). */
+  basis: string;
+  deliverable: string;
+  functionalDays: number;
+  technicalDays: number;
+  /** Total days per role (functional + technical split across roles). */
+  roleDays: Partial<Record<ResourceRole, number>>;
+  adjusted?: boolean;
+}
+
+export interface EstimatePhase { phase: string; weeks: number; days: number; cost: number; }
+export interface EstimateTeamRow { role: ResourceRole; days: number; rate: number; cost: number; fte: number; }
+export interface EstimateMilestone { name: string; afterPhase: string; weekNumber: number; percent: number; amount: number; }
+export type RasicLetter = 'R' | 'A' | 'S' | 'I' | 'C' | '';
+export interface RasicMatrix { parties: string[]; rows: Array<{ activityId: string; activity: string; cells: RasicLetter[] }>; }
+
+export interface Estimate {
+  activities: EstimateActivity[];
+  phases: EstimatePhase[];
+  team: EstimateTeamRow[];
+  milestones: EstimateMilestone[];
+  rasic: RasicMatrix;
+  functionalDays: number;
+  technicalDays: number;
+  totalDays: number;
+  subtotal: number;
+  contingency: number;
+  total: number;
+  durationWeeks: number;
+  currency: string;
+}
