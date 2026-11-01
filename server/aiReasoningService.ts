@@ -12,6 +12,8 @@ import {
   DesignResearch,
   ScreenUISpec,
   UITheme,
+  ScreenDefinition,
+  DataEntityDefinition,
 } from "../src/types";
 import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
 import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
@@ -21,7 +23,7 @@ import { readableValue } from "../src/services/documentMath";
 import { cleanDocument, withDocuments } from "./documents";
 import {
   BENCHMARK_TAG,
-  UI_SPEC_RULES,
+  UI_SKELETON_RULES,
   analysisBenchmarkDirective,
   assessMaterialThinness,
   assessUnderstandingThinness,
@@ -34,7 +36,7 @@ import {
 } from "./benchmark";
 import { BusinessUnderstandingSchema, ProductDefinitionSchema, ChangeImpactSchema, DesignResearchSchema, PrototypeUISchema } from "./aiSchemas";
 import { currentServedModel } from "./usage";
-import { ensureScreenUI, lower } from "./blueprint";
+import { completeScreenSkeleton, deriveSubject, ensureScreenUI, entityForScreen, lower } from "./blueprint";
 import { QUESTION_AUDIENCE_RULES, questionContext } from "./questions";
 import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../src/services/questionAudience";
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
@@ -470,7 +472,7 @@ BUSINESS UNDERSTANDING:
 ${JSON.stringify(understanding, null, 2)}
 
 ${benchmarkBlock}
-${UI_SPEC_RULES}
+${UI_SKELETON_RULES}
 ${FIELD_INFERENCE_RULES}
 AUTONOMOUS FIELD, VALIDATION & RULE INFERENCE (CRITICAL — NEVER LEAVE EMPTY):
 - QUALITY & RISK: nonFunctionalRequirements lists 6-10 quality targets written for THIS product (its heaviest screens, its sensitive fields, its named systems, outside parties on phones), each with a measurable target; where the BU gave no volume, state your assumption in the target. risks lists 4-8 risks specific to this product (use the open questions and assumptions), each with impact and mitigation. Never invent a number the BU should decide; label it an assumption.
@@ -531,17 +533,16 @@ Return ONLY a valid JSON object matching this schema:
       "confidence": "CONFIRMED" | "INFERRED",
       "evidence": ["filename.ext"],
       "ui": {
-        "kpis": [{"label": "Open Service Requests", "value": "128", "trend": "up" | "down" | "flat", "delta": "+4.2% vs last week"}],
+        "kpis": [{"label": "Open Service Requests", "value": "", "trend": "flat", "delta": ""}],
         "filters": ["All", "Overdue", "My Queue"],
         "table": {
           "title": "Service Requests",
           "columns": ["Request ID", "Customer", "Status"],
-          "rows": [["SR-1041", "Sample Customer", "Pending"]]
+          "rows": []
         },
-        "detailPanels": [{"title": "Request Details", "items": [{"label": "Priority", "value": "High"}]}],
+        "detailPanels": [],
         "primaryActions": ["Reassign", "Approve"],
-        "entity": "Exact name of the data entity this screen creates or edits (required for form-wizard and transaction screens, otherwise omit)",
-        "benchmarkNote": "Mirrors the queue-and-detail pattern common in comparable industry products"
+        "entity": "Exact name of the data entity this screen creates or edits (required for form-wizard and transaction screens, otherwise omit)"
       }
     }
   ],
@@ -667,7 +668,15 @@ Return ONLY a valid JSON object matching this schema:
       const built: ProductDefinition = {
         ...rest,
         // Table rows must match their column count or the prototype table breaks.
-        screens: rest.screens.map((s) => ({ ...s, ui: { ...normalizeUISpec(s.ui), origin: "AI" as const } })),
+        // The model wrote each screen's skeleton; sample rows, KPI values and panels are filled locally (completeScreenSkeleton).
+        // Table rows must match their column count or the prototype table breaks.
+        screens: rest.screens.map((s) => ({
+          ...s,
+          ui: {
+            ...normalizeUISpec(completeScreenSkeleton(s, s.ui, entityForScreen(s as ScreenDefinition, rest.dataEntities as DataEntityDefinition[]), understanding.blueprintBrief?.subject ?? deriveSubject(productName, businessUnit), productName, rest.dataEntities as DataEntityDefinition[])),
+            origin: "AI" as const,
+          },
+        })),
         // Identity fields are owned by the server, not the model.
         id: `prod-def-${Date.now()}`,
         version,

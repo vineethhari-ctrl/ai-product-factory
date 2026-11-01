@@ -82,6 +82,21 @@ export const UI_SPEC_RULES = `UI BLUEPRINT RULES (the prototype renders each scr
 - entity: for a form-wizard screen, the exact name of the data entity the form creates or edits (as listed in dataEntities); omit it for other layouts.
 - All values are illustrative sample data; use plausible domain terminology and never real personal data.\n`;
 
+/**
+ * Screen rules for the BRD: the skeleton only. The Build Prototype step designs every screen in full; sample data written in
+ * the BRD was thrown away there and made the BRD too long to finish inside one Gemini answer stream (about six minutes).
+ * The server fills sample rows, KPI values and detail panels locally (completeScreenSkeleton, blueprint.ts).
+ */
+export const UI_SKELETON_RULES = `SCREEN SKELETON RULES (the Build Prototype step designs every screen in full later; here give only what the BRD needs, and NO sample data):
+- Choose layoutType for the screen's job: dashboard (monitoring and KPIs), table-detail (managing records), form-wizard (multi-step tasks), split-view (triage a queue on the left, act on the right), profile-360 (everything about one record), transaction (create and work one business document: a list of documents with a New button, the document's header fields, line items with totals, and workflow actions such as submit, approve or convert into the next document).
+- kpis: 3 to 4 metrics this screen's users watch, named precisely for this product; "value" and "delta" are empty strings, "trend" is "flat".
+- filters: 3 to 5 filter or segment chips a user of this screen would really use (status values, priorities, ownership).
+- table: a title and 4 to 6 columns that fit the record the screen shows, including a status column; "rows" is an empty array (sample rows are generated).
+- detailPanels: an empty array.
+- primaryActions: 2 to 4 verbs a user performs here, such as "Reassign", "Approve" or "Schedule service".
+- entity: for form-wizard and transaction screens, the exact name of the data entity the screen creates or edits (as listed in dataEntities); omit it for other layouts.
+- Do not write benchmarkNote.\n`;
+
 /** Make sure inferred items carry an "Industry benchmark" evidence entry. */
 export function tagInferredEvidence<T extends { confidence?: string; evidence?: string[] }>(
   items: T[],

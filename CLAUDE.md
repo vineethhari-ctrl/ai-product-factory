@@ -358,7 +358,15 @@ data. The prompt names no company, product or industry; `inspiredBy` is a generi
   with AI" forces a new design. Screens the AI skips keep an offline design. `npm run check:prototype` covers it.
 
 Each screen carries a `ui` blueprint (`ScreenUISpec`: kpis, filters, sample table, detailPanels,
-primaryActions, benchmarkNote) generated on every run, not only in benchmark mode. `ScreenCanvas.tsx`
+primaryActions, benchmarkNote) generated on every run, not only in benchmark mode.
+**The BRD asks for each screen's skeleton only** (`UI_SKELETON_RULES`, benchmark.ts: layout, KPI names, filters, table title and
+columns, actions, `entity`; no sample rows, KPI values or panels). Measured: Google ends one Gemini answer stream at about 370 s whatever
+is flowing (the cloud test proxy kept a Google download open 460 s), and Argon writes about 104 tokens/s, so a BRD with sample data plus
+the depth rule (37-40k tokens) could not finish. The sample data was thrown away by Build Prototype anyway. `completeScreenSkeleton`
+(blueprint.ts) fills what the skeleton leaves empty, deterministically and keeping every name the model chose: rows for its columns (the
+column's own field from any record, the lifecycle's states for a status column, values guessed from the column's words otherwise), KPI
+values that fit each label, filter chips that really match the rows, detail panels. A model that does write sample data keeps it.
+`npm run check:skeleton` covers it. `ScreenCanvas.tsx`
 renders it per `layoutType` (dashboard, table-detail, split-view, form-wizard, profile-360, transaction) with row
 selection, filters, search, read-only role locking and a badge on benchmark-derived screens. Sample
 values are illustrative. Screens without `ui` (older definitions, the demo pack) fall back to the

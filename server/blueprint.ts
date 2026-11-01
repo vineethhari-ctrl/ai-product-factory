@@ -218,6 +218,7 @@ function sampleValue(field: DataFieldDefinition, row: number, ctx: SampleContext
   if (c.format === "identifier" || c.unique || /(^|_)(ref|reference|code|number|no)$|reference|number$/.test(n)) {
     return `${codePrefix(ctx.subject)}-${String(10_240 + row * 37 + Math.floor(r() * 9))}`;
   }
+  if (/(priority|severity|urgency|criticality)/.test(n)) return ["High", "Medium", "Low", "Critical", "Medium", "Low"][row % 6];
   if (/(assignee|owner|agent|reviewer|approver|user|by$|name$|contact|requester|person)/.test(n)) return PEOPLE[(row * 3) % PEOPLE.length];
   if (/(org|company|account|customer|client|party|vendor|supplier|site|location|branch)/.test(n)) return ORGS[row % ORGS.length];
   if (/(title|subject|summary|label|headline)/.test(n)) return `${ctx.subject} for ${PEOPLE[(row * 5 + 1) % PEOPLE.length]}`;
@@ -396,6 +397,97 @@ export function buildScreenUI(
     primaryActions: ACTIONS[screen.layoutType](subject),
     ...(screen.layoutType === "form-wizard" ? { entity: ent.name } : {}),
     benchmarkNote: PATTERN_NOTES[screen.layoutType],
+  };
+}
+
+
+// ─── BRD screen skeletons ───────────────────────────────────────────────────
+
+const normKey = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Sample rows for columns the AI named: each column takes the record field it names, else a field guessed from its words. */
+function sampleRowsFor(columns: string[], entity: DataEntityDefinition | undefined, others: DataEntityDefinition[], subject: string, seed: string, rowCount = 6): string[][] {
+  // The screen's own record first, then the BRD's other records: a column may name a field of either.
+  const lifecycled = entity?.lifecycle ? entity : others.find((e) => e.lifecycle);
+  const ent: DataEntityDefinition = entity ?? lifecycled ?? blueprintEntities(subject)[0];
+  const pool = [ent, ...others.filter((e) => e !== ent)];
+  const statusOwner = lifecycled ?? ent;
+  // The status field is often added later as a system field; the lifecycle still names it and lists its states.
+  const statusField = statusOwner.lifecycle
+    ? statusOwner.fields.find((f) => f.name === statusOwner.lifecycle!.statusField) ?? { name: statusOwner.lifecycle.statusField, type: "string", required: true }
+    : undefined;
+  const fields = columns.map((col): { field: DataFieldDefinition; owner: DataEntityDefinition } => {
+    const key = normKey(col);
+    if (statusField && (/\b(status|state|stage)\b/i.test(col) || normKey(statusField.name) === key)) return { field: statusField, owner: statusOwner };
+    for (const e of pool) {
+      const named = e.fields.find((f) => normKey(f.name) === key || normKey(humanize(f.name)) === key);
+      if (named) return { field: named, owner: e };
+    }
+    return { field: { name: col, type: "string", required: false }, owner: ent };
+  });
+  const rand = rng(seed);
+  return Array.from({ length: rowCount }, (_, i) => fields.map(({ field, owner }) => sampleValue(field, i, { subject, entity: owner, rand })));
+}
+
+/** A plausible value for a KPI, chosen from what its label measures. */
+function kpiValue(label: string, rand: () => number): string {
+  const l = label.toLowerCase();
+  // Whole words only ("resolution time" must not read as "on time").
+  if (/%|\b(rate|percent|percentage|ratio|compliance|accuracy|utili[sz]ation|within sla|on[- ]time|first[- ]time|success)\b/.test(l)) return `${(70 + rand() * 28).toFixed(1)}%`;
+  if (/\bhours?\b/.test(l)) return `${(1 + rand() * 20).toFixed(1)} h`;
+  if (/\b(time|duration|age|days?|cycle|lead time|turnaround)\b/.test(l)) return `${(1 + rand() * 9).toFixed(1)} days`;
+  if (/\b(amount|value|cost|spend|revenue|price|budget)\b/.test(l)) return Math.round(5_000 + rand() * 95_000).toLocaleString("en-US");
+  return String(Math.round(5 + rand() * 395));
+}
+
+/**
+ * The BRD asks the model only for each screen's skeleton (layout, KPI names, filters, table title and columns, actions,
+ * the record it works on): the Build Prototype step designs the full screen later, and writing sample data in the BRD
+ * made it too long to finish inside one Gemini answer stream. This fills what the skeleton leaves empty, locally and
+ * deterministically, keeping every name the model chose: sample rows for its columns, KPI values that fit its labels,
+ * filter chips that really match the rows, and detail panels.
+ */
+export function completeScreenSkeleton(
+  screen: Pick<ScreenDefinition, "id" | "name" | "layoutType">,
+  ui: ScreenUISpec,
+  entity: DataEntityDefinition | undefined,
+  subject: string,
+  seedBase: string,
+  allEntities: DataEntityDefinition[] = []
+): ScreenUISpec {
+  const base = buildScreenUI(screen, entity, subject, seedBase);
+  const rand = rng(`${seedBase}|${screen.id}|skeleton`);
+  const columns = (ui.table?.columns ?? []).map((c) => c.trim()).filter(Boolean);
+  const table = !columns.length
+    ? base.table
+    : ui.table.rows?.length
+      ? ui.table
+      : { title: ui.table.title?.trim() || base.table.title, columns, rows: sampleRowsFor(columns, entity, allEntities, subject, `${seedBase}|${screen.id}|rows`) };
+  const kpis = (ui.kpis?.length ? ui.kpis : base.kpis).map((k) => {
+    const trend = k.trend ?? "flat";
+    return {
+      ...k,
+      trend,
+      value: k.value?.trim() ? k.value : kpiValue(k.label, rand),
+      delta: k.delta?.trim() ? k.delta : trend === "flat" ? "No change vs last week" : `${trend === "up" ? "+" : "-"}${(1 + rand() * 7).toFixed(1)}% vs last week`,
+    };
+  });
+  const hasPanels = (ui.detailPanels ?? []).some((p) => p.items?.some((it) => it.value?.trim()));
+  // Filter chips must really filter the rows: keep the model's chips that match a cell, else use the status values present.
+  const cells = table.rows.flat().map((c) => c.toLowerCase());
+  const found = table.columns.findIndex((c) => /\b(status|state|stage)\b/i.test(c));
+  const statusIdx = found === -1 ? table.columns.length - 1 : found;
+  const statuses = [...new Set(table.rows.map((r) => r[statusIdx]).filter(Boolean))];
+  const matching = (ui.filters ?? []).filter((f) => !/^all$/i.test(f) && cells.some((c) => c.includes(f.toLowerCase())));
+  const filters = ["All", ...(matching.length >= 2 ? matching : statuses).slice(0, 4)];
+  return {
+    ...ui,
+    kpis,
+    filters: [...new Set(filters)],
+    table,
+    detailPanels: hasPanels ? ui.detailPanels : base.detailPanels,
+    primaryActions: ui.primaryActions?.length ? ui.primaryActions : base.primaryActions,
+    benchmarkNote: ui.benchmarkNote?.trim() || base.benchmarkNote,
   };
 }
 

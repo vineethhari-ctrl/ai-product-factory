@@ -29,6 +29,7 @@
     "check:proposal": "tsx scripts/proposal.check.ts",
     "check:depth": "tsx scripts/depth.check.ts",
     "check:stream": "tsx scripts/stream.check.ts",
+    "check:skeleton": "tsx scripts/skeleton.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {
