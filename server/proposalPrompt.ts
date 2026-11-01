@@ -28,6 +28,7 @@ ${added}
 
 NUMBERS ALREADY COMPUTED (use exactly these, never change or add one):
 - Effort: ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical)
+- The effort already includes a ${state.rateCard.changeBufferPct ?? 15}% clarification and change buffer, shown as its own activity. It covers rework inside the approved scope only, never new requirements.
 - Indicative duration: ${est.durationWeeks} weeks
 - Estimated fee ${money(est.subtotal)} + ${state.rateCard.contingencyPct}% contingency ${money(est.contingency)} = ${money(est.total)} (${est.currency}, excluding taxes)
 - Phases: ${est.phases.map((p) => `${p.phase} (${p.weeks} weeks, ${Math.round(p.days)} days)`).join("; ")}

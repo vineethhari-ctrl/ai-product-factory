@@ -86,6 +86,13 @@ Integrations: Dealer management system; vehicle master; finance ERP.`;
 
   t("the default currency is INR, with Indian digit grouping", state.rateCard.currency === "INR" && /^₹\s?\d{1,2},\d{2},\d{3}$/.test(E.formatMoney(123456, "INR")) && E.formatMoney(5000000, "INR").includes("50,00,000") && est.currency === "INR");
   t("an untouched old USD default is upgraded; an edited card is kept", E.currentProposalState({ docKind: "Proposal", rateCard: { ...state.rateCard, currency: "USD", isDefault: true } }).rateCard.currency === "INR" && E.currentProposalState({ docKind: "Proposal", rateCard: { ...state.rateCard, currency: "USD", isDefault: false } }).rateCard.currency === "USD");
+  const buf = est.activities.find((a) => a.id === "act-buffer")!;
+  const others = est.activities.filter((a) => a.id !== "act-buffer");
+  const othersDays = others.reduce((n, a) => n + a.functionalDays + a.technicalDays, 0);
+  t("a visible 15% clarification and change buffer is its own activity, 15% of all other effort", state.rateCard.changeBufferPct === 15 && !!buf && Math.abs(buf.functionalDays + buf.technicalDays - othersDays * 0.15) < 0.6 && /new requirements/i.test(buf.covers), `${buf?.functionalDays + buf?.technicalDays} vs ${othersDays * 0.15}`);
+  t("the buffer is in the total, the team's days and the cost", Math.abs(est.totalDays - othersDays - (buf.functionalDays + buf.technicalDays)) < 0.2 && est.team.reduce((n, r) => n + r.days, 0) > othersDays);
+  t("changing the buffer percent changes the days; 0% removes the line", E.buildEstimate(def, all, { ...state, rateCard: { ...state.rateCard, changeBufferPct: 30 } }).totalDays > est.totalDays && !E.buildEstimate(def, all, { ...state, rateCard: { ...state.rateCard, changeBufferPct: 0 } }).activities.some((a) => a.id === "act-buffer"));
+  t("an old saved card without the buffer gets the default", E.currentProposalState({ docKind: "Proposal", rateCard: { ...state.rateCard, changeBufferPct: undefined, isDefault: false } }).rateCard.changeBufferPct === 15);
   // ── RASIC ──
   const rows = est.rasic.rows;
   t("RASIC has a row per activity and a cell per party", rows.length === est.activities.length && rows.every((r) => r.cells.length === est.rasic.parties.length));
@@ -93,6 +100,7 @@ Integrations: Dealer management system; vehicle master; finance ERP.`;
   t("only R A S I C or blank are used", rows.every((r) => r.cells.every((c) => ["R", "A", "S", "I", "C", ""].includes(c))));
 
   // ── narrative, document, AI path ──
+
   const N = await import("../src/services/proposalNarrative");
   const D = await import("../src/services/proposalDoc");
   const { generateProposalNarrative, reconcileScope } = await import("../server/proposalService");
@@ -103,6 +111,8 @@ Integrations: Dealer management system; vehicle master; finance ERP.`;
   const estCut = E.buildEstimate(def, cut, state);
   const nOff = N.buildProposalNarrative(def, cut, estCut, state);
   t("offline narrative says what the business removed, and states the real total", nOff.origin === "OFFLINE" && nOff.exclusions.some((x) => x.includes(mod.name)) && nOff.executiveSummary.includes(E.formatMoney(estCut.total, "INR")) && nOff.executiveSummary.includes(mod.name));
+  const nText = JSON.stringify(N.buildProposalNarrative(def, all, est, state));
+  t("the narrative says the buffer is for rework inside the approved scope and that unapproved requests are not changes", nText.includes("15% buffer for clarifications and rework inside the approved scope") && nText.includes("not changes until approved"));
   const secs = D.proposalSections(def, cut, estCut, state, nOff);
   const flat = JSON.stringify(secs);
   const firstCol = (id: string) => (secs.find((x) => x.id === "scope")!.blocks.filter((b): b is Extract<typeof b, { kind: "table" }> => b.kind === "table" && b.head[0] === id).flatMap((b) => b.rows.map((r) => r[0])));

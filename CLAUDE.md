@@ -405,7 +405,9 @@ The BU may trim the BRD before approving it, so the proposal is built from the *
 - **Estimate** (`src/services/estimate.ts`, pure, browser + server): high-level person-days per activity, split **functional /
   technical**, each row with its `basis`: mobilise, requirements, architecture, UX design, platform, one build activity per module
   (screens by layout + share of records and rules), one per integration, hardening, test (~2 cases per rule + 1 per screen/journey),
-  performance/security, UAT, training, deploy, hypercare, project management (12% of the rest). The BA can change any figure
+  performance/security, UAT, training, deploy, hypercare, project management (12% of the rest), and a visible **requirements clarification
+  and change buffer** (`rateCard.changeBufferPct`, default 15% of ALL other effort, its own row, spread over the roles; covers rework inside the
+  approved scope only, never new requirements; the narrative adds that unapproved requests are not changes). It is separate from the 15% cost contingency. The BA can change any figure
   (`proposal.adjustments`, flagged "adjusted"). `ROLES` (8), `defaultRateCard` (illustrative INR day rates, Indian digit grouping via `formatMoney`; `isDefault` until edited, `currentProposalState` upgrades an untouched old USD default;
   currency, contingency %, utilisation, max people per role). Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
   management spread by share), milestones (payment %, amounts add up to the total exactly), duration, **RASIC** (`RASIC_PARTIES` x

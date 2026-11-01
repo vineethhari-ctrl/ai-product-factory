@@ -694,8 +694,10 @@ export interface RateCard {
   currency: string;
   /** Day rate per role, in `currency`. */
   rates: Record<ResourceRole, number>;
-  /** Contingency added on top of the estimate, percent. */
+  /** Contingency added on top of the estimate, percent (cost). */
   contingencyPct: number;
+  /** Requirements clarification and change buffer, percent of all other effort (days). Shown as its own line. */
+  changeBufferPct?: number;
   /** Productive share of a working day (meetings, leave). */
   utilisation: number;
   /** Most people the vendor puts on one role at once (sets the indicative duration). */
