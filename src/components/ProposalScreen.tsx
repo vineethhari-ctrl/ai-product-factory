@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Briefcase, CheckCircle2, Download, FileText, Plus, Sparkles, Trash2, Upload, AlertTriangle, Copy, RotateCcw } from 'lucide-react';
 import type { ProductDefinition, ProposalState, ResourceRole, ScopeBaseline, ScopeKind } from '../types';
 import { addScopeItem, currentScope, removeNewItem, scopeCounts, setIncluded, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from '../services/scope';
-import { buildEstimate, currentProposalState, formatMoney, ROLES } from '../services/estimate';
+import { buildEstimate, currentProposalState, formatMoney, ROLES, toMonths } from '../services/estimate';
 import { currentNarrative, documentTitle, proposalHtml, proposalMarkdown, proposalSections } from '../services/proposalDoc';
 import type { Block } from '../services/proposalDoc';
 import { extractMaterialText } from '../services/materialExtractor';
@@ -97,7 +97,7 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
           <p className="text-xs text-slate-500 max-w-3xl mt-1">Everything here is built from the scope the BU approved, not the first draft. Confirm what the BU kept, cut or added, then check the effort and rates, then write the document.</p>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="px-3 py-2 rounded-xl border border-slate-200 bg-white"><div className="text-[10px] uppercase text-slate-500 font-semibold">Effort</div><div className="text-sm font-bold text-slate-900">{d1(est.totalDays)} days</div></div>
+          <div className="px-3 py-2 rounded-xl border border-slate-200 bg-white"><div className="text-[10px] uppercase text-slate-500 font-semibold">Effort</div><div className="text-sm font-bold text-slate-900">{d1(est.totalDays)} days <span className="text-slate-500 font-semibold">({toMonths(est.totalDays, est.daysPerMonth).toFixed(1)} PM)</span></div></div>
           <div className="px-3 py-2 rounded-xl border border-slate-200 bg-white"><div className="text-[10px] uppercase text-slate-500 font-semibold">Duration</div><div className="text-sm font-bold text-slate-900">~{est.durationWeeks} weeks</div></div>
           <div className="px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50"><div className="text-[10px] uppercase text-indigo-600 font-semibold">Total</div><div className="text-sm font-bold text-indigo-900">{money(est.total)}</div></div>
         </div>
@@ -224,6 +224,36 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
             </tbody>
             <tfoot className="bg-slate-50 font-bold text-slate-900"><tr><td className="px-3 py-2" colSpan={2}>Total</td><td className="px-3 py-2 text-center">{d1(est.functionalDays)}</td><td className="px-3 py-2 text-center">{d1(est.technicalDays)}</td><td className="px-3 py-2 text-center">{d1(est.totalDays)}</td><td /></tr></tfoot>
           </table>
+          <div className="px-4 py-3 border-t border-slate-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-bold text-slate-900">Effort in person-months</h3>
+              <label className="text-[11px] text-slate-500 font-semibold">Working days in a person-month <input type="number" min={1} max={31} value={est.daysPerMonth} onChange={(e) => setCard({ daysPerMonth: Math.min(31, Math.max(1, Math.round(Number(e.target.value) || 20))) })} className="ml-1 w-16 text-center text-xs border border-slate-300 rounded px-1 py-1 text-slate-900" /></label>
+            </div>
+            <div className="grid lg:grid-cols-3 gap-4">
+              <table className="w-full text-xs border border-slate-200">
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="text-left px-2 py-1.5">Role</th><th className="px-2 py-1.5">Person-months</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{est.team.map((r) => <tr key={r.role}><td className="px-2 py-1.5 font-semibold text-slate-900">{r.role}</td><td className="px-2 py-1.5 text-center">{toMonths(r.days, est.daysPerMonth).toFixed(2)}</td></tr>)}</tbody>
+                <tfoot className="bg-slate-50 font-bold"><tr><td className="px-2 py-1.5">Total</td><td className="px-2 py-1.5 text-center">{toMonths(est.totalDays, est.daysPerMonth).toFixed(2)}</td></tr></tfoot>
+              </table>
+              <table className="w-full text-xs border border-slate-200">
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="text-left px-2 py-1.5">Phase</th><th className="px-2 py-1.5">Weeks</th><th className="px-2 py-1.5">Person-months</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{est.phases.map((p) => <tr key={p.phase}><td className="px-2 py-1.5 font-semibold text-slate-900">{p.phase}</td><td className="px-2 py-1.5 text-center">{p.weeks}</td><td className="px-2 py-1.5 text-center">{toMonths(p.days, est.daysPerMonth).toFixed(2)}</td></tr>)}</tbody>
+                <tfoot className="bg-slate-50 font-bold"><tr><td className="px-2 py-1.5">Total</td><td className="px-2 py-1.5 text-center">{est.durationWeeks}</td><td className="px-2 py-1.5 text-center">{toMonths(est.totalDays, est.daysPerMonth).toFixed(2)}</td></tr></tfoot>
+              </table>
+              <table className="w-full text-xs border border-slate-200">
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="text-left px-2 py-1.5">Functional / technical</th><th className="px-2 py-1.5">Person-months</th></tr></thead>
+                <tbody className="divide-y divide-slate-100"><tr><td className="px-2 py-1.5 font-semibold text-slate-900">Functional</td><td className="px-2 py-1.5 text-center">{toMonths(est.functionalDays, est.daysPerMonth).toFixed(2)}</td></tr><tr><td className="px-2 py-1.5 font-semibold text-slate-900">Technical</td><td className="px-2 py-1.5 text-center">{toMonths(est.technicalDays, est.daysPerMonth).toFixed(2)}</td></tr></tbody>
+                <tfoot className="bg-slate-50 font-bold"><tr><td className="px-2 py-1.5">Total</td><td className="px-2 py-1.5 text-center">{toMonths(est.totalDays, est.daysPerMonth).toFixed(2)}</td></tr></tfoot>
+              </table>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border border-slate-200">
+                <thead className="bg-slate-50 text-slate-500"><tr><th className="text-left px-2 py-1.5">Activity</th><th className="px-2 py-1.5">Functional (PM)</th><th className="px-2 py-1.5">Technical (PM)</th><th className="px-2 py-1.5">Total (PM)</th></tr></thead>
+                <tbody className="divide-y divide-slate-100">{est.activities.map((a) => <tr key={a.id}><td className="px-2 py-1.5 font-semibold text-slate-900">{a.name}</td><td className="px-2 py-1.5 text-center">{toMonths(a.functionalDays, est.daysPerMonth).toFixed(2)}</td><td className="px-2 py-1.5 text-center">{toMonths(a.technicalDays, est.daysPerMonth).toFixed(2)}</td><td className="px-2 py-1.5 text-center font-semibold">{toMonths(a.functionalDays + a.technicalDays, est.daysPerMonth).toFixed(2)}</td></tr>)}</tbody>
+                <tfoot className="bg-slate-50 font-bold"><tr><td className="px-2 py-1.5">Total</td><td className="px-2 py-1.5 text-center">{toMonths(est.functionalDays, est.daysPerMonth).toFixed(2)}</td><td className="px-2 py-1.5 text-center">{toMonths(est.technicalDays, est.daysPerMonth).toFixed(2)}</td><td className="px-2 py-1.5 text-center">{toMonths(est.totalDays, est.daysPerMonth).toFixed(2)}</td></tr></tfoot>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,7 +1,7 @@
 import type { Estimate, ProductDefinition, ProposalState, ScopeBaseline } from "../src/types";
 import { definitionDigest } from "./definitionDigest";
 import { addedItems, removedItems } from "../src/services/proposalNarrative";
-import { formatMoney } from "../src/services/estimate";
+import { formatMoney, toMonths } from "../src/services/estimate";
 
 /**
  * Prompt for the proposal / SOW narrative. The model gets the APPROVED BRD (what the business kept, plus what it added),
@@ -27,7 +27,7 @@ ADDED BY THE BUSINESS (in scope, but newly added and lightly specified; note the
 ${added}
 
 NUMBERS ALREADY COMPUTED (use exactly these, never change or add one):
-- Effort: ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical)
+- Effort: ${Math.round(est.totalDays)} person-days, ${toMonths(est.totalDays, est.daysPerMonth).toFixed(1)} person-months at ${est.daysPerMonth} working days a month (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical)
 - The effort estimates include a general allowance for clarification, rework and risk within the approved scope. You may say that an allowance is included, but never give a percentage, a number of days or a line for it.
 - Indicative duration: ${est.durationWeeks} weeks
 - Estimated fee ${money(est.total)} (${est.currency}, excluding taxes)

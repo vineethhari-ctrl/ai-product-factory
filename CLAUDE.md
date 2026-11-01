@@ -412,7 +412,9 @@ The BU may trim the BRD before approving it, so the proposal is built from the *
   "Internal pricing" on the Cost & team tab (collapsed). A figure the BA types is final (not scaled). The price is exactly days x rate: there is no cost contingency and
   rates are never adjusted (an activity of 10 days is shown as 11.5; the total is scaled then split, half-up to one decimal). The BA can change any figure
   (`proposal.adjustments`, flagged "adjusted"). `ROLES` (8), `defaultRateCard` (illustrative INR day rates, Indian digit grouping via `formatMoney`; `isDefault` until edited, `currentProposalState` upgrades an untouched old USD default;
-  currency, utilisation, max people per role). Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
+  currency, utilisation, max people per role, `daysPerMonth` default 20). **Person-months** (`toMonths`, `rateCard.daysPerMonth`): the Effort tab and a
+  document section "Effort in person-months" show the same effort by activity (functional / technical / total), by role and by phase; the month
+  length is stated in the document and changes months only, never days or cost. Each activity's roles add up to its total exactly. Team (days, rate, cost, indicative people), phases (weeks, days, cost; project
   management spread by share), milestones (payment %, amounts add up to the total exactly), duration, **RASIC** (`RASIC_PARTIES` x
   activity type; one A and at least one R per row). Numbers are never asked of a model.
 - **Words** (`src/services/proposalNarrative.ts`, rules-based baseline; `server/proposalService.ts` + `server/proposalPrompt.ts`, task

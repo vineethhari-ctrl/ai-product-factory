@@ -1,6 +1,6 @@
 import type { Estimate, ProductDefinition, ProposalNarrative, ProposalState, ScopeBaseline } from '../types';
 import { applyScope, scopeSignature } from './scope';
-import { formatMoney } from './estimate';
+import { formatMoney, toMonths } from './estimate';
 import { addedItems, buildProposalNarrative, removedItems } from './proposalNarrative';
 
 /**
@@ -68,6 +68,16 @@ export function proposalSections(def: ProductDefinition, scope: ScopeBaseline, e
     { kind: 'table', head: ['Activity', 'Phase', 'Functional days', 'Technical days', 'Total days', 'How estimated'],
       rows: est.activities.map((x) => [x.adjusted ? `${x.name} (adjusted)` : x.name, x.phase, d1(x.functionalDays), d1(x.technicalDays), d1(x.functionalDays + x.technicalDays), x.basis]),
       foot: ['Total', '', d1(est.functionalDays), d1(est.technicalDays), d1(est.totalDays), ''] },
+  ] });
+
+  const m = (days: number) => toMonths(days, est.daysPerMonth).toFixed(2);
+  s.push({ id: 'months', title: 'Effort in person-months', blocks: [
+    { kind: 'p', text: `One person-month is ${est.daysPerMonth} working days. The figures below are the same effort as the previous section, in months.` },
+    { kind: 'table', head: ['Activity', 'Functional (person-months)', 'Technical (person-months)', 'Total (person-months)'],
+      rows: est.activities.map((x) => [x.name, m(x.functionalDays), m(x.technicalDays), m(x.functionalDays + x.technicalDays)]),
+      foot: ['Total', m(est.functionalDays), m(est.technicalDays), m(est.totalDays)] },
+    { kind: 'table', head: ['Role', 'Person-months', 'Indicative people'], rows: est.team.map((r) => [r.role, m(r.days), d1(r.fte)]), foot: ['Total', m(est.totalDays), ''] },
+    { kind: 'table', head: ['Phase', 'Indicative weeks', 'Person-months'], rows: est.phases.map((p) => [p.phase, String(p.weeks), m(p.days)]), foot: ['Total', String(est.durationWeeks), m(est.totalDays)] },
   ] });
 
   s.push({ id: 'cost', title: 'Team and cost', blocks: [

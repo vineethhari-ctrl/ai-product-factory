@@ -698,6 +698,8 @@ export interface RateCard {
   contingencyPct?: number;
   /** Estimating allowance, percent, built into every activity's days (not a separate line). Internal pricing. */
   allowancePct?: number;
+  /** Working days in one person-month (the proposal states it). Default 20. */
+  daysPerMonth?: number;
   /** Productive share of a working day (meetings, leave). */
   utilisation: number;
   /** Most people the vendor puts on one role at once (sets the indicative duration). */
@@ -774,4 +776,6 @@ export interface Estimate {
   total: number;
   durationWeeks: number;
   currency: string;
+  /** Working days in a person-month used for the person-month tables. */
+  daysPerMonth: number;
 }

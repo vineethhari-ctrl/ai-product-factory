@@ -22,6 +22,12 @@ export const ROLES: ResourceRole[] = [
  */
 export const DEFAULT_ALLOWANCE_PCT = 15;
 
+/** Working days in one person-month, the usual convention for effort tables. */
+export const DEFAULT_DAYS_PER_MONTH = 20;
+
+/** Person-months for a number of person-days, to two decimals. */
+export const toMonths = (days: number, daysPerMonth: number) => Math.round((days / Math.max(1, daysPerMonth)) * 100) / 100;
+
 export function defaultRateCard(): RateCard {
   return {
     currency: 'INR',
@@ -31,6 +37,7 @@ export function defaultRateCard(): RateCard {
       'Frontend Developer': 8000, 'Backend Developer': 9000, 'QA Engineer': 6500, 'DevOps Engineer': 9500,
     },
     allowancePct: DEFAULT_ALLOWANCE_PCT,
+    daysPerMonth: DEFAULT_DAYS_PER_MONTH,
     utilisation: 0.85,
     maxPerRole: 4,
     isDefault: true,
@@ -46,7 +53,9 @@ export function currentProposalState(saved?: ProposalState): ProposalState {
   if (!saved) return defaultProposalState();
   if (saved.rateCard.isDefault && saved.rateCard.currency === 'USD') return { ...saved, rateCard: defaultRateCard() };
   // A proposal saved before the allowance existed gets the default.
-  if (saved.rateCard.allowancePct === undefined) return { ...saved, rateCard: { ...saved.rateCard, allowancePct: DEFAULT_ALLOWANCE_PCT } };
+  if (saved.rateCard.allowancePct === undefined || saved.rateCard.daysPerMonth === undefined) {
+    return { ...saved, rateCard: { ...saved.rateCard, allowancePct: saved.rateCard.allowancePct ?? DEFAULT_ALLOWANCE_PCT, daysPerMonth: saved.rateCard.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH } };
+  }
   return saved;
 }
 
@@ -102,6 +111,15 @@ function split(type: ActivityType, functionalDays: number, technicalDays: number
   add(FUNC_MIX[type], functionalDays);
   add(TECH_MIX[type], technicalDays);
   for (const r of Object.keys(out) as ResourceRole[]) out[r] = round1(out[r]!);
+  // Rounding each role can drift from the activity's own total: give the difference to the biggest role so they always add up.
+  const roles = Object.keys(out) as ResourceRole[];
+  if (roles.length) {
+    const drift = round1(round1(functionalDays + technicalDays) - roles.reduce((n, r) => n + out[r]!, 0));
+    if (drift !== 0) {
+      const biggest = roles.reduce((a, b) => (out[b]! > out[a]! ? b : a));
+      out[biggest] = round1(out[biggest]! + drift);
+    }
+  }
   return out;
 }
 
@@ -316,6 +334,7 @@ export function buildEstimate(def: ProductDefinition, scope: ScopeBaseline, stat
     activities, phases, team, milestones, rasic: rasicFor(activities),
     functionalDays, technicalDays, totalDays: round1(functionalDays + technicalDays),
     subtotal, total, durationWeeks: phaseWeeks.reduce((n, w) => n + w, 0), currency: rc.currency || 'USD',
+    daysPerMonth: Math.max(1, rc.daysPerMonth ?? DEFAULT_DAYS_PER_MONTH),
   };
 }
 

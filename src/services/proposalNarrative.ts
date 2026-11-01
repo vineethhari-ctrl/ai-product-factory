@@ -1,6 +1,6 @@
 import type { Estimate, ProductDefinition, ProposalNarrative, ProposalState, ScopeBaseline } from '../types';
 import { applyScope, scopeCounts, scopeSignature, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from './scope';
-import { formatMoney } from './estimate';
+import { formatMoney, toMonths } from './estimate';
 
 /**
  * The words of the proposal. This rules-based version is the baseline (and the answer when no model is configured):
@@ -43,7 +43,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
   return {
     origin: 'OFFLINE',
     basedOn: scopeSignature(scope),
-    executiveSummary: `${vendor} proposes to deliver ${a.productName} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)}.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
+    executiveSummary: `${vendor} proposes to deliver ${a.productName} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days, about ${toMonths(est.totalDays, est.daysPerMonth).toFixed(1)} person-months (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)}.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
     background: (a.problemStatement?.length ? a.problemStatement : [a.objective]).filter(Boolean),
     objectives: [a.objective, ...(a.successMetrics ?? []).map((m) => `Measure: ${m}`)].filter(Boolean),
     approach: est.phases.map(phaseLine),
