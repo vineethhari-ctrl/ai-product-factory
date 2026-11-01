@@ -180,10 +180,29 @@ async function generate(ai: GoogleGenAI, params: Parameters<GoogleGenAI["models"
     const info = chunks
       ? `stream: ${chunks} chunk(s), ${text.length} chars; first data after ${secs(firstAt - started)}, last data ${secs(Date.now() - lastAt)} before the failure; failed after ${secs(Date.now() - started)}`
       : `stream: no data received; failed after ${secs(Date.now() - started)}`;
-    if (err && typeof err === "object") (err as { streamInfo?: string }).streamInfo = info;
+    if (err && typeof err === "object") Object.assign(err, { streamInfo: info, partialText: text });
     throw err;
   }
   return { text, candidates: [{ finishReason, groundingMetadata: grounding.length ? { groundingChunks: grounding } : undefined }], usageMetadata: usage };
+}
+
+
+/**
+ * The text a dropped stream delivered, when it is a COMPLETE answer: one JSON document that parses strictly as a whole.
+ * A cut-off answer can never pass, because the outer object closes only at the very end. Long answers have been seen to
+ * arrive in full and then lose the connection before the stream's final message; this keeps them instead of paying for
+ * the same answer again.
+ */
+export function completeAnswer(text: string | undefined): string | null {
+  if (!text) return null;
+  const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  if (!clean.startsWith("{") && !clean.startsWith("[")) return null;
+  try {
+    JSON.parse(clean);
+    return clean;
+  } catch {
+    return null;
+  }
 }
 
 /** One corrective turn: the original request, the model's answer, and the list of problems. Text, or null. */
@@ -282,6 +301,19 @@ async function callModel<S extends z.ZodType>(
       fail(model, "bad-answer", task, second && !second.ok ? second.detail : first.detail);
       return { kind: "bad-answer" };
     } catch (err: any) {
+      // The connection dropped after a complete answer arrived: use it (tokens estimated, the stream's usage report was lost).
+      const whole = completeAnswer(err?.partialText);
+      if (whole) {
+        const salvaged = interpret(whole, schema, coerce, []);
+        // Stricter than a normally finished answer: nothing may have to be invented ("missing ... set to"); conversions are fine.
+        if (salvaged.ok && salvaged.repairs.every((r) => !/\bmissing\b/i.test(r))) {
+          recordTokens(task, model, Math.round(prompt.length / 4), Math.round(whole.length / 4));
+          recordAnswerRepairs(salvaged.repairs);
+          console.warn(`[AI Engine] ${task}: ${model} connection dropped after the answer was complete (${err.streamInfo ?? "no stream timing"}); the complete answer is used.`);
+          logServed(task, model, started, undefined, maxTokens, salvaged.repairs);
+          return { data: salvaged.data };
+        }
+      }
       const kind = classifyGeminiError(err);
       // A dropped connection is worth another try; a missing sign-in is not.
       const dropped = kind === "network" && /fetch failed|terminated|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket|other side closed|UND_ERR/i.test(errorText(err));

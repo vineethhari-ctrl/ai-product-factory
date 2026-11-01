@@ -67,7 +67,11 @@ the numbers can be tightened toward the spec once real usage is visible.
 
 ### Failure handling
 - Gemini: 429/503 and dropped connections retried 3x per model (`retryDelay`: a 429 waits 10 s then 25 s, because the fallback model is weaker;
-  503 / network 1.5 s, 3 s; `AI_RETRY_SCALE` scales the waits). A retry or failure logs the error and the stream timing (first / last data). Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
+  503 / network 1.5 s, 3 s; `AI_RETRY_SCALE` scales the waits). A retry or failure logs the error and the stream timing (first / last data).
+  **A dropped stream keeps a complete answer** (`completeAnswer`): long answers were seen to arrive in full and lose the connection before
+  the stream's final message (cut at ~370 s in the cloud test environment). If the delivered text parses strictly as one whole JSON document
+  (a cut-off one never does) and fits the schema with no field invented, it is used and tokens are estimated; otherwise the attempt is
+  retried as before. `npm run check:stream` covers it. Then, or on a 404, a cut-off (`MAX_TOKENS`), empty or
   schema-invalid response, the **second Gemini model** is tried (`geminiModels`: Argon -> Pro, Pro -> Flash, Flash -> Pro, also when `AI_GEMINI_MODEL_<TASK>` is set;
   `AI_GEMINI_FALLBACK_<TASK>` overrides, `none` turns it off), then the task's next provider. A rejected key
   skips the second model.
@@ -317,7 +321,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
