@@ -11,7 +11,7 @@
 //
 // Costs real tokens (roughly 100-250k per product). Usage limits are off for this run and it is not added to the
 // team's usage log. The report is written to live-check-report.md (not committed to git).
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -27,6 +27,9 @@ const { analyzeBusinessMaterial, generateProductDefinition, generatePrototypeUI 
 const { AIUnavailableError } = await import("../server/llmRouter");
 const { generateTestSuite } = await import("../server/testSuiteService");
 const { generateEngineeringPlan, attachPlan } = await import("../server/engineeringPlan");
+const { generateApproachNote } = await import("../server/approachNoteService");
+const { approachNoteText } = await import("../src/services/approachNote");
+const { buildProjectFile } = await import("../src/services/projectFile");
 const { generateEngineeringPackageData } = await import("../server/aiReasoningService");
 const { reconcileScope, generateProposalNarrative } = await import("../server/proposalService");
 const Scope = await import("../src/services/scope");
@@ -47,7 +50,9 @@ const count = Number(args.find((a) => /^\d+$/.test(a)) ?? 2);
 const named = args.filter((a) => !/^\d+$/.test(a)).map((n): [string, string] => [n, "Business Unit"]);
 const products = named.length ? named : SAMPLES.slice(0, Math.max(1, Math.min(count, SAMPLES.length)));
 
-if (!hasProviderKey("gemini") && !hasProviderKey("claude")) {
+// LIVE_CHECK_DRY=1 runs the whole script on the offline engine (no key, no cost): for testing the script itself.
+const dry = process.env.LIVE_CHECK_DRY === "1";
+if (!dry && !hasProviderKey("gemini") && !hasProviderKey("claude")) {
   console.error("No AI key found. Put GEMINI_API_KEY (or ANTHROPIC_API_KEY) in the .env file in this folder, then run again.");
   process.exit(1);
 }
@@ -61,7 +66,7 @@ interface StepResult {
   checks: Array<[string, boolean]>;
 }
 
-const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const pause = (ms: number) => new Promise((r) => setTimeout(r, process.env.LIVE_CHECK_DRY === "1" ? 0 : ms));
 
 async function step<T>(name: string, fn: () => Promise<T>, check: (r: T) => Array<[string, boolean]>): Promise<{ result: StepResult; value: T | null }> {
   const started = Date.now();
@@ -94,9 +99,36 @@ out(`Gemini service: ${geminiAuth() ? (geminiBackend() === "vertex" ? "Vertex AI
 out("Routing used:");
 for (const l of describeRouting()) out(`- ${l}`);
 
+
+/** A test case a QA lead would send back: fewer than 3 steps, or an expected result too short to be measurable. */
+const weakTestCase = (t: { executionSteps: string[]; expectedResult: string }) => t.executionSteps.length < 3 || t.expectedResult.trim().length <= 30;
+
+/** The test suite as a readable document. */
+function testSuiteMarkdown(name: string, ts: any): string {
+  const out: string[] = [`# Use cases and test suite: ${name}`, "", `Written by: ${ts.origin === "AI" ? "the AI" : "rules"}. Coverage: rules ${ts.coverage.rulesCovered}/${ts.coverage.rulesTotal}, journeys ${ts.coverage.journeysCovered}/${ts.coverage.journeysTotal}, records ${ts.coverage.entitiesCovered}/${ts.coverage.entitiesTotal}.`, ""];
+  out.push("## Use cases", "");
+  for (const u of ts.useCases ?? []) {
+    out.push(`### ${u.id ?? ""} ${u.title ?? u.name ?? ""}`.trim());
+    for (const [k, v] of Object.entries(u)) if (!["id", "title", "name"].includes(k)) out.push(`- **${k}:** ${Array.isArray(v) ? (v as unknown[]).map((x) => (typeof x === "string" ? x : x && typeof x === "object" ? Object.values(x as Record<string, unknown>).map(String).join(": ") : String(x))).join(" | ") : typeof v === "string" ? v : JSON.stringify(v)}`);
+    out.push("");
+  }
+  out.push("## Scenario matrix", "", "| ID | Type | Module | Objective | Rule | Risk | How verified |", "|---|---|---|---|---|---|---|");
+  for (const sc of ts.scenarios ?? []) out.push(`| ${sc.id} | ${sc.type} | ${sc.module} | ${String(sc.objective).replace(/\|/g, "/")} | ${sc.ruleCode} | ${sc.riskRating} | ${String(sc.verificationMethod).replace(/\|/g, "/")} |`);
+  out.push("", "## Test cases", "");
+  for (const tc of ts.testCases ?? []) {
+    out.push(`### ${tc.id}: ${tc.title}${weakTestCase(tc) ? "  (needs work: fewer than 3 steps or a vague expected result)" : ""}`, `- Vector: ${tc.vector}; module: ${tc.targetModule}`, `- Preconditions: ${tc.preconditions}`, `- Payload: \`${tc.testPayload}\``, "- Steps:", ...tc.executionSteps.map((x: string, i: number) => `  ${i + 1}. ${x}`), `- Expected: ${tc.expectedResult}`, `- Traces: ${(tc.traces ?? []).join(", ")}`, "");
+  }
+  out.push("## Gherkin feature", "", "```gherkin", ts.gherkinFeature ?? "", "```");
+  return out.join("\n");
+}
+
+const slug = (x: string) => x.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "product";
+
 let totalTokens = 0, totalCost = 0;
+const outputs = new Map<string, string>();
 const lastPrototype = new Map<string, string[]>();
 const part2Notes = new Map<string, string>();
+const weakNotes = new Map<string, string>();
 for (const [i, [name, bu]] of products.entries()) {
   const user = `live-check-${i + 1}`, project = `live-${i + 1}`;
   console.log(`\n=== ${name} (${bu}) ===`);
@@ -143,7 +175,7 @@ for (const [i, [name, bu]] of products.entries()) {
       ["the AI itself covered the rules (nothing added by the server)", !ts.addedForCoverage?.length],
       ["every journey has a use case", ts.coverage.journeysCovered === ts.coverage.journeysTotal],
       ["test payloads use the product's own field names", (() => { const names = new Set(forDocs.dataEntities.flatMap((e) => e.fields.map((f) => f.name))); return ts.testCases.filter((t) => { try { return Object.keys(JSON.parse(t.testPayload)).some((k) => names.has(k)); } catch { return false; } }).length >= ts.testCases.length / 2; })()],
-      ["every test case has 3+ steps and a measurable expected result", ts.testCases.every((t) => t.executionSteps.length >= 3 && t.expectedResult.length > 30)],
+      ["every test case has 3+ steps and a measurable expected result", !ts.testCases.some(weakTestCase)],
       ["a Gherkin feature with outlines", /Scenario Outline/.test(ts.gherkinFeature) && ts.gherkinFeature.length > 600],
     ]);
     res.push(tsu.result);
@@ -158,6 +190,16 @@ for (const [i, [name, bu]] of products.entries()) {
       ["architecture overview of 250+ words", (pkg.plan?.architectureOverview.split(/\s+/).length ?? 0) >= 250],
     ]);
     res.push(eng.result);
+    await pause(4000);
+    const apn = await step("Approach Note", () => generateApproachNote(forDocs), (n) => [
+      ["written by the AI, not the rules-based stand-in", n.origin === "AI"],
+      ["every module is in the roadmap without the server adding it", !n.addedForCoverage?.length],
+      ["2+ real design options with a pick", n.alternatives.length >= 2 && n.alternatives.every((x) => x.recommendation.trim().length > 10)],
+      ["3 phases with exit criteria", n.phasedExecutionStrategy.length >= 3 && n.phasedExecutionStrategy.every((x) => (x.exitCriteria?.length ?? 0) >= 2)],
+      ["5+ specific risks with mitigations", n.keyRisksAndMitigations.length >= 5],
+      ["a proposed answer for most open questions", n.decisions.length === 0 || n.decisions.filter((x) => x.recommendation).length >= n.decisions.length * 0.8],
+    ]);
+    res.push(apn.result);
 
     // ── Part 2: approved scope, proposal ────────────────────────────────────────────────────────────────────────
     // A stand-in "final approved BRD" is written from the real BRD: the last module (and its screens) and the last rule are
@@ -233,6 +275,36 @@ for (const [i, [name, bu]] of products.entries()) {
       ];
     });
     res.push(prop.result);
+
+    // ── Save every document so the run can be read and opened in the app ────────────────────────────────────────
+    const folder = path.join("live-check-output", slug(name));
+    mkdirSync(folder, { recursive: true });
+    const finalDef = {
+      ...forDocs,
+      ...(tsu.value ? { testSuite: tsu.value } : {}),
+      ...(apn.value ? { approachNote: apn.value } : {}),
+      scopeBaseline: scopeForProposal,
+      proposal: { ...pstate, narrative: prop.value ?? undefined },
+    };
+    const projectState = {
+      activeScreen: "definition", productName: name, businessUnit: bu, description: "", materials: [],
+      businessUnderstanding: a.value, productDefinition: finalDef, engineeringPackage: eng.value ?? null, referenceImage: null,
+    };
+    writeFileSync(path.join(folder, `${slug(name)}_project.json`), JSON.stringify(buildProjectFile(projectState), null, 2));
+    if (eng.value) {
+      writeFileSync(path.join(folder, "1-BRD-and-Architecture.md"), eng.value.functionalRequirementsMarkdown);
+      writeFileSync(path.join(folder, "4-Data-Model.sql"), eng.value.dataModelSQL);
+    }
+    if (tsu.value) writeFileSync(path.join(folder, "2-Use-Cases-and-Tests.md"), testSuiteMarkdown(name, tsu.value));
+    if (apn.value) writeFileSync(path.join(folder, "3-Approach-Note.md"), approachNoteText(finalDef, apn.value));
+    if (prop.value) {
+      const sections = Doc.proposalSections(finalDef, scopeForProposal, estLive, pstate, prop.value);
+      writeFileSync(path.join(folder, "5-Proposal.md"), Doc.proposalMarkdown(finalDef, pstate, sections));
+      writeFileSync(path.join(folder, "5-Proposal.doc"), Doc.proposalHtml(finalDef, pstate, sections));
+    }
+    outputs.set(name, folder);
+    const weak = (tsu.value?.testCases ?? []).filter(weakTestCase);
+    if (weak.length) weakNotes.set(name, `Weak test cases (${weak.length} of ${tsu.value!.testCases.length}): ${weak.map((x) => `${x.id} (${x.executionSteps.length} step(s), expected ${x.expectedResult.trim().length} chars: "${x.expectedResult.trim().slice(0, 60)}")`).join("; ")}`);
     // Part 2 numbers (no AI): shown in the report so the estimate can be sanity-checked against past projects.
     part2Notes.set(name, `Part 2 estimate for the trimmed scope: ${Math.round(estLive.totalDays)} person-days (${Est.toMonths(estLive.totalDays, estLive.daysPerMonth).toFixed(1)} person-months), about ${estLive.durationWeeks} weeks, ${Est.formatMoney(estLive.total, estLive.currency)}; ${estLive.activities.length} activities; RASIC rows with one Accountable each: ${estLive.rasic.rows.every((r) => r.cells.filter((c) => c === "A").length === 1)}`);
     if (p.value) {
@@ -259,6 +331,8 @@ for (const [i, [name, bu]] of products.entries()) {
     out(`| ${r.step} | ${r.error ? "FAILED" : r.ok ? "ok" : "ok, but checks failed"} | ${r.seconds}s | ${calls || "-"} |`);
   }
   if (part2Notes.get(name)) { out(""); out(part2Notes.get(name)!); }
+  if (weakNotes.get(name)) { out(""); out(weakNotes.get(name)!); }
+  if (outputs.get(name)) { out(""); out(`Documents saved in ${outputs.get(name)}/ (open the _project.json in the app with Import to see everything, prototype included).`); }
   const docs = lastPrototype.get(name) ?? [];
   if (docs.length) {
     out("");

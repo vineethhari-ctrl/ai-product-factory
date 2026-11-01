@@ -10,3 +10,4 @@ data/
 
 # Live AI check report (may contain AI text about your products)
 live-check-report.md
+live-check-output/
