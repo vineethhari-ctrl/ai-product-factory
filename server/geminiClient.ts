@@ -85,7 +85,7 @@ const KIND_MESSAGE: Record<ProviderFailure["kind"], string> = {
 };
 
 function fail(model: string, kind: ProviderFailure["kind"], task: AITask, detail: string) {
-  console.warn(`[AI Engine] ${task}: ${model} failed (${kind}): ${detail.replace(/\s+/g, " ").slice(0, 200)}`);
+  console.warn(`[AI Engine] ${task}: ${model} failed (${kind}): ${detail.replace(/\s+/g, " ").slice(0, 400)}`);
   recordProviderFailure({ provider: "gemini", model, kind, message: `Gemini ${model} ${KIND_MESSAGE[kind]}` });
 }
 
@@ -148,13 +148,29 @@ async function generate(ai: GoogleGenAI, params: Parameters<GoogleGenAI["models"
   let finishReason: string | undefined;
   let usage: GeminiAnswer["usageMetadata"];
   const grounding: Array<{ web?: { uri?: string; title?: string } }> = [];
-  for await (const chunk of await models.generateContentStream(params)) {
-    const candidate = chunk?.candidates?.[0];
-    // Answer text only: thinking summaries are marked `thought` and are not part of the JSON.
-    for (const part of candidate?.content?.parts ?? []) if (typeof part?.text === "string" && !part.thought) text += part.text;
-    if (candidate?.finishReason) finishReason = candidate.finishReason;
-    if (chunk?.usageMetadata) usage = chunk.usageMetadata;
-    for (const g of candidate?.groundingMetadata?.groundingChunks ?? []) grounding.push(g);
+  // Timing of the stream, attached to any error so a dropped connection can be diagnosed (silence before the first byte,
+  // or a cut after a fixed time while data was flowing).
+  const started = Date.now();
+  let chunks = 0, firstAt = 0, lastAt = 0;
+  try {
+    for await (const chunk of await models.generateContentStream(params)) {
+      chunks++;
+      lastAt = Date.now();
+      if (!firstAt) firstAt = lastAt;
+      const candidate = chunk?.candidates?.[0];
+      // Answer text only: thinking summaries are marked `thought` and are not part of the JSON.
+      for (const part of candidate?.content?.parts ?? []) if (typeof part?.text === "string" && !part.thought) text += part.text;
+      if (candidate?.finishReason) finishReason = candidate.finishReason;
+      if (chunk?.usageMetadata) usage = chunk.usageMetadata;
+      for (const g of candidate?.groundingMetadata?.groundingChunks ?? []) grounding.push(g);
+    }
+  } catch (err: any) {
+    const secs = (ms: number) => `${Math.round(ms / 1000)}s`;
+    const info = chunks
+      ? `stream: ${chunks} chunk(s), ${text.length} chars; first data after ${secs(firstAt - started)}, last data ${secs(Date.now() - lastAt)} before the failure; failed after ${secs(Date.now() - started)}`
+      : `stream: no data received; failed after ${secs(Date.now() - started)}`;
+    if (err && typeof err === "object") (err as { streamInfo?: string }).streamInfo = info;
+    throw err;
   }
   return { text, candidates: [{ finishReason, groundingMetadata: grounding.length ? { groundingChunks: grounding } : undefined }], usageMetadata: usage };
 }
@@ -260,11 +276,11 @@ async function callModel<S extends z.ZodType>(
       const dropped = kind === "network" && /fetch failed|terminated|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket|other side closed|UND_ERR/i.test(errorText(err));
       if ((isTransient(kind) || dropped) && attempt < MAX_ATTEMPTS) {
         const delay = attempt * 1500;
-        console.warn(`[AI Engine] ${task}: ${model} ${kind} on attempt ${attempt}; retrying in ${delay}ms.`);
+        console.warn(`[AI Engine] ${task}: ${model} ${kind} on attempt ${attempt} (${errorText(err).replace(/\s+/g, " ").slice(0, 160)}${err?.streamInfo ? `; ${err.streamInfo}` : ""}); retrying in ${delay}ms.`);
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
-      fail(model, kind, task, errorText(err));
+      fail(model, kind, task, `${errorText(err)}${err?.streamInfo ? ` (${err.streamInfo})` : ""}`);
       return { kind };
     }
   }
