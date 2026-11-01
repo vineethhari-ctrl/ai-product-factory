@@ -50,7 +50,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
     deliverables: Array.from(new Set(est.activities.map((x) => x.deliverable))),
     assumptions: [
       'The scope is the BU-approved version; anything outside it is handled through change control.',
-      `The estimate includes a ${state.rateCard.changeBufferPct ?? 15}% buffer for clarifications and rework inside the approved scope. It does not cover new requirements.`,
+      'The estimates include an allowance for clarification, rework and risk within the approved scope. They do not cover new requirements.',
       'The business provides decision-makers and subject experts within the response times in the governance section.',
       'Day rates and effort are estimates for the approved scope; they are re-confirmed after the design phase.',
       ...pendingAssumptions.slice(0, 8),
@@ -79,7 +79,6 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
       'A change is raised in writing and described with the reason and the items it touches.',
       'The vendor estimates its effect on effort, cost and schedule at the rate card in this document.',
       'No change work starts until the business owner approves the estimate in writing. Requests made informally, in meetings or by email, are not changes until approved.',
-      'The clarification buffer is used only for rework inside the approved scope; once it is used up, further rework is estimated as a change.',
       'Approved changes update the scope baseline and this document.',
     ],
     governance: [

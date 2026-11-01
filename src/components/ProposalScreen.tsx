@@ -231,9 +231,8 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Rate card</h3>{state.rateCard.isDefault && <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Illustrative defaults: set your own rates</span>}</div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <label className="text-[11px] text-slate-500 font-semibold">Currency<input value={state.rateCard.currency} maxLength={3} onChange={(e) => setCard({ currency: e.target.value.toUpperCase() })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900 uppercase" /></label>
-              <label className="text-[11px] text-slate-500 font-semibold">Change buffer % (effort)<input type="number" min={0} max={100} value={state.rateCard.changeBufferPct ?? 15} onChange={(e) => setCard({ changeBufferPct: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
               <label className="text-[11px] text-slate-500 font-semibold">Contingency % (cost)<input type="number" min={0} max={100} value={state.rateCard.contingencyPct} onChange={(e) => setCard({ contingencyPct: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
               <label className="text-[11px] text-slate-500 font-semibold">Productive share of a day<input type="number" min={0.3} max={1} step={0.05} value={state.rateCard.utilisation} onChange={(e) => setCard({ utilisation: Math.min(1, Math.max(0.3, Number(e.target.value) || 0.85)) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
               <label className="text-[11px] text-slate-500 font-semibold">Most people per role<input type="number" min={1} max={20} value={state.rateCard.maxPerRole} onChange={(e) => setCard({ maxPerRole: Math.max(1, Math.round(Number(e.target.value) || 1)) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
@@ -244,6 +243,10 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
               ))}
             </div>
           </div>
+          <details className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs">
+            <summary className="cursor-pointer font-semibold text-slate-600">Internal pricing (never printed in the document)</summary>
+            <label className="block mt-2 text-[11px] text-slate-500 font-semibold max-w-xs">Estimating allowance % (built into every activity's days)<input type="number" min={0} max={100} value={state.rateCard.allowancePct ?? 15} onChange={(e) => setCard({ allowancePct: Math.max(0, Number(e.target.value) || 0) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
+          </details>
           <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-50 text-slate-500"><tr><th className="text-left px-3 py-2">Role</th><th className="px-3 py-2">Days</th><th className="px-3 py-2">Day rate</th><th className="px-3 py-2">Cost</th><th className="px-3 py-2">Indicative people</th></tr></thead>

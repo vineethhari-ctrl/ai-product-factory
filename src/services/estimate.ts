@@ -16,8 +16,11 @@ export const ROLES: ResourceRole[] = [
   'Frontend Developer', 'Backend Developer', 'QA Engineer', 'DevOps Engineer',
 ];
 
-/** Extra effort, as a share of everything else, for clarifications and rework inside the approved scope. */
-export const DEFAULT_CHANGE_BUFFER_PCT = 15;
+/**
+ * Estimating allowance (percent) built into every activity's days for clarification, rework and risk inside the approved
+ * scope. It is part of each estimate, not a line of its own, and the document states only that an allowance is included.
+ */
+export const DEFAULT_ALLOWANCE_PCT = 15;
 
 export function defaultRateCard(): RateCard {
   return {
@@ -28,7 +31,7 @@ export function defaultRateCard(): RateCard {
       'Frontend Developer': 8000, 'Backend Developer': 9000, 'QA Engineer': 6500, 'DevOps Engineer': 9500,
     },
     contingencyPct: 15,
-    changeBufferPct: DEFAULT_CHANGE_BUFFER_PCT,
+    allowancePct: DEFAULT_ALLOWANCE_PCT,
     utilisation: 0.85,
     maxPerRole: 4,
     isDefault: true,
@@ -43,8 +46,8 @@ export function defaultProposalState(): ProposalState {
 export function currentProposalState(saved?: ProposalState): ProposalState {
   if (!saved) return defaultProposalState();
   if (saved.rateCard.isDefault && saved.rateCard.currency === 'USD') return { ...saved, rateCard: defaultRateCard() };
-  // A proposal saved before the buffer existed gets the default buffer.
-  if (saved.rateCard.changeBufferPct === undefined) return { ...saved, rateCard: { ...saved.rateCard, changeBufferPct: DEFAULT_CHANGE_BUFFER_PCT } };
+  // A proposal saved before the allowance existed gets the default.
+  if (saved.rateCard.allowancePct === undefined) return { ...saved, rateCard: { ...saved.rateCard, allowancePct: DEFAULT_ALLOWANCE_PCT } };
   return saved;
 }
 
@@ -173,14 +176,41 @@ function baseActivities(def: ProductDefinition): Array<Omit<EstimateActivity, 'r
   return acts;
 }
 
+/** What an activity's size depends on, in plain words. Deliberately not the arithmetic: the allowance is part of each figure. */
+function driversOf(def: ProductDefinition, id: string): string {
+  const n = (x: number, one: string, many = `${one}s`) => `${x} ${x === 1 ? one : many}`;
+  const rules = def.businessRules.length, records = def.dataEntities.length, screens = def.screens.length;
+  const integrations = def.integrations.length, journeys = def.userJourneys.length, roles = def.personas.length;
+  if (id.startsWith('act-build-')) return 'Depends on the module\'s screens and their layouts, and its share of the records and business rules.';
+  if (id.startsWith('act-int-')) return 'Per integration: mapping, build and testing against the partner system.';
+  switch (id) {
+    case 'act-mobilise': return 'Fixed set-up effort.';
+    case 'act-requirements': return `Depends on ${n(rules, 'rule')}, ${n(journeys, 'journey')} and ${n(records, 'record')}.`;
+    case 'act-architecture': return `Depends on ${n(records, 'record')} and ${n(integrations, 'integration')}.`;
+    case 'act-design': return `Depends on ${n(screens, 'screen')}.`;
+    case 'act-platform': return `Foundation work, plus ${n(records, 'record')}.`;
+    case 'act-nfr': return `Fixed hardening work, plus ${n(integrations, 'integration')}.`;
+    case 'act-qa': return `Depends on the number of test cases drawn from ${n(rules, 'rule')}, ${n(screens, 'screen')} and ${n(journeys, 'journey')}.`;
+    case 'act-perf': return 'Fixed testing effort.';
+    case 'act-uat': return `Depends on ${n(journeys, 'journey')} to be accepted.`;
+    case 'act-training': return `Depends on ${n(roles, 'role')} to train.`;
+    case 'act-deploy': return 'Fixed release effort.';
+    case 'act-hypercare': return 'About two weeks of early-life support.';
+    case 'act-pm': return 'A share of all other effort.';
+    default: return '';
+  }
+}
+
 export function estimateActivities(def: ProductDefinition, state?: ProposalState): EstimateActivity[] {
   const base = baseActivities(def);
   // Project management is a share of everything else (12%), so it moves when scope or a day is changed.
   const adj = state?.adjustments ?? {};
+  // The estimating allowance is folded into each activity's days. A figure the BA typed is final and is not scaled.
+  const k = 1 + Math.max(0, state?.rateCard.allowancePct ?? DEFAULT_ALLOWANCE_PCT) / 100;
   const withAdj = base.map((a) => {
     const o = adj[a.id];
-    const functionalDays = o?.functionalDays !== undefined ? o.functionalDays : a.functionalDays;
-    const technicalDays = o?.technicalDays !== undefined ? o.technicalDays : a.technicalDays;
+    const functionalDays = o?.functionalDays !== undefined ? o.functionalDays : round1(a.functionalDays * k);
+    const technicalDays = o?.technicalDays !== undefined ? o.technicalDays : round1(a.technicalDays * k);
     return { ...a, functionalDays, technicalDays, adjusted: o?.functionalDays !== undefined || o?.technicalDays !== undefined };
   });
   const sum = withAdj.reduce((n, a) => n + a.functionalDays + a.technicalDays, 0);
@@ -191,29 +221,7 @@ export function estimateActivities(def: ProductDefinition, state?: ProposalState
       covers: 'Planning, status reporting, risk and change control, steering committee, vendor and stakeholder management.',
       basis: '12% of all other effort.', deliverable: 'Weekly status, RAID log, steering packs', functionalDays: f, technicalDays: 0, adjusted: o?.functionalDays !== undefined };
   })();
-  const core = [...withAdj, pm].map((a) => ({ ...a, roleDays: split(a.type, a.functionalDays, a.technicalDays) }));
-
-  // Requirements clarification and change buffer: a share of ALL the other effort, its own visible line, spread over the
-  // roles in proportion to their work. It covers clarifications and rework inside the approved scope; new requirements
-  // are never absorbed by it (change control).
-  const pct = Math.max(0, state?.rateCard.changeBufferPct ?? DEFAULT_CHANGE_BUFFER_PCT);
-  const totalF = core.reduce((n, a) => n + a.functionalDays, 0), totalT = core.reduce((n, a) => n + a.technicalDays, 0);
-  const o = adj['act-buffer'];
-  const bf = o?.functionalDays !== undefined ? o.functionalDays : round1(totalF * (pct / 100));
-  const bt = o?.technicalDays !== undefined ? o.technicalDays : round1(totalT * (pct / 100));
-  const roleTotals: Partial<Record<ResourceRole, number>> = {};
-  for (const a of core) for (const [r, d] of Object.entries(a.roleDays) as Array<[ResourceRole, number]>) roleTotals[r] = (roleTotals[r] ?? 0) + d;
-  const allDays = Object.values(roleTotals).reduce((n, d) => n + (d ?? 0), 0) || 1;
-  const bufferRoleDays: Partial<Record<ResourceRole, number>> = {};
-  for (const [r, d] of Object.entries(roleTotals) as Array<[ResourceRole, number]>) bufferRoleDays[r] = round1((bf + bt) * (d / allDays));
-  if (pct === 0 && o === undefined) return core;
-  const buffer: EstimateActivity = {
-    id: 'act-buffer', phase: 'Throughout', type: 'management', name: `Requirements clarification and change buffer (${pct}%)`,
-    covers: 'Clarifications, rework and small refinements inside the approved scope. It is not for new requirements: those need a written change request approved before work starts.',
-    basis: `${pct}% of all other effort (functional ${round1(totalF)} + technical ${round1(totalT)}).`, deliverable: 'Absorbs clarification and rework within the approved scope',
-    functionalDays: bf, technicalDays: bt, roleDays: bufferRoleDays, adjusted: o?.functionalDays !== undefined || o?.technicalDays !== undefined,
-  };
-  return [...core, buffer];
+  return [...withAdj, pm].map((a) => ({ ...a, roleDays: split(a.type, a.functionalDays, a.technicalDays), basis: driversOf(def, a.id) }));
 }
 
 // RASIC: parties and the letter each takes for an activity type. One A and at least one R per row.
