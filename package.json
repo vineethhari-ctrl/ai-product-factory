@@ -25,6 +25,7 @@
     "check:brief": "tsx scripts/brief-facts.check.ts",
     "check:docs": "tsx scripts/quality-docs.check.ts",
     "check:approach": "tsx scripts/approach-note.check.ts",
+    "check:project": "tsx scripts/project.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {

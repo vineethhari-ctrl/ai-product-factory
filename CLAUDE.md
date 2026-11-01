@@ -382,6 +382,13 @@ The core of every prototype: the documents users create and move through the pro
 - `npm run check:transactions` (maths, cleaning, offline pipeline, AI stub, neutrality, the real screen in jsdom);
   `check:live` reports each product's business documents.
 
+## Project backup (`src/services/projectFile.ts`)
+
+The session is auto-saved only in the browser (`localStorage`, one project at a time; New Initiative clears it). The header has
+**Export** (downloads the whole session as `<Product>_<date>.json`: kind/version/exportedAt + the saved state) and **Import**
+(file picker; checks kind, version and the shape of each part, confirms before replacing open work, starts a new AI-usage project id).
+No login or server storage involved: the file is the copy. `npm run check:project` covers the file format.
+
 ## Conventions
 - Output shapes are zod schemas in `server/aiSchemas.ts`: enforced by Claude structured outputs
   and validated after parsing for Gemini. Keep them in sync with `src/types.ts`.

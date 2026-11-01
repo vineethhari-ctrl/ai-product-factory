@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActiveScreen, ProductDefinition } from '../types';
 import { UsagePanel } from './UsagePanel';
 import { 
@@ -15,7 +15,9 @@ import {
   ExternalLink,
   ChevronDown,
   CheckSquare,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Upload
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -29,6 +31,10 @@ interface HeaderProps {
   hasPrototype: boolean;
   /** Hard-resets ALL pipeline state and returns to Stage 1 */
   onResetAll: () => void;
+  /** Downloads the whole project as a .json backup */
+  onExportProject: () => void;
+  /** Loads a project from a backup .json */
+  onImportProject: (file: File) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,8 +47,11 @@ export const Header: React.FC<HeaderProps> = ({
   hasDefinitionApproved,
   hasPrototype,
   onResetAll,
+  onExportProject,
+  onImportProject,
 }) => {
   const [showRoadmap, setShowRoadmap] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const steps: Array<{
     id: ActiveScreen;
@@ -154,6 +163,34 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <UsagePanel />
+
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) onImportProject(f);
+            }}
+          />
+          <button
+            onClick={onExportProject}
+            title="Download this project as a backup file"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+          <button
+            onClick={() => importInputRef.current?.click()}
+            title="Load a project from a backup file"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Import</span>
+          </button>
 
           {/* New Initiative reset — always visible */}
           <button

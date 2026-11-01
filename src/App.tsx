@@ -34,6 +34,7 @@ import { buildDynamicFallbackUnderstanding } from './services/dynamicFallback';
 import { entityToSQL } from './services/validationEngine';
 import { testSuiteSignature } from './services/testSuite';
 import { Sparkles, CheckSquare } from 'lucide-react';
+import { buildProjectFile, parseProjectFile, projectFileName, MAX_PROJECT_FILE_BYTES } from './services/projectFile';
 
 // ─── Pipeline State Persistence ──────────────────────────────────────────────
 const STORAGE_KEY = 'aipf_pipeline_v1';
@@ -667,6 +668,65 @@ export default function App() {
     showToast('Session cleared. Refresh to start a new pipeline.');
   };
 
+  // ── Project backup: export to a .json file, import it back ───────────────
+  const handleExportProject = () => {
+    const state: PersistedState = {
+      activeScreen, productName, businessUnit, description, materials,
+      businessUnderstanding, productDefinition, engineeringPackage, referenceImage,
+    };
+    if (!isStateMeaningful(state)) {
+      showToast('Nothing to export yet. Start an initiative first.');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(buildProjectFile(state), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = projectFileName(productName);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast(`Project saved as ${a.download}`);
+  };
+
+  const handleImportProject = async (file: File) => {
+    if (file.size > MAX_PROJECT_FILE_BYTES) {
+      showToast('That file is too large to be a project file.');
+      return;
+    }
+    const hasWork = isStateMeaningful({
+      activeScreen, productName, businessUnit, description, materials,
+      businessUnderstanding, productDefinition, engineeringPackage,
+    });
+    if (hasWork && !window.confirm('Importing replaces the project you have open now. Export it first if you want to keep it. Continue?')) return;
+    const parsed = parseProjectFile<PersistedState>(await file.text());
+    if (!parsed.ok) {
+      showToast(parsed.error, 6000);
+      return;
+    }
+    const s = parsed.state;
+    if (!isStateMeaningful(s)) {
+      showToast('That project file is empty.');
+      return;
+    }
+    newProjectId(); // an imported project is its own project for AI usage limits
+    setProductName(s.productName ?? '');
+    setBusinessUnit(s.businessUnit ?? '');
+    setDescription(s.description ?? '');
+    setMaterials(s.materials ?? []);
+    setBusinessUnderstanding(s.businessUnderstanding ?? null);
+    setProductDefinition(s.productDefinition ?? null);
+    setEngineeringPackage(s.engineeringPackage ?? null);
+    setReferenceImage(s.referenceImage ?? null);
+    setActiveScreen(s.activeScreen ?? 'create');
+    setAiStatus(null);
+    setApiError(null);
+    setEvidenceModalItem(null);
+    setChangeModalOpen(false);
+    showToast(`Project "${s.productName || 'untitled'}" loaded.`);
+  };
+
   // ── Full hard-reset: clears ALL pipeline state + all storage ───────────
   const handleClearAll = () => {
     // Mark that we're resetting so the auto-save effect doesn't re-persist
@@ -759,6 +819,8 @@ export default function App() {
         hasDefinitionApproved={!!productDefinition?.isApproved}
         hasPrototype={!!productDefinition}
         onResetAll={handleClearAll}
+        onExportProject={handleExportProject}
+        onImportProject={handleImportProject}
       />
 
       {aiStatus && (
