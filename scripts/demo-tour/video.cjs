@@ -33,6 +33,25 @@ const app = [
   ['Hand-off to the delivery team', 'Architecture, interfaces, backlog, and every document as Word.', step('Engineering Package')],
   ['Scope, effort, cost and proposal', 'Priced from the scope the business approved: days, people, RASIC and the SOW.', step('Proposal & SOW')],
 ];
+const NARR = [
+  'AI Product Factory. One page of requirement notes in, an approved plan out. Here is the whole journey on a phone, for a SAP SuccessFactors joiner onboarding project.',
+  'It starts with the business\u2019s own words: notes, emails, Word or Excel files. You choose a new application, or a package such as SAP.',
+  'The factory reads it back as a structured understanding. What the business said is kept apart from what the AI proposed.',
+  'Questions are split by audience. Business questions go to the business team. Technical questions go to the tech team.',
+  'Next, a full requirements document, ready for the business to review and approve.',
+  'For SAP, a fit gap shows for every requirement whether standard, configuration or development is needed.',
+  'A short approach note for leadership: problems, solution, options, phases and risks.',
+  'Then a working prototype the business can click through, built from the requirements.',
+  'Open a record and move it on. Only the legal next steps are offered, following the business rules.',
+  'When something changes, describe it in plain words and see what it touches.',
+  'Tests are written from the same requirements. Every business rule is covered.',
+  'The delivery team gets architecture, interfaces and a backlog, and every document as Word.',
+  'Finally, scope, effort, cost and the proposal, priced from the scope the business approved.',
+  'The prototype is also one file. Send it by email and it opens in any phone browser.',
+  'The menu lists every screen, by module, in the order of the process.',
+  'A record shows its status steps, field rules and workflow buttons.',
+  'Real application, real documents. From one page of notes to a BRD, prototype, fit gap, tests, engineering plan and proposal.',
+];
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -74,9 +93,16 @@ const app = [
   }
   const end = card('end', [['Real application. Real documents.', 56, '#ffffff', FONT], ['BRD, prototype, SAP fit-gap, tests, engineering plan and proposal, from one page of notes.', 38, '#c9d3e6', FONT2]]);
   parts.push([end, 3.2]);
+  const wavs = [];
+  parts.forEach(([f], i) => { const w = path.join(dir, 'n' + i + '.wav'); const txt = (NARR[i] || '').replace(/'/g, '\u2019').replace(/[:\\]/g, ' '); try { sh('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', `flite=text='${txt}':voice=slt`, '-ar', '44100', '-ac', '1', w]); const d = parseFloat(sh('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', w]).toString()); parts[i][1] = Math.max(parts[i][1], d + 0.7); wavs.push(w); } catch (e) { wavs.push(null); } });
+  fs.writeFileSync(path.join(OUT, 'narration.txt'), NARR.map((t, i) => (i + 1) + '. ' + t).join('\n\n') + '\n');
   const list = path.join(dir, 'list.txt');
   fs.writeFileSync(list, parts.map(([f, d]) => `file '${f}'\nduration ${d}`).join('\n') + `\nfile '${parts[parts.length - 1][0]}'\n`);
-  const mp4 = path.join(OUT, 'demo-phone.mp4');
-  sh('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-vf', 'fps=25,format=yuv420p,scale=780:1888', '-c:v', 'libx264', '-crf', '23', '-movflags', '+faststart', mp4]);
+  const mp4 = path.join(OUT, 'demo-phone.mp4'); const silent = path.join(dir, 'silent.mp4');
+  sh('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-vf', 'fps=25,format=yuv420p,scale=780:1888', '-c:v', 'libx264', '-crf', '23', '-movflags', '+faststart', silent]);
+  const alist = path.join(dir, 'a.txt'); const aud = path.join(dir, 'all.wav'); const pad = (d, w, i) => { const o = path.join(dir, 'p' + i + '.wav'); sh('ffmpeg', ['-y', '-loglevel', 'error', ...(w ? ['-i', w] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']), '-af', 'apad', '-t', String(d), '-ar', '44100', '-ac', '1', o]); return o; };
+  fs.writeFileSync(alist, parts.map(([, d], i) => `file '${pad(d, wavs[i], i)}'`).join('\n'));
+  sh('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', alist, '-c', 'copy', aud]);
+  sh('ffmpeg', ['-y', '-loglevel', 'error', '-i', silent, '-i', aud, '-c:v', 'copy', '-c:a', 'aac', '-shortest', '-movflags', '+faststart', mp4]);
   console.log('video', mp4, Math.round(fs.statSync(mp4).size / 1024), 'KB', parts.length, 'slides');
 })();
