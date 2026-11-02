@@ -135,6 +135,7 @@ export default function App() {
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [isMatchingScope, setIsMatchingScope] = useState(false);
   const [isExportingPrototype, setIsExportingPrototype] = useState(false);
+  const [isExportingDemoPack, setIsExportingDemoPack] = useState(false);
   const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
@@ -603,6 +604,37 @@ export default function App() {
     }
   };
 
+  // BU demo pack: one zip for the business (prototype, BRD, approach note, review sheet). No model call, nothing commercial.
+  const handleExportDemoPack = async () => {
+    if (!productDefinition || isExportingDemoPack) return;
+    setIsExportingDemoPack(true);
+    try {
+      const response = await fetch('/api/export-demo-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The demo pack could not be built.', 9000);
+        return;
+      }
+      const blob = await response.blob();
+      const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'BU-demo-pack.zip';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`Saved ${name}. Unzip it and send the folder to the business: it has a README, the prototype, the BRD, the approach note and a review sheet.`, 9000);
+    } catch (err) {
+      console.error('Error building the demo pack:', err);
+      showToast('The demo pack could not be built: the server did not answer.');
+    } finally {
+      setIsExportingDemoPack(false);
+    }
+  };
+
   // Part 2: the proposal's words for the BU-approved scope. Effort and cost are computed from the same scope in the browser.
   const updateDefinition = (fn: (d: ProductDefinition) => ProductDefinition) => setProductDefinition((prev) => (prev ? fn(prev) : prev));
 
@@ -1032,6 +1064,8 @@ export default function App() {
             onRedesign={() => handleBuildPrototype(true)}
             onExportPrototype={handleExportPrototype}
             isExportingPrototype={isExportingPrototype}
+            onExportDemoPack={handleExportDemoPack}
+            isExportingDemoPack={isExportingDemoPack}
           />
         )}
 

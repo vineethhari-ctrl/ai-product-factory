@@ -23,6 +23,7 @@ import {
   Rocket,
   Settings2,
   Download,
+  Archive,
 } from 'lucide-react';
 
 import { ChangeImpactAnalysis, ScreenDefinition, ScreenUISpec } from '../types';
@@ -47,6 +48,9 @@ interface PrototypeScreenProps {
   /** Saves the finished application as one stand-alone HTML file the business can open in any browser. */
   onExportPrototype?: () => void;
   isExportingPrototype?: boolean;
+  /** Saves one zip for the business: prototype, BRD, approach note and a review sheet they fill in. */
+  onExportDemoPack?: () => void;
+  isExportingDemoPack?: boolean;
 }
 
 /** Icon set for screen tabs — cycles through these for visual variety. */
@@ -64,6 +68,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   onRedesign,
   onExportPrototype,
   isExportingPrototype = false,
+  onExportDemoPack,
+  isExportingDemoPack = false,
 }) => {
   const [activeProtoScreenIdx, setActiveProtoScreenIdx] = useState<number>(0);
   const [selectedRoleIdx, setSelectedRoleIdx] = useState<number>(0);
@@ -274,6 +280,18 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
             >
               <Download className="w-3.5 h-3.5" />
               <span>{isExportingPrototype ? 'Preparing…' : 'Export prototype'}</span>
+            </button>
+          )}
+
+          {onExportDemoPack && (
+            <button
+              onClick={onExportDemoPack}
+              disabled={isExportingDemoPack || isGeneratingPrototype}
+              title="One zip for the business: the prototype, the BRD and approach note in Word, and a review sheet to answer on. No costs or estimates in it."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-500 disabled:bg-teal-800 disabled:text-teal-300 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-wait"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>{isExportingDemoPack ? 'Preparing…' : 'BU demo pack'}</span>
             </button>
           )}
 

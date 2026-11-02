@@ -330,7 +330,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:pack` (BU demo pack), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -428,6 +428,17 @@ double-click: no install, no server, no key, no network (system fonts, nothing e
   element (`jsonForScript`, no `</script`, `<!--` or line separators), so hostile text in a name cannot add a script.
 - `npm run check:export` builds the real file and uses it in jsdom (every screen opens, roles, a document, the form check, no factory controls,
   no network, hostile text; needs jsdom like `check:ui`).
+
+## BU demo pack (`server/demoPack.ts`, `src/services/brdDoc.ts`, `src/services/docRender.ts`)
+
+The **BU demo pack** button (Interactive Prototype step) downloads ONE ZIP for the business, nothing commercial in it:
+`README.txt`, `1-Prototype.html` (the Export prototype file), `2-Business-Requirements-Document.doc`, `3-Solution-Approach-Note.doc`,
+`4-Review-Sheet.doc` (Word-openable HTML; BU questions numbered with an empty "Your answer" column, assumptions to confirm, and
+a keep/change/remove table of every proposed item). `POST /api/export-demo-pack` (no model call) -> application/zip.
+- BRD items are labelled by basis (stated / proposed: please confirm / unclear / missing); only BU-team questions are shown.
+- Never included: test suite, engineering plan, scope baseline, estimate, proposal, design research, rates, allowance, keys.
+  `check:pack` plants SECRET- markers and forbidden words (person-days, INR, SOW, contingency, allowance...) to prove it.
+- `docRender.ts` is the shared Markdown/Word section model (also used by `proposalDoc.ts`). `npm run check:pack` (needs jsdom).
 
 ## Project backup (`src/services/projectFile.ts`)
 

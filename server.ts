@@ -16,6 +16,7 @@ import { generateTestSuite } from "./server/testSuiteService";
 import { generateApproachNote } from "./server/approachNoteService";
 import { generateProposalNarrative, reconcileScope } from "./server/proposalService";
 import { buildPrototypeHtml, prototypeFileName } from "./server/prototypeExport";
+import { buildDemoPack } from "./server/demoPack";
 import { attachPlan, generateEngineeringPlan } from "./server/engineeringPlan";
 import { describeRouting } from "./server/routing";
 import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
@@ -268,6 +269,21 @@ async function startServer() {
     } catch (err: any) {
       console.error("Error exporting the prototype:", err);
       return res.status(500).json({ error: err?.message || "Failed to export the prototype" });
+    }
+  });
+
+  // BU demo pack: one zip for the business (prototype, BRD, approach note, review sheet; nothing commercial). No model call.
+  app.post("/api/export-demo-pack", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!Array.isArray(definition?.screens) || !definition.screens.length || !Array.isArray(definition?.personas) || !Array.isArray(definition?.businessRules)) return res.status(400).json({ error: "Missing product definition with screens." });
+      const pack = await buildDemoPack(definition);
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${pack.fileName}"`);
+      return res.send(pack.buffer);
+    } catch (err: any) {
+      console.error("Error exporting the demo pack:", err);
+      return res.status(500).json({ error: err?.message || "Failed to build the demo pack" });
     }
   });
 

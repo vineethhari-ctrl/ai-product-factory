@@ -33,6 +33,7 @@
     "check:skeleton": "tsx scripts/skeleton.check.ts",
     "check:quality": "tsx scripts/testcase-quality.check.ts",
     "check:export": "tsx scripts/prototype-export.check.ts",
+    "check:pack": "tsx scripts/demo-pack.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {
