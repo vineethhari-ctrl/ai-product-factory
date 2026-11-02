@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* System fonts only: the stand-alone file must not call any external address. */
+@layer base {
+  body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #0f172a; }
+  code, pre, kbd, samp { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+}

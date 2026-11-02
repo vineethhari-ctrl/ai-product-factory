@@ -134,6 +134,7 @@ export default function App() {
   const [isGeneratingApproach, setIsGeneratingApproach] = useState(false);
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [isMatchingScope, setIsMatchingScope] = useState(false);
+  const [isExportingPrototype, setIsExportingPrototype] = useState(false);
   const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
@@ -571,6 +572,37 @@ export default function App() {
     }
   };
 
+  // Export prototype: one stand-alone HTML file (no model call). The server puts the viewer and the definition together.
+  const handleExportPrototype = async () => {
+    if (!productDefinition || isExportingPrototype) return;
+    setIsExportingPrototype(true);
+    try {
+      const response = await fetch('/api/export-prototype', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The prototype could not be exported.', 9000);
+        return;
+      }
+      const blob = await response.blob();
+      const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'prototype.html';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`Saved ${name}. Double-click it to open the prototype in any browser; it needs nothing else.`, 7000);
+    } catch (err) {
+      console.error('Error exporting the prototype:', err);
+      showToast('The prototype could not be exported: the server did not answer.');
+    } finally {
+      setIsExportingPrototype(false);
+    }
+  };
+
   // Part 2: the proposal's words for the BU-approved scope. Effort and cost are computed from the same scope in the browser.
   const updateDefinition = (fn: (d: ProductDefinition) => ProductDefinition) => setProductDefinition((prev) => (prev ? fn(prev) : prev));
 
@@ -998,6 +1030,8 @@ export default function App() {
             referenceImage={referenceImage}
             setReferenceImage={setReferenceImage}
             onRedesign={() => handleBuildPrototype(true)}
+            onExportPrototype={handleExportPrototype}
+            isExportingPrototype={isExportingPrototype}
           />
         )}
 

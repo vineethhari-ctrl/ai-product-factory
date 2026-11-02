@@ -15,6 +15,7 @@ import { validateRecordHandler } from "./server/recordRoute";
 import { generateTestSuite } from "./server/testSuiteService";
 import { generateApproachNote } from "./server/approachNoteService";
 import { generateProposalNarrative, reconcileScope } from "./server/proposalService";
+import { buildPrototypeHtml, prototypeFileName } from "./server/prototypeExport";
 import { attachPlan, generateEngineeringPlan } from "./server/engineeringPlan";
 import { describeRouting } from "./server/routing";
 import { currentAIStatus, currentNotices, requestIdentity, usageContext, usageReport } from "./server/usage";
@@ -252,6 +253,21 @@ async function startServer() {
       console.error("Error matching the final BRD:", err);
       if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to match the final BRD" });
+    }
+  });
+
+  // Export prototype: one stand-alone HTML file with the finished application inside it (no model call, no server needed to open it).
+  app.post("/api/export-prototype", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!Array.isArray(definition?.screens) || !definition.screens.length || !Array.isArray(definition?.personas)) return res.status(400).json({ error: "Missing product definition with screens." });
+      const html = await buildPrototypeHtml(definition);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${prototypeFileName(definition.productName)}"`);
+      return res.send(html);
+    } catch (err: any) {
+      console.error("Error exporting the prototype:", err);
+      return res.status(500).json({ error: err?.message || "Failed to export the prototype" });
     }
   });
 

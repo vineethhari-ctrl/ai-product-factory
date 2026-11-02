@@ -22,6 +22,7 @@ import {
   Cpu,
   Rocket,
   Settings2,
+  Download,
 } from 'lucide-react';
 
 import { ChangeImpactAnalysis, ScreenDefinition, ScreenUISpec } from '../types';
@@ -29,6 +30,7 @@ import { ScreenCanvas } from './ScreenCanvas';
 import { PrototypeDesignBar } from './PrototypeDesignBar';
 import { AppShell, ShellNavItem } from './AppShell';
 import { themeFor } from './UIBlocks';
+import { isReadOnlyRole, prototypeRoles, prototypeScreens, sampleUserFor, shellActionFor } from '../services/prototypeModel';
 
 interface PrototypeScreenProps {
   definition: ProductDefinition;
@@ -42,6 +44,9 @@ interface PrototypeScreenProps {
   setReferenceImage?: (dataUrl: string | null) => void;
   /** Has the AI design every screen again (with the reference screen, if any). */
   onRedesign?: () => void;
+  /** Saves the finished application as one stand-alone HTML file the business can open in any browser. */
+  onExportPrototype?: () => void;
+  isExportingPrototype?: boolean;
 }
 
 /** Icon set for screen tabs — cycles through these for visual variety. */
@@ -57,6 +62,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   referenceImage = null,
   setReferenceImage,
   onRedesign,
+  onExportPrototype,
+  isExportingPrototype = false,
 }) => {
   const [activeProtoScreenIdx, setActiveProtoScreenIdx] = useState<number>(0);
   const [selectedRoleIdx, setSelectedRoleIdx] = useState<number>(0);
@@ -108,43 +115,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
     prevScreensLength.current = currentLen;
   }, [definition.changeHistory, definition.screens]);
 
-  // Derive dynamic screens from definition
-  const screens = useMemo(() => {
-    if (definition?.screens && definition.screens.length > 0) {
-      // Document screens first: creating and working documents is what the application is for.
-      const isDoc = (s: ScreenDefinition) => s.layoutType === 'transaction' && !!s.ui?.document;
-      return [...definition.screens.filter(isDoc), ...definition.screens.filter((s) => !isDoc(s))];
-    }
-    if (definition?.modules && definition.modules.length > 0) {
-      return definition.modules.map((m, idx) => ({
-        id: `scr-derived-${idx}`,
-        name: m.name,
-        module: m.name,
-        layoutType: 'dashboard' as const,
-        components: [
-          `${m.name} Header & Metrics`,
-          'Status Allocation Grid',
-          'Priority Alerts Stream',
-          'Interactive Workbench'
-        ],
-        purpose: m.description,
-        confidence: (m.confidence || 'CONFIRMED') as any,
-        evidence: [] as string[],
-      }));
-    }
-    return [
-      {
-        id: 'scr-main',
-        name: `${definition.productName || 'Product'} Dashboard`,
-        module: 'Core Module',
-        layoutType: 'dashboard' as const,
-        components: ['Status Overview Panel', 'Primary Data Grid', 'Action Toolbar', 'Notifications Feed'],
-        purpose: `Primary operational dashboard for ${definition.productName || 'the product'}`,
-        confidence: 'INFERRED' as const,
-        evidence: [] as string[],
-      }
-    ];
-  }, [definition]);
+  // The screens in menu order (src/services/prototypeModel.ts, shared with the exported stand-alone file)
+  const screens = useMemo(() => prototypeScreens(definition), [definition]);
 
   const activeScreenObj = screens[activeProtoScreenIdx] || screens[0];
 
@@ -153,33 +125,17 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
     ? (activeScreenObj as ScreenDefinition & { ui: ScreenUISpec })
     : null;
 
-  // Derive personas/roles from definition
-  const roles = useMemo(() => {
-    if (definition?.personas && definition.personas.length > 0) {
-      return definition.personas.map(p => ({
-        name: p.name,
-        role: p.role,
-        permissions: p.permissions || ['Standard Access']
-      }));
-    }
-    return [
-      { name: 'Primary User', role: 'Operator', permissions: ['Standard Access', 'Workflow Execution'] },
-      { name: 'Manager / Supervisor', role: 'Manager', permissions: ['Managerial Review', 'Escalations'] },
-      { name: 'Audit & Compliance', role: 'Auditor', permissions: ['Read Only Audit Logs'] }
-    ];
-  }, [definition]);
+  const roles = useMemo(() => prototypeRoles(definition), [definition]);
 
   const selectedRole = roles[selectedRoleIdx] || roles[0];
-  const isReadOnlyRole = selectedRole.permissions.some(p => p.toLowerCase().includes('read only') || p.toLowerCase().includes('auditor'));
+  const readOnlyRole = isReadOnlyRole(selectedRole);
 
   const navItems: ShellNavItem[] = useMemo(
     () => screens.map((s, i) => ({ id: s.id, label: s.name, group: s.module || 'Application', icon: SCREEN_ICONS[i % SCREEN_ICONS.length] })),
     [screens],
   );
-  // A sample person for the signed-in user: the prototype is not about the BA using the factory.
-  const userDisplayName = ['Priya Raman', 'Marcus Chen', 'Elena García', 'Samuel Okafor', 'Hannah Weber', 'Diego Alvarez'][selectedRoleIdx % 6];
-  // Form and phone screens carry their own main button; the page header would repeat it.
-  const shellAction = benchmarkScreen && benchmarkScreen.layoutType !== 'form-wizard' && !(benchmarkScreen.layoutType === 'transaction' && benchmarkScreen.ui.document) && benchmarkScreen.ui.device !== 'phone' ? benchmarkScreen.ui.primaryActions[0] : undefined;
+  const userDisplayName = sampleUserFor(selectedRoleIdx);
+  const shellAction = shellActionFor(benchmarkScreen as ScreenDefinition | null ?? undefined);
   React.useEffect(() => {
     if (!actionToast) return;
     const t = setTimeout(() => setActionToast(null), 3000);
@@ -309,6 +265,18 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
             <span>Request Change</span>
           </button>
 
+          {onExportPrototype && (
+            <button
+              onClick={onExportPrototype}
+              disabled={isExportingPrototype || isGeneratingPrototype}
+              title="Save the finished application as one HTML file that opens in any browser: no install, no server, no key"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:text-emerald-300 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-wait"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExportingPrototype ? 'Preparing…' : 'Export prototype'}</span>
+            </button>
+          )}
+
           <button
             onClick={onProceedToEngineering}
             className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer"
@@ -436,11 +404,11 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
               groupLabel={activeScreenObj.module}
               title={activeScreenObj.name}
               subtitle={activeScreenObj.purpose}
-              badge={isReadOnlyRole ? 'View only' : undefined}
+              badge={readOnlyRole ? 'View only' : undefined}
               theme={themeFor(definition.productName, definition.uiTheme)}
               primaryAction={
                 shellAction
-                  ? { label: shellAction, disabled: isReadOnlyRole, onClick: () => setActionToast(`${shellAction} (simulated)`) }
+                  ? { label: shellAction, disabled: readOnlyRole, onClick: () => setActionToast(`${shellAction} (simulated)`) }
                   : undefined
               }
             >
@@ -451,7 +419,7 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
                 <ScreenCanvas
                   key={benchmarkScreen.id}
                   screen={benchmarkScreen}
-                  readOnly={isReadOnlyRole}
+                  readOnly={readOnlyRole}
                   entities={definition.dataEntities}
                   actionInHeader={!!shellAction}
                 />

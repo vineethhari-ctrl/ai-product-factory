@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:viewer": "vite build --config vite.viewer.config.ts",
+    "build": "vite build && vite build --config vite.viewer.config.ts && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -31,6 +32,7 @@
     "check:stream": "tsx scripts/stream.check.ts",
     "check:skeleton": "tsx scripts/skeleton.check.ts",
     "check:quality": "tsx scripts/testcase-quality.check.ts",
+    "check:export": "tsx scripts/prototype-export.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {

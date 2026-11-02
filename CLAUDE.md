@@ -330,7 +330,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -410,6 +410,24 @@ The core of every prototype: the documents users create and move through the pro
   the first status; fields lock after it), status stepper, document chain, history. Transaction screens come first.
 - `npm run check:transactions` (maths, cleaning, offline pipeline, AI stub, neutrality, the real screen in jsdom);
   `check:live` reports each product's business documents.
+
+## Export prototype (stand-alone HTML; `src/viewer`, `server/prototypeExport.ts`, `src/services/prototypeModel.ts`)
+
+The **Export prototype** button (Interactive Prototype step) saves the finished application as ONE `.html` file that opens in any browser by
+double-click: no install, no server, no key, no network (system fonts, nothing external), view only, sample data. Meant for showing the BU.
+- **Viewer** (`src/viewer/`): `PrototypeViewer` = the same `AppShell` + `ScreenCanvas` as the in-app prototype, a slim "PROTOTYPE · view only"
+  bar and the role switcher; none of the factory's controls. `main.tsx` reads the definition from `<script id="prototype-data" type="application/json">`.
+  `validateShim.ts` answers the form's `/api/validate-record` call inside the page with the same engine and sanitising as the server
+  (`validateRecord`, `normalizeDefinitionConstraints`); every other `/api/` call gets 404, so the file never reaches a network.
+- **Shared logic** (`src/services/prototypeModel.ts`): `prototypeScreens` (documents first), `prototypeRoles`, `isReadOnlyRole`, `sampleUserFor`,
+  `shellActionFor`, used by both `PrototypeScreen` and the viewer so they cannot drift apart.
+- **Build**: `vite.viewer.config.ts` makes `dist-viewer/viewer.js` + `viewer.css` (IIFE, about 330 KB + 74 KB; `npm run build:viewer`, also part of
+  `npm run build`; gitignored). `POST /api/export-prototype` (no model call) assembles the file: styles + the definition (only
+  screens, records, roles, theme: no tests, plans, proposal or research) + the script. Outside production the viewer is built on the first export
+  and rebuilt when `src/` is newer; in production it must have been built (`npm run build`). Data and script are escaped for a `<script>`
+  element (`jsonForScript`, no `</script`, `<!--` or line separators), so hostile text in a name cannot add a script.
+- `npm run check:export` builds the real file and uses it in jsdom (every screen opens, roles, a document, the form check, no factory controls,
+  no network, hostile text; needs jsdom like `check:ui`).
 
 ## Project backup (`src/services/projectFile.ts`)
 
