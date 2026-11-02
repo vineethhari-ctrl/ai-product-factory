@@ -184,7 +184,8 @@ const INDUSTRY = /\b(vehicle|battery|loan|bank|dealer|claim|patient|invoice|warr
   const pack = await quiet(() => buildDemoPack(withFit, { now: new Date("2026-11-02T10:00:00Z") }));
   const zip = await JSZip.loadAsync(pack.buffer);
   const readme = await zip.file("README.txt")!.async("string");
-  const brdDoc = await zip.file("2-Business-Requirements-Document.doc")!.async("string");
+  const { readDocx } = await import("./docxToHtml");
+  const brdDoc = (await readDocx(await zip.file("2-Business-Requirements-Document.docx")!.async("uint8array"))).html;
   t("the demo pack's README explains the fit-gap", readme.includes("fit-gap") && readme.includes(PLATFORM));
   t("the demo pack's BRD has the fit-gap, with no effort or money", brdDoc.includes(`How ${PLATFORM} meets the requirements`) && !/person-day|INR|₹|allowance|contingency/i.test(brdDoc));
 

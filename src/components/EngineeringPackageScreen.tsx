@@ -24,6 +24,9 @@ interface EngineeringPackageScreenProps {
   /** Optional definition enables dynamic QA suite stat derivation */
   definition?: ProductDefinition;
   onExportBlueprint?: () => void;
+  /** All documents as Word files for the team (includes costs). */
+  onExportWordPack?: () => void;
+  isExportingWordPack?: boolean;
 }
 
 import { EngineeringPlanPanel } from './EngineeringPlanPanel';
@@ -32,6 +35,8 @@ export const EngineeringPackageScreen: React.FC<EngineeringPackageScreenProps> =
   pkg,
   definition,
   onExportBlueprint,
+  onExportWordPack,
+  isExportingWordPack,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -1194,6 +1199,17 @@ Included Files in this ZIP Package:
         </div>
 
         <div className="flex items-center gap-2 flex-wrap shrink-0">
+          {onExportWordPack && (
+            <button
+              onClick={onExportWordPack}
+              disabled={isExportingWordPack}
+              title="Every document as a real Word file: BRD, approach note, review sheet, test suite, engineering plan, proposal (with costs). For the team."
+              className="px-5 py-3 bg-sky-700 hover:bg-sky-600 disabled:bg-sky-900 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <FileText className="w-4 h-4" />
+              <span>{isExportingWordPack ? 'Preparing…' : 'All documents as Word (.docx)'}</span>
+            </button>
+          )}
           {/* MASTER ALL-IN-ONE DOWNLOAD BUTTON */}
           <button
             onClick={handleDownloadMasterZip}

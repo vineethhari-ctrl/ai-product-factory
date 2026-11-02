@@ -5,7 +5,7 @@
  */
 
 export type Block =
-  | { kind: 'p'; text: string }
+  | { kind: 'p'; text: string; bold?: boolean }
   | { kind: 'ul'; items: string[] }
   /** `tall` gives each row room to write in (a column left empty for the reader's answer). */
   | { kind: 'table'; head: string[]; rows: string[][]; foot?: string[]; note?: string; tall?: boolean };
@@ -19,7 +19,7 @@ export function renderMarkdown(title: string, intro: string[], sections: Section
   sections.forEach((sec, i) => {
     out.push(`## ${i + 1}. ${sec.title}`, '');
     for (const b of sec.blocks) {
-      if (b.kind === 'p') out.push(b.text, '');
+      if (b.kind === 'p') out.push(b.bold ? `**${b.text}**` : b.text, '');
       else if (b.kind === 'ul') out.push(...b.items.map((x) => `- ${x}`), '');
       else {
         out.push(`| ${b.head.map(cell).join(' | ')} |`, `| ${b.head.map(() => '---').join(' | ')} |`, ...b.rows.map((r) => `| ${r.map(cell).join(' | ')} |`));
@@ -37,7 +37,7 @@ const STYLE = 'body{font-family:Calibri,Arial,sans-serif;font-size:10.5pt;color:
 /** HTML Word opens as a document (saved as .doc). `introLines` are plain text paragraphs under the title. */
 export function renderHtml(title: string, introLines: string[], sections: Section[]): string {
   const body = sections.map((sec, i) => `<h2>${i + 1}. ${esc(sec.title)}</h2>` + sec.blocks.map((b) => {
-    if (b.kind === 'p') return `<p>${esc(b.text)}</p>`;
+    if (b.kind === 'p') return b.bold ? `<p><b>${esc(b.text).replace(/\n/g, '<br>')}</b></p>` : `<p>${esc(b.text).replace(/\n/g, '<br>')}</p>`;
     if (b.kind === 'ul') return `<ul>${b.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
     return `<table${b.tall ? ' class="tall"' : ''}><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}${b.foot ? `<tr>${b.foot.map((c) => `<td><b>${esc(c)}</b></td>`).join('')}</tr>` : ''}</tbody></table>${b.note ? `<p><i>${esc(b.note)}</i></p>` : ''}`;
   }).join('')).join('');

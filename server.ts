@@ -15,6 +15,7 @@ import { validateRecordHandler } from "./server/recordRoute";
 import { generateTestSuite } from "./server/testSuiteService";
 import { generateApproachNote } from "./server/approachNoteService";
 import { generateFitGap } from "./server/fitGapService";
+import { buildWordPack } from "./server/wordPack";
 import { cleanDelivery } from "./src/services/fitGap";
 import { generateProposalNarrative, reconcileScope } from "./server/proposalService";
 import { buildPrototypeHtml, prototypeFileName } from "./server/prototypeExport";
@@ -303,6 +304,21 @@ async function startServer() {
     } catch (err: any) {
       console.error("Error exporting the demo pack:", err);
       return res.status(500).json({ error: err?.message || "Failed to build the demo pack" });
+    }
+  });
+
+  // All documents as real Word files (.docx) in one zip, for the team (includes the proposal with costs). No model call.
+  app.post("/api/export-word-pack", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!Array.isArray(definition?.screens) || !definition.screens.length || !Array.isArray(definition?.personas) || !Array.isArray(definition?.businessRules)) return res.status(400).json({ error: "Missing product definition with screens." });
+      const pack = await buildWordPack(definition, { pkg: req.body.engineeringPackage ?? null });
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="${pack.fileName}"`);
+      return res.send(pack.buffer);
+    } catch (err: any) {
+      console.error("Error exporting the Word pack:", err);
+      return res.status(500).json({ error: err?.message || "Failed to build the Word documents" });
     }
   });
 

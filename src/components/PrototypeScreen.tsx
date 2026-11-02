@@ -51,6 +51,9 @@ interface PrototypeScreenProps {
   /** Saves one zip for the business: prototype, BRD, approach note and a review sheet they fill in. */
   onExportDemoPack?: () => void;
   isExportingDemoPack?: boolean;
+  /** All documents as Word files for the team (includes costs). */
+  onExportWordPack?: () => void;
+  isExportingWordPack?: boolean;
 }
 
 /** Icon set for screen tabs — cycles through these for visual variety. */
@@ -70,6 +73,8 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
   isExportingPrototype = false,
   onExportDemoPack,
   isExportingDemoPack = false,
+  onExportWordPack,
+  isExportingWordPack = false,
 }) => {
   const [activeProtoScreenIdx, setActiveProtoScreenIdx] = useState<number>(0);
   const [selectedRoleIdx, setSelectedRoleIdx] = useState<number>(0);
@@ -292,6 +297,18 @@ export const PrototypeScreen: React.FC<PrototypeScreenProps> = ({
             >
               <Archive className="w-3.5 h-3.5" />
               <span>{isExportingDemoPack ? 'Preparing…' : 'BU demo pack'}</span>
+            </button>
+          )}
+
+          {onExportWordPack && (
+            <button
+              onClick={onExportWordPack}
+              disabled={isExportingWordPack || isGeneratingPrototype}
+              title="For the team, not the business: every document as a real Word file (BRD, approach note, review sheet, test suite, engineering plan, proposal with costs)."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-700 hover:bg-sky-600 disabled:bg-sky-900 disabled:text-sky-300 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer disabled:cursor-wait"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{isExportingWordPack ? 'Preparing…' : 'All docs (Word)'}</span>
             </button>
           )}
 

@@ -331,7 +331,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:pack` (BU demo pack), `npm run check:package` (package implementation mode), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:pack` (BU demo pack), `npm run check:package` (package implementation mode), `npm run check:word` (Word documents and the all-documents pack), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -433,13 +433,32 @@ double-click: no install, no server, no key, no network (system fonts, nothing e
 ## BU demo pack (`server/demoPack.ts`, `src/services/brdDoc.ts`, `src/services/docRender.ts`)
 
 The **BU demo pack** button (Interactive Prototype step) downloads ONE ZIP for the business, nothing commercial in it:
-`README.txt`, `1-Prototype.html` (the Export prototype file), `2-Business-Requirements-Document.doc`, `3-Solution-Approach-Note.doc`,
-`4-Review-Sheet.doc` (Word-openable HTML; BU questions numbered with an empty "Your answer" column, assumptions to confirm, and
+`README.txt`, `1-Prototype.html` (the Export prototype file), `2-Business-Requirements-Document.docx`, `3-Solution-Approach-Note.docx`,
+`4-Review-Sheet.docx` (real Word files; BU questions numbered with an empty "Your answer" column, assumptions to confirm, and
 a keep/change/remove table of every proposed item). `POST /api/export-demo-pack` (no model call) -> application/zip.
 - BRD items are labelled by basis (stated / proposed: please confirm / unclear / missing); only BU-team questions are shown.
 - Never included: test suite, engineering plan, scope baseline, estimate, proposal, design research, rates, allowance, keys.
   `check:pack` plants SECRET- markers and forbidden words (person-days, INR, SOW, contingency, allowance...) to prove it.
-- `docRender.ts` is the shared Markdown/Word section model (also used by `proposalDoc.ts`). `npm run check:pack` (needs jsdom).
+- `docRender.ts` is the shared section model (Markdown, and the old Word-openable HTML `.doc` renderer, still used by `proposalHtml`);
+  `docx.ts` writes the real `.docx`. `npm run check:pack` (needs jsdom).
+
+## Word documents (`src/services/docx.ts`, `src/services/techDoc.ts`, `server/wordPack.ts`)
+
+Every document is written as sections (`Block` = paragraph (optionally bold) / bullet list / table) and rendered to Markdown, HTML `.doc` and a
+**real `.docx`** (`renderDocx`: JSZip only, no library; browser and server). Title, intro, numbered headings, real bullets, tables with a repeating
+shaded header row (a label/value table with an empty header has none), `tall` rows to write in, a bold footer row, notes, page number footer,
+file properties. Column widths follow the content but never squeeze a label below its longest word; a section with a table of 6+ columns is
+set in landscape (section breaks), the rest portrait. A spacer paragraph follows every table (Word merges adjacent tables). Text is
+XML-escaped, control characters and broken surrogate pairs are dropped, line breaks become Word line breaks. **Deterministic**: pass `now`;
+`createFolders: false` (JSZip would stamp folder entries with the current time).
+- **BU demo pack**: BRD, approach note and review sheet are `.docx`. **"All docs (Word)"** (Interactive Prototype step) and **"All documents as Word
+  (.docx)"** (Engineering Package step) -> `POST /api/export-word-pack` `{ productDefinition, engineeringPackage? }`: a zip for the TEAM with the BRD,
+  approach note, review sheet, test suite (`testSuiteSections`), engineering plan (`engineeringSections`; the Engineering Package step's plan when
+  built, else the rules-based one) and the proposal / SOW (with effort, rates, RASIC, fee; DRAFT until the scope is confirmed), plus a README that
+  says it is INTERNAL because it holds costs. Proposal screen's "Download Word" is a `.docx` too (Markdown still offered).
+- `npm run check:word` covers the package (parts, relationships, well-formed XML), text, tables, orientation, escaping, determinism, the pack
+  (content of every document, package mode, no costs in the BU pack) and, where LibreOffice is installed, opens every file in it
+  (`scripts/docxToHtml.ts` reads a docx for the checks). Needs jsdom.
 
 ## Package implementation mode (`src/services/fitGap.ts`, `server/fitGapPrompt.ts`, `server/fitGapService.ts`, `src/components/FitGapPanel.tsx`)
 
@@ -506,8 +525,8 @@ The BU may trim the BRD before approving it, so the proposal is built from the *
   client responsibilities, risks, acceptance criteria, governance, change control, commercial terms. The server keeps what a model must
   not own: what the business removed is always listed as excluded, the fee line is the engine's, and a model sentence carrying a money
   figure is dropped. Standard terms are starting wording for legal review. Stored on `proposal.narrative` with `basedOn` (scope signature).
-- **Document** (`src/services/proposalDoc.ts`): one section model rendered as the on-screen document, Markdown and Word (HTML saved as
-  `.doc`, no library). Doc kind: Proposal / RFP Response / Statement of Work.
+- **Document** (`src/services/proposalDoc.ts`): one section model rendered as the on-screen document, Markdown and Word (a real `.docx`, see
+  "Word documents"). Doc kind: Proposal / RFP Response / Statement of Work.
 - Everything lives on the definition (`scopeBaseline`, `proposal`), so Export / Import carries it. `npm run check:proposal` covers scope,
   estimate maths, RASIC, narrative, document, the AI path (model stand-ins) and domain neutrality.
 

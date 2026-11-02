@@ -59,25 +59,28 @@ Parts: Spare parts such as filter, valve, pump.`;
   t("the file is named after the product and the day", pack.fileName === "Request-Desk_BU-demo-pack_2026-11-02.zip" && pack.files.length === 5);
   const text = async (n: string) => zip.file(n)!.async("string");
   const readme = await text("README.txt"), proto = await text("1-Prototype.html");
-  const docs = { brd: await text("2-Business-Requirements-Document.doc"), note: await text("3-Solution-Approach-Note.doc"), review: await text("4-Review-Sheet.doc") };
+  const bin = async (n: string) => zip.file(n)!.async("uint8array");
+  const { readDocx } = await import("./docxToHtml");
+  const X = { brd: await readDocx(await bin("2-Business-Requirements-Document.docx")), note: await readDocx(await bin("3-Solution-Approach-Note.docx")), review: await readDocx(await bin("4-Review-Sheet.docx")) };
+  const docs = { brd: X.brd.html, note: X.note.html, review: X.review.html };
   const parse = (h: string) => new JSDOM(h).window.document;
   const D = { brd: parse(docs.brd), note: parse(docs.note), review: parse(docs.review) };
   const visible = (d: Document) => d.body.textContent ?? "";
   t("it is small enough to email (under 2 MB zipped)", pack.buffer.length < 2_000_000, `${Math.round(pack.buffer.length / 1024)} KB`);
   const again = await quiet(() => P.buildDemoPack(def, { now }));
   const zip2 = await JSZip.loadAsync(again.buffer);
-  const same = await Promise.all(names.map(async (n) => sha(await zip.file(n)!.async("string")) === sha(await zip2.file(n)!.async("string"))));
+  const same = await Promise.all(names.map(async (n) => sha(Buffer.from(await zip.file(n)!.async("uint8array"))) === sha(Buffer.from(await zip2.file(n)!.async("uint8array")))));
   t("the same input gives the same pack, file by file", same.every(Boolean));
   t("the prototype in the pack is the stand-alone prototype file", sha(proto) === sha(await quiet(() => buildPrototypeHtml(def))) && /<script id="prototype-data"/.test(proto));
 
   // ── README ──
-  t("the README names every file and says how to open the prototype", ["1-Prototype.html", "2-Business-Requirements-Document.doc", "3-Solution-Approach-Note.doc", "4-Review-Sheet.doc"].every((f) => readme.includes(f)) && /Double-click/.test(readme) && /no internet/i.test(readme));
+  t("the README names every file and says how to open the prototype", ["1-Prototype.html", "2-Business-Requirements-Document.docx", "3-Solution-Approach-Note.docx", "4-Review-Sheet.docx"].every((f) => readme.includes(f)) && /Double-click/.test(readme) && /no internet/i.test(readme));
   t("the README says what the business should do, in order, and what is not in the pack", /HOW TO REVIEW/.test(readme) && /Must be answered before sign-off/.test(readme) && /Costs, effort and schedule are not part of this pack/.test(readme));
   t("the README carries the product, business unit, version, date and who prepared it", readme.includes("Request Desk") && readme.includes("Operations") && readme.includes(def.version) && readme.includes("2 November 2026") && readme.includes("Acme Digital"));
 
   // ── the BRD ──
   const brdText = visible(D.brd);
-  t("the BRD is a Word-openable document titled for the product", /^<html xmlns:o=/.test(docs.brd) && D.brd.title === "Business Requirements Document: Request Desk" && D.brd.querySelector("h1")?.textContent === D.brd.title);
+  t("the BRD is a real Word document (.docx, a zip with word/document.xml) titled for the product", X.brd.names.includes("word/document.xml") && X.brd.names.includes("[Content_Types].xml") && D.brd.title === "Business Requirements Document: Request Desk" && D.brd.querySelector("h1")?.textContent === D.brd.title);
   t("it has the date, the status and the version", brdText.includes("2 November 2026") && brdText.includes("Draft for business review") && brdText.includes(def.version));
   t("it names every role, module, screen, journey and connection", [...def.personas.map((x: any) => x.name), ...def.modules.map((x: any) => x.name), ...def.screens.map((x: any) => x.name), ...def.userJourneys.map((x: any) => x.name), ...def.integrations.map((x: any) => x.system)].every((n) => brdText.includes(n)));
   t("it lists every business rule with its code", def.businessRules.every((r: any) => brdText.includes(r.code) && brdText.includes(r.rule.slice(0, 40))));
@@ -123,7 +126,7 @@ Parts: Spare parts such as filter, valve, pump.`;
   const evil: any = { ...def, productName: "Desk </script><b>bold</b> & Co", businessUnit: "Ops <i>unit</i>", modules: def.modules.map((m: any, i: number) => (i === 0 ? { ...m, name: "<img src=x onerror=alert(1)>", description: "a | b\nc" } : m)) };
   const ep = await quiet(() => P.buildDemoPack(evil, { now }));
   const ez = await JSZip.loadAsync(ep.buffer);
-  const ed = parse(await ez.file("2-Business-Requirements-Document.doc")!.async("string"));
+  const ed = parse((await readDocx(await ez.file("2-Business-Requirements-Document.docx")!.async("uint8array"))).html);
   t("hostile text in names cannot add an element to a Word document; it reads as written", ed.querySelectorAll("img, b").length === 0 && (ed.body.textContent ?? "").includes("<img src=x onerror=alert(1)>") && ed.title.includes("</script><b>bold</b> & Co"));
   t("the file name is safe: only letters, digits and hyphens before the date", /^[A-Za-z0-9-]+_BU-demo-pack_2026-11-02\.zip$/.test(ep.fileName), ep.fileName);
 

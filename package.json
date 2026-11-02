@@ -35,6 +35,7 @@
     "check:export": "tsx scripts/prototype-export.check.ts",
     "check:pack": "tsx scripts/demo-pack.check.ts",
     "check:package": "tsx scripts/package.check.ts",
+    "check:word": "tsx scripts/word.check.ts",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {

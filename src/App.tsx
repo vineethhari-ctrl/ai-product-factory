@@ -144,6 +144,7 @@ export default function App() {
   const [isMatchingScope, setIsMatchingScope] = useState(false);
   const [isExportingPrototype, setIsExportingPrototype] = useState(false);
   const [isExportingDemoPack, setIsExportingDemoPack] = useState(false);
+  const [isExportingWordPack, setIsExportingWordPack] = useState(false);
   const [isPreparingEngineering, setIsPreparingEngineering] = useState(false);
 
   const [evidenceModalItem, setEvidenceModalItem] = useState<EvidenceItem | null>(null);
@@ -678,6 +679,37 @@ export default function App() {
     }
   };
 
+  // All documents as real Word files (.docx) in one zip, for the team: includes the proposal with costs. No model call.
+  const handleExportWordPack = async () => {
+    if (!productDefinition || isExportingWordPack) return;
+    setIsExportingWordPack(true);
+    try {
+      const response = await fetch('/api/export-word-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition, engineeringPackage }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The Word documents could not be built.', 9000);
+        return;
+      }
+      const blob = await response.blob();
+      const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? 'All-documents-Word.zip';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(`Saved ${name}: the BRD, approach note, review sheet, test suite, engineering plan and proposal as Word files. It includes costs: for the team, not the business.`, 10000);
+    } catch (err) {
+      console.error('Error building the Word documents:', err);
+      showToast('The Word documents could not be built: the server did not answer.');
+    } finally {
+      setIsExportingWordPack(false);
+    }
+  };
+
   // Part 2: the proposal's words for the BU-approved scope. Effort and cost are computed from the same scope in the browser.
   const updateDefinition = (fn: (d: ProductDefinition) => ProductDefinition) => setProductDefinition((prev) => (prev ? fn(prev) : prev));
 
@@ -1116,6 +1148,8 @@ export default function App() {
             isExportingPrototype={isExportingPrototype}
             onExportDemoPack={handleExportDemoPack}
             isExportingDemoPack={isExportingDemoPack}
+            onExportWordPack={handleExportWordPack}
+            isExportingWordPack={isExportingWordPack}
           />
         )}
 
@@ -1188,6 +1222,8 @@ export default function App() {
             pkg={engineeringPackage}
             definition={productDefinition ?? undefined}
             onExportBlueprint={handleExportBlueprint}
+            onExportWordPack={handleExportWordPack}
+            isExportingWordPack={isExportingWordPack}
           />
         )}
 

@@ -3,7 +3,8 @@ import { Briefcase, CheckCircle2, Download, FileText, Plus, Sparkles, Trash2, Up
 import type { ProductDefinition, ProposalState, ResourceRole, ScopeBaseline, ScopeKind } from '../types';
 import { addScopeItem, currentScope, removeNewItem, scopeCounts, setIncluded, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from '../services/scope';
 import { buildEstimate, currentProposalState, formatMoney, rolesFor, toMonths } from '../services/estimate';
-import { currentNarrative, documentTitle, proposalHtml, proposalMarkdown, proposalSections } from '../services/proposalDoc';
+import { currentNarrative, documentTitle, proposalMarkdown, proposalSections } from '../services/proposalDoc';
+import { renderDocx } from '../services/docx';
 import type { Block } from '../services/proposalDoc';
 import { extractMaterialText } from '../services/materialExtractor';
 import { copyToClipboard } from '../services/clipboardUtils';
@@ -31,8 +32,8 @@ const RASIC_STYLE: Record<string, string> = {
 };
 const d1 = (n: number) => String(Math.round(n * 10) / 10);
 
-function download(name: string, mime: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+function download(name: string, mime: string, data: string | Uint8Array) {
+  const url = URL.createObjectURL(new Blob([data as BlobPart], { type: mime }));
   const a = document.createElement('a');
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
@@ -326,7 +327,7 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
               <span className="text-slate-500">Numbers always come from the estimate, never from the AI. Standard terms are starting wording: have legal review them.</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => download(`${base}_${state.docKind.replace(/\s+/g, '-')}.doc`, 'application/msword', proposalHtml(definition, state, sections))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"><Download className="w-3.5 h-3.5" />Download Word</button>
+              <button onClick={async () => download(`${base}_${state.docKind.replace(/\s+/g, '-')}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', await renderDocx(documentTitle(definition, state), [`Prepared for ${state.clientName?.trim() || definition.businessUnit}${state.vendorName?.trim() ? ` by ${state.vendorName.trim()}` : ''}. Version ${definition.version}.${scope.confirmed ? '' : ' DRAFT: the scope is not yet confirmed as BU-approved.'}`], sections, { author: state.vendorName?.trim() || undefined, footer: `${definition.productName} · ${state.docKind}` }))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"><Download className="w-3.5 h-3.5" />Download Word</button>
               <button onClick={() => download(`${base}_${state.docKind.replace(/\s+/g, '-')}.md`, 'text/markdown', proposalMarkdown(definition, state, sections))} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"><FileText className="w-3.5 h-3.5" />Download Markdown</button>
               <button onClick={copyDoc} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"><Copy className="w-3.5 h-3.5" />Copy</button>
             </div>
