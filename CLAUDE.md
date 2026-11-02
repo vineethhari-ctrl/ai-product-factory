@@ -487,6 +487,28 @@ create screen; switchable later in the BRD's **Fit-Gap** tab). The platform is w
 - `npm run check:package` covers it (delivery cleaning, prompts, rules-based and AI fit-gap with stand-ins, estimate, scope cuts, RASIC,
   documents, demo pack, no platform names in code, domain neutrality).
 
+## Demo tour (`scripts/demo-tour/`, `npm run demo:tour`)
+
+A guided tour of the whole factory for a BU, a CHRO or a client: ONE self-contained HTML file (`demo-tour/out/tour.html`, about 6 MB) built from a
+recording of the REAL app running one requirement end to end (HR joiner onboarding on SAP SuccessFactors, a package implementation). Also
+`tour.page.html` (no download links, no embedded prototype) for publishing as a page. Output is gitignored (`demo-tour/`).
+- **How it is made**: `capture.cjs` (Playwright) drives the running app through every step (create, understand, BRD and each tab, fit-gap, approve,
+  prototype with roles / a document / validation errors, change impact, blueprint, tests, engineering, proposal with all five tabs, AI usage panel),
+  takes a screenshot of each screen and the position of every component worth pointing at (`pins`, as percentages, so they scale), clicks the real export
+  buttons (BU pack, all-documents Word pack, exported prototype, project backup), renders the downloaded Word files page by page with LibreOffice, and
+  opens the exported prototype at phone size. `facts.ts` reads the project backup so every number in the tour is real. `build.cjs` writes the HTML.
+  `spec.cjs` is the flow and the requirement text; `content.cjs` is what is said about each screen (title, lead, "worth noticing", one note per pin).
+  Targets are `btn:` / `btnx:` (exact) / `text:` / `textx:` / `css:` / `lbl:` / `ph:` / `up:N:` (ancestor) / `union:a||b` / `rect:x,y,w,h`; a pin that is
+  off screen is skipped and logged. `capture.cjs` writes `dbg/*.png` (pins drawn on) to review them; `TOUR_POST_ONLY=1` redoes only documents and phone pictures.
+- **Tour features**: chapter rail (a bottom sheet on phones), per-screen figure with numbered call-outs linked to a legend (hover, tap, keyboard),
+  Enlarge (zoom and pan), **Present** mode (one screen at a time, arrow keys, fullscreen), a gallery of the real Word pages with zoom, the two packs
+  (sample downloads work in the stand-alone file), a working copy of the exported prototype inside the page, phone-framed screenshots, FAQ, and a
+  reuse chapter. Light and dark themes; no horizontal scroll at 390 px; works offline (fonts fall back).
+- **Honesty**: when no AI key is attached the tour says so ("recorded with the built-in rules engine"). Run with a key and `TOUR_AI=1` (longer waits) to
+  record the AI version: `npm run dev` in one terminal with the key in `.env`, then `TOUR_AI=1 npm run demo:tour`. The 15% allowance is never shown or mentioned.
+- Needs Playwright, ImageMagick (`convert`), LibreOffice (`soffice`) and poppler (`pdftoppm`, `pdftotext`) installed on the machine; none is a project dependency.
+- Vite is told to ignore `demo-tour/` (`vite.config.ts`), because generated files inside the project folder would otherwise reload the page mid-recording.
+
 ## Project backup (`src/services/projectFile.ts`)
 
 The session is auto-saved only in the browser (`localStorage`, one project at a time; New Initiative clears it). The header has

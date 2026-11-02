@@ -36,6 +36,7 @@
     "check:pack": "tsx scripts/demo-pack.check.ts",
     "check:package": "tsx scripts/package.check.ts",
     "check:word": "tsx scripts/word.check.ts",
+    "demo:tour": "node scripts/demo-tour/run.cjs",
     "check:chain": "tsx scripts/proof-chain.check.tsx"
   },
   "dependencies": {
