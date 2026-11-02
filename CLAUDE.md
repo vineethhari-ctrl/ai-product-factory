@@ -495,6 +495,18 @@ older directive are never served again: bump it whenever the wording changes. Ne
 more output tokens (thinking counts toward the ceiling): watch the `output N of ceiling` log lines and raise a ceiling in routing.ts
 rather than shorten the directive. `npm run check:depth` covers it (both providers via stand-in clients, all three paths, the cache key).
 
+## Notes for live runs (owner's personal Google project; no secret stored here)
+
+- The live check ran on **Vertex AI, project `fine-century-509208-c7`** (location `global`), service account
+  `vertex-app-runner@fine-century-509208-c7.iam.gserviceaccount.com`, using the owner's uploaded key file `ec3421ae-gcp-key.json`.
+- **The key file was deleted from the session (2 Nov 2026) at the owner's request.** It is NOT in the repo (never commit one). To run
+  `npm run check:live` again, ask the owner to attach a key file again (or a new key for the same service account), then set
+  `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT=fine-century-509208-c7`, `GOOGLE_CLOUD_LOCATION=global` and
+  `GOOGLE_APPLICATION_CREDENTIALS=<path to the file>` in the shell (not in a tracked file), run `npm run check:gemini` first, then the live check.
+- Deleting the local copy does not revoke the key at Google: the owner should delete that key under IAM > Service Accounts > Keys
+  (or create a fresh one when needed).
+- Last live results: all steps passed on Argon; BRD takes ~360 s, close to Google's ~370 s stream limit (watch item).
+
 ## Conventions
 - Output shapes are zod schemas in `server/aiSchemas.ts`: enforced by Claude structured outputs
   and validated after parsing for Gemini. Keep them in sync with `src/types.ts`.
