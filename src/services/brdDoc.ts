@@ -1,5 +1,7 @@
-import type { ApproachNote, ConfidenceStatus, ProductDefinition } from '../types';
+import type { ApproachNote, ConfidenceStatus, FitGap, ProductDefinition } from '../types';
 import type { Block, Section } from './docRender';
+import { renderMarkdown } from './docRender';
+import { currentFitGap, devObjects, FIT_LABEL, isPackage } from './fitGap';
 import { constraintSummary, withSystemFields } from './validationEngine';
 import { forAudience } from './questionAudience';
 import { readableState } from './documentMath';
@@ -113,6 +115,8 @@ export function brdSections(def: ProductDefinition, opts: DocOptions = {}): Sect
   if (def.integrations.length) extra.push(p('Other systems it works with:'), table(['System', 'How', 'Why', 'Basis'], def.integrations.map((i) => [i.system, i.protocol, i.purpose, basisOf(i.confidence)])));
   if (extra.length) s.push({ id: 'checks', title: 'Checks, messages and connections to other systems', blocks: extra });
 
+  if (isPackage(def)) s.push(...fitGapSections(def, currentFitGap(def)));
+
   if (def.nonFunctionalRequirements?.length || def.risks?.length) {
     s.push({ id: 'quality', title: 'Quality targets and risks', blocks: [
       ...(def.nonFunctionalRequirements?.length ? [table(['Area', 'What is expected', 'Target'], def.nonFunctionalRequirements.map((n) => [n.area, n.requirement, n.target ?? '']))] : []),
@@ -136,7 +140,7 @@ export function brdSections(def: ProductDefinition, opts: DocOptions = {}): Sect
   }
 
   s.push({ id: 'signoff', title: 'Sign-off', blocks: [
-    p('By signing, the business confirms that this document describes what it wants built, apart from any changes written on the review sheet.'),
+    p(`By signing, the business confirms that this document describes what it wants ${isPackage(def) ? 'implemented' : 'built'}, apart from any changes written on the review sheet.`),
     table(['', 'Name', 'Role', 'Signature', 'Date'], [['Business owner', '', '', '', ''], ['Business reviewer', '', '', '', '']], { tall: true }),
   ] });
   return s;
@@ -151,7 +155,7 @@ export function reviewSections(def: ProductDefinition): Section[] {
 
   s.push({ id: 'how', title: 'How to use this sheet', blocks: [
     p('This sheet is for you to write on. Fill in the last column of each table, then send it back (or reply to the email with the same answers). You do not need to answer everything at once: start with the questions marked "Must be answered before sign-off".'),
-    p('In the third table, write Keep, Change or Remove for each item we proposed. Anything you remove will not be built or priced.'),
+    p('In the table of items we proposed, write Keep, Change or Remove for each one. Anything you remove will not be built or priced.'),
   ] });
 
   s.push({ id: 'questions', title: 'Questions for the business', blocks: [
@@ -166,6 +170,16 @@ export function reviewSections(def: ProductDefinition): Section[] {
       ? table(['#', 'Assumption', 'Risk if wrong', 'Correct? (Yes, or what should change)'], pending.map((a, i) => [`A${i + 1}`, a.statement, a.riskLevel, '']), { tall: true })
       : p('There are no assumptions waiting for confirmation.'),
   ] });
+
+  if (isPackage(def)) {
+    const fg = currentFitGap(def);
+    const changes = fg.rows.filter((r) => r.fit === 'process-change');
+    s.push({ id: 'process-changes', title: `Where we propose to use the standard way of working in ${fg.platform}`, blocks: [
+      changes.length
+        ? table(['#', 'Requirement', 'What would change', 'Agree? (Yes, or why not)'], changes.map((r) => [r.id, r.requirement, r.gap || r.platformFeature, '']), { tall: true })
+        : p(`We have not proposed any change to how you work: every requirement is met by ${fg.platform} as it is, by settings, or by building what is missing.`),
+    ] });
+  }
 
   const items: string[][] = [];
   for (const m of def.modules) if (proposed(m.confidence)) items.push(['Module', m.name, m.description, '']);
@@ -198,4 +212,41 @@ export function approachSections(def: ProductDefinition, n: ApproachNote): Secti
   if (mine.length) s.push({ id: 'decisions', title: 'Decisions we need from the business', blocks: [table(['Needed', 'Question', 'What we propose'], mine.map((d) => [d.neededBy, d.question, d.recommendation ?? '']))] });
   void def;
   return s;
+}
+
+/** The fit-gap of a package implementation as a business reader sees it (also part of the BRD). No effort or money. */
+export function fitGapSections(def: ProductDefinition, fg: FitGap): Section[] {
+  const s: Section[] = [];
+  s.push({ id: 'fitgap', title: `How ${fg.platform} meets the requirements (fit-gap)`, blocks: [
+    p(fg.summary),
+    p(fg.origin === 'AI'
+      ? `Assessed against ${fg.platform}. Anything marked "to be confirmed" is checked with a ${fg.platform} specialist in the design workshops.`
+      : `A first view from the requirements alone. Every line is checked with a ${fg.platform} specialist in the design workshops.`),
+    p('Standard: works as delivered. Configuration: met by settings, no new code. Development: something new is built. Process change: the business adopts the standard way of working. Third-party: met outside the platform.'),
+    table(['#', 'Area', 'Requirement', 'Fit', `How ${fg.platform} meets it`, 'What is missing and how it is closed'],
+      fg.rows.map((r) => [r.id, r.area, r.requirement, `${FIT_LABEL[r.fit]}${r.objectType ? ` (${r.objectType})` : ''}`, r.platformFeature, r.gap ?? ''])),
+  ] });
+  const groups = devObjects(fg);
+  if (groups.length) {
+    s.push({ id: 'fitgap-dev', title: 'What will be built on top of the platform', blocks: [
+      table(['Kind', 'How many', 'Items'], groups.map((g) => [g.type, String(g.rows.length), g.rows.map((r) => `${r.id} ${r.requirement}`).join('; ')])),
+    ] });
+  }
+  if (fg.migration.length) {
+    s.push({ id: 'fitgap-migration', title: `Information to bring into ${fg.platform}`, blocks: [
+      table(['Information', 'Comes from', 'Notes'], fg.migration.map((m) => [m.name, m.source, m.notes ?? ''])),
+    ] });
+  }
+  s.push({ id: 'fitgap-setup', title: `How ${fg.platform} is set up for the business`, blocks: [
+    ...(fg.orgStructure.length ? [p('Organisation to define:'), ul(fg.orgStructure)] : []),
+    ...(fg.authorisations.length ? [p('Who gets which access:'), table(['Role', 'Access'], fg.authorisations.map((a) => [a.role, a.access]))] : []),
+    ...(fg.openPoints.length ? [p('Still to confirm:'), ul(fg.openPoints)] : []),
+  ] });
+  void def;
+  return s;
+}
+
+/** The fit-gap as plain text (Markdown) for copying into an email or a workshop deck. */
+export function fitGapText(def: ProductDefinition, fg: FitGap): string {
+  return renderMarkdown(`Fit-gap: ${def.productName} on ${fg.platform}`, [`${def.productName} for ${def.businessUnit}. Version ${def.version}.`], fitGapSections(def, fg));
 }

@@ -14,6 +14,8 @@ import {
 import { validateRecordHandler } from "./server/recordRoute";
 import { generateTestSuite } from "./server/testSuiteService";
 import { generateApproachNote } from "./server/approachNoteService";
+import { generateFitGap } from "./server/fitGapService";
+import { cleanDelivery } from "./src/services/fitGap";
 import { generateProposalNarrative, reconcileScope } from "./server/proposalService";
 import { buildPrototypeHtml, prototypeFileName } from "./server/prototypeExport";
 import { buildDemoPack } from "./server/demoPack";
@@ -62,6 +64,7 @@ async function startServer() {
   app.post("/api/analyze-material", async (req, res) => {
     try {
       const { materials, productName, businessUnit, description } = req.body;
+      const delivery = cleanDelivery(req.body.delivery);
       // Materials are optional: a product name alone is completed from benchmark patterns.
       if ((materials !== undefined && !Array.isArray(materials)) || (!materials?.length && !String(productName ?? "").trim())) {
         return res.status(400).json({ error: "Provide a product name or at least one business material." });
@@ -71,7 +74,8 @@ async function startServer() {
         materials ?? [],
         productName || "Untitled Product",
         businessUnit || "General",
-        description || ""
+        description || "",
+        delivery
       );
 
       return res.json(understanding);
@@ -223,6 +227,21 @@ async function startServer() {
       console.error("Error generating the approach note:", err);
       if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
       return res.status(500).json({ error: err?.message || "Failed to generate the approach note" });
+    }
+  });
+
+  // Fit-gap of a package implementation: written by a model when one is configured, derived by rules otherwise.
+  app.post("/api/generate-fit-gap", async (req, res) => {
+    try {
+      const definition = req.body.productDefinition || req.body.definition;
+      if (!definition?.businessRules || !definition?.personas || !Array.isArray(definition?.screens)) return res.status(400).json({ error: "Missing product definition." });
+      const delivery = cleanDelivery(definition.delivery);
+      if (delivery?.kind !== "package") return res.status(400).json({ error: "The fit-gap is for a package implementation. Set the delivery type to package first." });
+      return res.json(await generateFitGap({ ...definition, delivery }));
+    } catch (err: any) {
+      console.error("Error generating the fit-gap:", err);
+      if (err instanceof AIUnavailableError) return res.status(503).json({ error: err.message, aiUnavailable: true });
+      return res.status(500).json({ error: err?.message || "Failed to generate the fit-gap" });
     }
   });
 

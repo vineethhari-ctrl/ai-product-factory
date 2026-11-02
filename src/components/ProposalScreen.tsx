@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Briefcase, CheckCircle2, Download, FileText, Plus, Sparkles, Trash2, Upload, AlertTriangle, Copy, RotateCcw } from 'lucide-react';
 import type { ProductDefinition, ProposalState, ResourceRole, ScopeBaseline, ScopeKind } from '../types';
 import { addScopeItem, currentScope, removeNewItem, scopeCounts, setIncluded, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from '../services/scope';
-import { buildEstimate, currentProposalState, formatMoney, ROLES, toMonths } from '../services/estimate';
+import { buildEstimate, currentProposalState, formatMoney, rolesFor, toMonths } from '../services/estimate';
 import { currentNarrative, documentTitle, proposalHtml, proposalMarkdown, proposalSections } from '../services/proposalDoc';
 import type { Block } from '../services/proposalDoc';
 import { extractMaterialText } from '../services/materialExtractor';
@@ -267,7 +267,7 @@ export const ProposalScreen: React.FC<Props> = ({ definition, updateDefinition, 
               <label className="text-[11px] text-slate-500 font-semibold">Most people per role<input type="number" min={1} max={20} value={state.rateCard.maxPerRole} onChange={(e) => setCard({ maxPerRole: Math.max(1, Math.round(Number(e.target.value) || 1)) })} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {ROLES.map((r) => (
+              {rolesFor(definition).map((r) => (
                 <label key={r} className="text-[11px] text-slate-500 font-semibold">{r} (per day)<input type="number" min={0} value={state.rateCard.rates[r]} onChange={(e) => setRate(r, Math.max(0, Number(e.target.value) || 0))} className="mt-1 w-full text-xs border border-slate-300 rounded-lg px-2 py-1.5 text-slate-900" /></label>
               ))}
             </div>

@@ -1,3 +1,4 @@
+import { isPackage, platformName } from "../src/services/fitGap";
 import JSZip from "jszip";
 import type { ProductDefinition } from "../src/types";
 import { renderHtml } from "../src/services/docRender";
@@ -34,7 +35,9 @@ WHAT IS IN THIS PACK
   2-Business-Requirements-Document.doc
       What the product must do, in plain language: who uses it, how the work flows, the screens, the business documents,
       the rules and the information it keeps. Items marked "Proposed: please confirm" were not stated by you: we proposed
-      them from how similar work is usually done.
+      them from how similar work is usually done.${isPackage(def) ? `
+      It also shows how ${platformName(def)} meets each requirement (the fit-gap): what works as delivered, what is set up
+      by settings, what has to be built, and where we propose to use the platform's standard way of working.` : ""}
   3-Solution-Approach-Note.doc
       The problems we are solving, how the solution works, the choices we considered, the rollout in phases and the risks.
   4-Review-Sheet.doc

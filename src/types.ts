@@ -101,6 +101,8 @@ export interface BenchmarkInfo {
 
 export interface BusinessUnderstanding {
   benchmark?: BenchmarkInfo;
+  /** What is being delivered: a new application (default) or an implementation of a package platform. */
+  delivery?: DeliveryMode;
   /** Set by the local engine; carries the parsed brief to the definition and prototype steps. */
   blueprintBrief?: BlueprintBrief;
   businessObjective: EvidenceItem;
@@ -429,6 +431,10 @@ export interface OpenQuestionItem {
 
 export interface ProductDefinition {
   benchmark?: BenchmarkInfo;
+  /** What is being delivered: a new application (default) or an implementation of a package platform. */
+  delivery?: DeliveryMode;
+  /** Package implementation only: how the platform meets each requirement (standard, configuration, development...). */
+  fitGap?: FitGap;
   /** Set by the local engine; carries the parsed brief to the definition and prototype steps. */
   blueprintBrief?: BlueprintBrief;
   /** Problems found while normalising inferred field constraints (dropped patterns, clamped ranges). */
@@ -552,6 +558,69 @@ export interface TestSuite {
   /** What the suite proves about the BRD. */
   coverage: { rulesTotal: number; rulesCovered: number; journeysTotal: number; journeysCovered: number; entitiesTotal: number; entitiesCovered: number };
   /** Rules the model left uncovered and the engine added scenarios for. */
+  addedForCoverage?: string[];
+}
+
+/**
+ * What the initiative delivers. 'custom' = a new application built for the business (the default). 'package' = an
+ * implementation of a package platform the business has chosen (the platform is whatever the BA types; the code names none).
+ */
+export interface DeliveryMode {
+  kind: 'custom' | 'package';
+  /** The platform as the BA named it, e.g. the product and edition. Only meaningful for 'package'. */
+  platform?: string;
+}
+
+/** How the platform meets one requirement. */
+export type FitCategory = 'standard' | 'configure' | 'develop' | 'process-change' | 'third-party';
+/** Development object types of a package implementation (reports, interfaces, conversions, enhancements, forms, workflows). */
+export type DevObjectType = 'Report' | 'Interface' | 'Conversion' | 'Enhancement' | 'Form' | 'Workflow';
+export type Complexity = 'Low' | 'Medium' | 'High';
+
+export interface FitGapRow {
+  /** FG-01, FG-02 ... (set by the server). */
+  id: string;
+  /** Process area / platform module the requirement belongs to. */
+  area: string;
+  requirement: string;
+  /** BRD items this row covers: rule codes, screen names, integration systems, record names. */
+  traces: string[];
+  fit: FitCategory;
+  /** How the platform meets it: the standard capability, configuration area or app, in the platform's own terms. */
+  platformFeature: string;
+  /** For anything but 'standard': what is missing from the standard and how it is closed. */
+  gap?: string;
+  /** For 'develop' rows: the development object type. */
+  objectType?: DevObjectType;
+  complexity: Complexity;
+}
+
+export interface MigrationObject {
+  name: string;
+  /** Where the data comes from today (legacy system, spreadsheets, paper...). */
+  source: string;
+  complexity: Complexity;
+  notes?: string;
+}
+
+/** Fit-gap analysis of a package implementation: written by a model from the finished BRD, or derived from it by rules. */
+export interface FitGap {
+  origin: 'AI' | 'OFFLINE';
+  /** Fingerprint of the BRD it was written for (fitGapSignature); a changed BRD or platform makes it stale. */
+  basedOn?: string;
+  platform: string;
+  summary: string;
+  /** Process areas / platform modules in scope. */
+  areas: string[];
+  rows: FitGapRow[];
+  migration: MigrationObject[];
+  /** Organisational structure elements that must be defined in the platform (in its own terms). */
+  orgStructure: string[];
+  /** Business roles mapped to platform access (roles / authorisations). */
+  authorisations: Array<{ role: string; access: string }>;
+  /** Points a platform consultant must confirm. */
+  openPoints: string[];
+  /** BRD items the model left out that the server added as rows. */
   addedForCoverage?: string[];
 }
 
@@ -688,7 +757,9 @@ export interface ScopeBaseline {
 
 export type ResourceRole =
   | 'Project Manager' | 'Business Analyst' | 'Solution Architect' | 'UX Designer'
-  | 'Frontend Developer' | 'Backend Developer' | 'QA Engineer' | 'DevOps Engineer';
+  | 'Frontend Developer' | 'Backend Developer' | 'QA Engineer' | 'DevOps Engineer'
+  // Package implementation roles
+  | 'Functional Consultant' | 'Technical Consultant' | 'Integration Consultant' | 'Data Migration Consultant' | 'Platform Administrator';
 
 export interface RateCard {
   currency: string;
@@ -738,7 +809,9 @@ export interface ProposalState {
   narrative?: ProposalNarrative;
 }
 
-export type ActivityType = 'mobilise' | 'requirements' | 'architecture' | 'design' | 'build' | 'integration' | 'qa' | 'uat' | 'deploy' | 'training' | 'management';
+export type ActivityType = 'mobilise' | 'requirements' | 'architecture' | 'design' | 'build' | 'integration' | 'qa' | 'uat' | 'deploy' | 'training' | 'management'
+  // Package implementation
+  | 'configuration' | 'migration';
 
 export interface EstimateActivity {
   id: string;

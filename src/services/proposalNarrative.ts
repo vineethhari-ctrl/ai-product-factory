@@ -1,3 +1,4 @@
+import { isPackage, platformName } from './fitGap';
 import type { Estimate, ProductDefinition, ProposalNarrative, ProposalState, ScopeBaseline } from '../types';
 import { applyScope, scopeCounts, scopeSignature, SCOPE_KIND_LABEL, SCOPE_KIND_ORDER } from './scope';
 import { formatMoney, toMonths } from './estimate';
@@ -29,9 +30,12 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
   const phaseLine = (p: (typeof est.phases)[number]) => `${p.phase}: about ${p.weeks} week${p.weeks === 1 ? '' : 's'}, ${Math.round(p.days)} days of effort.`;
   const removed = removedItems(scope);
 
+  const pkg = isPackage(a);
+  const platform = platformName(a);
   const exclusions = [
     ...removed.map((g) => `${g.label} the business removed from the draft BRD: ${list(g.names, 8)}.`),
-    'Data migration from existing systems, unless added by a change request.',
+    pkg ? 'Data migration beyond the record types listed in the fit-gap, and cleansing of the source data (the business owns its data quality).' : 'Data migration from existing systems, unless added by a change request.',
+    ...(pkg ? [`${platform} licences and subscriptions, and development objects not listed in the fit-gap.`] : []),
     'Hardware, network, hosting and third-party licence costs.',
     'Production support after the hypercare period.',
     'Any feature, screen, record, rule or integration not listed in the approved scope.',
@@ -43,7 +47,7 @@ export function buildProposalNarrative(def: ProductDefinition, scope: ScopeBasel
   return {
     origin: 'OFFLINE',
     basedOn: scopeSignature(scope),
-    executiveSummary: `${vendor} proposes to deliver ${a.productName} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days, about ${toMonths(est.totalDays, est.daysPerMonth).toFixed(1)} person-months (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)}.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
+    executiveSummary: `${vendor} proposes to ${pkg ? `implement ${platform} as ${a.productName}` : `deliver ${a.productName}`} for ${client}: ${c.kept + c.added} approved item${c.kept + c.added === 1 ? '' : 's'} across ${a.modules.length} module${a.modules.length === 1 ? '' : 's'} and ${a.screens.length} screen${a.screens.length === 1 ? '' : 's'}, with ${a.businessRules.length} business rules and ${a.integrations.length} integration${a.integrations.length === 1 ? '' : 's'}. The work is estimated at ${Math.round(est.totalDays)} person-days, about ${toMonths(est.totalDays, est.daysPerMonth).toFixed(1)} person-months (${Math.round(est.functionalDays)} functional, ${Math.round(est.technicalDays)} technical) over about ${est.durationWeeks} weeks, at an estimated ${money(est.total)}.${cutModules.length ? ` The scope is the version the business approved after review; ${cutModules.join(', ')} ${cutModules.length === 1 ? 'is' : 'are'} not included.` : ' The scope is the version the business approved after review.'}`,
     background: (a.problemStatement?.length ? a.problemStatement : [a.objective]).filter(Boolean),
     objectives: [a.objective, ...(a.successMetrics ?? []).map((m) => `Measure: ${m}`)].filter(Boolean),
     approach: est.phases.map(phaseLine),

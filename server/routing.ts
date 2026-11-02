@@ -19,7 +19,7 @@
  * Max-token ceilings for the two heavy routes are also raised; see MAX_TOKENS notes.
  */
 
-export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype" | "generate-test-suite" | "generate-engineering" | "generate-approach-note" | "generate-proposal" | "reconcile-scope";
+export type AITask = "analyze-material" | "generate-definition" | "analyze-change" | "generate-prototype-ui" | "research-prototype" | "generate-test-suite" | "generate-engineering" | "generate-approach-note" | "generate-proposal" | "reconcile-scope" | "generate-fit-gap";
 
 export type RouteClass = "benchmark-analytics" | "ui-prototyping" | "fast-general" | "design-research" | "specification";
 
@@ -36,6 +36,7 @@ export const TASK_ROUTE: Record<AITask, RouteClass> = {
   "generate-engineering": "specification", // architecture, API contracts, NFRs, security, backlog, risks
   "generate-approach-note": "specification", // the leadership note: problems, solution, options, phases, risks, decisions
   "generate-proposal": "specification", // the proposal / SOW narrative for the approved scope (numbers come from the estimate engine)
+  "generate-fit-gap": "specification", // package implementation: how the chosen platform meets each requirement (standard, configuration, development)
   "reconcile-scope": "benchmark-analytics", // match the BU's final BRD to the draft: which items kept, removed, added (reads a large document)
 };
 
@@ -136,6 +137,7 @@ export const TASK_PROVIDER_ORDER: Record<AITask, Provider[]> = {
   "generate-approach-note": ["gemini", "claude"],
   "generate-proposal": ["gemini", "claude"],
   "reconcile-scope": ["gemini", "claude"],
+  "generate-fit-gap": ["gemini", "claude"],
 };
 
 const envKey = (prefix: string, task: AITask) => `${prefix}_${task.toUpperCase().replace(/-/g, "_")}`;

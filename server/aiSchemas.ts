@@ -465,6 +465,26 @@ export const ApproachNoteSchema = z.object({
   recommendations: z.array(z.object({ ref: z.string(), recommendation: z.string() })),
 });
 
+/** Fit-gap of a package implementation written by a model from a finished BRD (the server numbers the rows and adds coverage). */
+export const FitGapSchema = z.object({
+  summary: z.string(),
+  areas: z.array(z.string()),
+  rows: z.array(z.object({
+    area: z.string(),
+    requirement: z.string(),
+    traces: z.array(z.string()),
+    fit: z.enum(["standard", "configure", "develop", "process-change", "third-party"]),
+    platformFeature: z.string(),
+    gap: z.string().optional(),
+    objectType: z.enum(["Report", "Interface", "Conversion", "Enhancement", "Form", "Workflow"]).optional(),
+    complexity: z.enum(["Low", "Medium", "High"]),
+  })),
+  migration: z.array(z.object({ name: z.string(), source: z.string(), complexity: z.enum(["Low", "Medium", "High"]), notes: z.string().optional() })),
+  orgStructure: z.array(z.string()),
+  authorisations: z.array(z.object({ role: z.string(), access: z.string() })),
+  openPoints: z.array(z.string()),
+});
+
 /** Proposal / SOW narrative written by a model for the approved scope. Numbers are never asked of the model: the server computes them. */
 export const ProposalNarrativeSchema = z.object({
   executiveSummary: z.string(),

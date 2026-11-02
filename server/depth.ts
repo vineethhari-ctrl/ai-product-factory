@@ -44,6 +44,8 @@ const FOCUS: Partial<Record<AITask, string>> = {
     "For this task the best answer is a leadership note that makes the decision easy: the real problems, the real design choices with a clear pick and reason, a phased plan ordered by dependency and value, specific risks, and a defensible proposed answer for every open question.",
   "generate-proposal":
     "For this task the best answer reads like a winning proposal from a top consulting firm: precise about the approved scope and what is excluded, concrete deliverables and acceptance criteria, specific risks and client responsibilities, and terms that protect both sides, using only the figures given.",
+  "generate-fit-gap":
+    "For this task the best answer is the fit-gap a senior consultant on this platform would present at the end of the explore workshops: every requirement placed honestly (standard first, configuration next, development only for a real gap), the platform's own capability named for each, development objects typed and sized, migration objects and organisational elements listed, and every uncertain fit flagged for confirmation.",
   "reconcile-scope":
     "For this task the best answer decides every draft item correctly, recognising rewordings and merges as kept, spotting removals and deferrals, and listing only real additions, each with a short note saying why.",
 };

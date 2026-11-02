@@ -13,6 +13,8 @@ import {
   ChangeImpactAnalysis,
   TestSuite,
   ApproachNote,
+  DeliveryMode,
+  FitGap,
   ProposalNarrative,
   ScopeBaseline
 } from './types';
@@ -57,6 +59,8 @@ interface PersistedState {
   engineeringPackage: EngineeringPackage | null;
   /** Optional reference screen for Build Prototype (shrunk JPEG data URL). */
   referenceImage?: string | null;
+  /** New application or package implementation (and which platform). */
+  delivery?: DeliveryMode;
 }
 
 /** Returns true if the saved state contains meaningful data worth restoring. */
@@ -111,6 +115,9 @@ export default function App() {
   const [materials, setMaterials] = useState<UploadedMaterial[]>(
     saved?.materials ?? []
   );
+  const [delivery, setDelivery] = useState<DeliveryMode>(
+    saved?.delivery ?? saved?.productDefinition?.delivery ?? saved?.businessUnderstanding?.delivery ?? { kind: 'custom' }
+  );
 
   const [businessUnderstanding, setBusinessUnderstanding] = useState<BusinessUnderstanding | null>(
     saved?.businessUnderstanding ?? null
@@ -132,6 +139,7 @@ export default function App() {
   const [isGeneratingPrototype, setIsGeneratingPrototype] = useState(false);
   const [isGeneratingTests, setIsGeneratingTests] = useState(false);
   const [isGeneratingApproach, setIsGeneratingApproach] = useState(false);
+  const [isGeneratingFitGap, setIsGeneratingFitGap] = useState(false);
   const [isGeneratingProposal, setIsGeneratingProposal] = useState(false);
   const [isMatchingScope, setIsMatchingScope] = useState(false);
   const [isExportingPrototype, setIsExportingPrototype] = useState(false);
@@ -166,6 +174,7 @@ export default function App() {
         productDefinition,
         engineeringPackage,
         referenceImage,
+        delivery,
       };
       // Only persist if there is meaningful data; otherwise clear storage
       if (isStateMeaningful(state)) {
@@ -236,7 +245,7 @@ export default function App() {
       const response = await fetch('/api/analyze-material', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ materials, productName, businessUnit, description }),
+        body: JSON.stringify({ materials, productName, businessUnit, description, delivery }),
       });
       
       if (!response.ok) {
@@ -268,7 +277,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          businessUnderstanding: businessUnderstanding, 
+          businessUnderstanding: businessUnderstanding ? { ...businessUnderstanding, delivery } : businessUnderstanding,
           productName, 
           businessUnit,
           version: productDefinition?.version || 'v1.0'
@@ -302,7 +311,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          businessUnderstanding: businessUnderstanding,
+          businessUnderstanding: businessUnderstanding ? { ...businessUnderstanding, delivery } : businessUnderstanding,
           productName,
           businessUnit,
           version: productDefinition?.version || 'v1.0',
@@ -380,12 +389,13 @@ export default function App() {
       case 'generate-prototype-ui': return productDefinition ? () => { setAiStatus(null); handleBuildPrototype(true); } : undefined;
       case 'generate-test-suite': return productDefinition ? () => { setAiStatus(null); handleGenerateTests(); } : undefined;
       case 'generate-approach-note': return productDefinition ? () => { setAiStatus(null); handleGenerateApproach(); } : undefined;
+      case 'generate-fit-gap': return productDefinition ? () => { setAiStatus(null); handleGenerateFitGap(); } : undefined;
       case 'generate-proposal': return productDefinition ? () => { setAiStatus(null); handleGenerateProposal(); } : undefined;
       case 'generate-engineering': return productDefinition ? () => { setAiStatus(null); handlePrepareEngineering(); } : undefined;
       default: return undefined; // Change Impact: run the analysis again from the change window.
     }
   };
-  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isGeneratingApproach || isGeneratingProposal || isMatchingScope || isPreparingEngineering;
+  const isRetrying = isAnalyzing || isRegenerating || isGeneratingDefinition || isGeneratingPrototype || isGeneratingTests || isGeneratingApproach || isGeneratingFitGap || isGeneratingProposal || isMatchingScope || isPreparingEngineering;
 
   // Step 6: Change Impact Analysis
   const handleAnalyzeChange = async (changeRequest: string): Promise<ChangeImpactAnalysis> => {
@@ -544,6 +554,39 @@ export default function App() {
       showToast('The test suite could not be written: the server did not answer.');
     } finally {
       setIsGeneratingTests(false);
+    }
+  };
+
+  // Delivery type changed after the BRD exists (Fit-Gap tab): the definition and understanding carry it to every later step.
+  const handleChangeDelivery = (d: DeliveryMode) => {
+    setDelivery(d);
+    setProductDefinition((prev) => (prev ? { ...prev, delivery: d } : prev));
+    setBusinessUnderstanding((prev) => (prev ? { ...prev, delivery: d } : prev));
+  };
+
+  // Fit-gap of a package implementation: the AI writes it from the BRD when one is configured; the rules-based one stands in otherwise.
+  const handleGenerateFitGap = async () => {
+    if (!productDefinition || isRetrying || productDefinition.delivery?.kind !== 'package') return;
+    setIsGeneratingFitGap(true);
+    try {
+      const response = await fetch('/api/generate-fit-gap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productDefinition }),
+      });
+      if (response.ok) {
+        const fitGap: FitGap = await response.json();
+        setProductDefinition((prev) => (prev ? { ...prev, fitGap } : prev));
+        showToast(fitGap.origin === 'AI' ? `The AI assessed the BRD against ${fitGap.platform}.` : 'Fit-gap derived from the BRD by rules.');
+      } else {
+        const err = await response.json().catch(() => ({}));
+        showToast(err.error || 'The fit-gap could not be written. Click Retry.', 9000);
+      }
+    } catch (err) {
+      console.error('Error generating the fit-gap:', err);
+      showToast('The fit-gap could not be written: the server did not answer.');
+    } finally {
+      setIsGeneratingFitGap(false);
     }
   };
 
@@ -850,6 +893,7 @@ export default function App() {
     setProductDefinition(s.productDefinition ?? null);
     setEngineeringPackage(s.engineeringPackage ?? null);
     setReferenceImage(s.referenceImage ?? null);
+    setDelivery(s.delivery ?? s.productDefinition?.delivery ?? s.businessUnderstanding?.delivery ?? { kind: 'custom' });
     setActiveScreen(s.activeScreen ?? 'create');
     setAiStatus(null);
     setApiError(null);
@@ -875,6 +919,7 @@ export default function App() {
     setProductName('');
     setBusinessUnit('');
     setDescription('');
+    setDelivery({ kind: 'custom' });
     setMaterials([]);
 
     // 3. Stage 2 — Business Understanding
@@ -982,6 +1027,8 @@ export default function App() {
             setBusinessUnit={setBusinessUnit}
             description={description}
             setDescription={setDescription}
+            delivery={delivery}
+            setDelivery={setDelivery}
             materials={materials}
             setMaterials={setMaterials}
             onAnalyze={handleAnalyzeMaterials}
@@ -1015,6 +1062,9 @@ export default function App() {
               aiBusy={isRetrying}
               onGenerateApproach={handleGenerateApproach}
               isGeneratingApproach={isGeneratingApproach}
+              onGenerateFitGap={handleGenerateFitGap}
+              isGeneratingFitGap={isGeneratingFitGap}
+              onChangeDelivery={handleChangeDelivery}
               onNavigateToQASuite={() => setActiveScreen('qasuite')}
             />
           ) : (

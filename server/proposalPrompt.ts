@@ -2,12 +2,22 @@ import type { Estimate, ProductDefinition, ProposalState, ScopeBaseline } from "
 import { definitionDigest } from "./definitionDigest";
 import { addedItems, removedItems } from "../src/services/proposalNarrative";
 import { formatMoney, toMonths } from "../src/services/estimate";
+import { currentFitGap, fitGapCounts, isPackage, platformName } from "../src/services/fitGap";
 
 /**
  * Prompt for the proposal / SOW narrative. The model gets the APPROVED BRD (what the business kept, plus what it added),
  * what it removed, and the numbers the estimate engine computed. It writes words only: it must not change, add or
  * invent a number, a rate, a date or a scope item. Domain-neutral: every noun comes from the digest below.
  */
+/** A package implementation is priced as configuration, development and migration of the chosen platform, not a new build. */
+function packageNote(def: ProductDefinition): string {
+  const fg = currentFitGap(def);
+  const c = fitGapCounts(fg);
+  return `DELIVERY TYPE: an implementation of ${platformName(def)} (the business has chosen the platform). Describe the approach as a package implementation: prepare and explore (fit-gap workshops), realise (configure ${platformName(def)} and build only the development objects listed), test, migrate the data, deploy, hypercare. Fit-gap: ${fg.rows.length} requirements, ${c.standard} standard, ${c.configure} configuration, ${c.develop} development, ${c["process-change"]} process change, ${c["third-party"]} third-party; ${fg.migration.length} record types to migrate. Platform licences are the client's; data cleansing is a client responsibility.
+
+`;
+}
+
 export function buildProposalPrompt(approved: ProductDefinition, scope: ScopeBaseline, est: Estimate, state: ProposalState): string {
   const money = (n: number) => formatMoney(n, est.currency);
   const removed = removedItems(scope).map((g) => `${g.label}: ${g.names.join(", ")}`).join("\n") || "- nothing removed";
@@ -18,7 +28,7 @@ ${state.vendorName?.trim() ? `VENDOR: ${state.vendorName.trim()}\n` : ""}${state
 APPROVED SCOPE (the BRD after the business's review; this is exactly what is being priced):
 ${definitionDigest(approved)}
 
-NOTE: any PROCESS or JOURNEYS above describe how the business works, for context. Only the modules, screens, records, rules and integrations listed above are delivered; anything below is NOT.
+${isPackage(approved) ? packageNote(approved) : ""}NOTE: any PROCESS or JOURNEYS above describe how the business works, for context. Only the modules, screens, records, rules and integrations listed above are delivered; anything below is NOT.
 
 REMOVED BY THE BUSINESS (out of scope; never describe them as delivered):
 ${removed}

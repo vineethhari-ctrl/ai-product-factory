@@ -30,6 +30,7 @@ export const AI_BUTTONS: Record<AITask, string> = {
   "generate-approach-note": "Approach Note",
   "generate-proposal": "Proposal & SOW",
   "reconcile-scope": "Match final BRD",
+  "generate-fit-gap": "Fit-Gap",
 };
 
 const num = (name: string, fallback: number) => {

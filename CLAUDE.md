@@ -46,6 +46,7 @@ Source of truth: `server/routing.ts` (`ROUTING_MATRIX`, `TASK_ROUTE`, `TASK_PROV
 | `generate-engineering` (Engineering Package) | `/api/generate-engineering` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Same | 65,536 / 32,768 |
 | `generate-proposal` (Proposal & SOW, Write with AI) | `/api/generate-proposal` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | The words of the proposal for the approved scope; numbers come from the estimate engine | 65,536 / 32,768 |
 | `reconcile-scope` (Upload final BRD) | `/api/reconcile-scope` | gemini-4-argon (temp 0.2) | claude-sonnet-5-5 (effort medium) | Reads a large document and matches it to the draft's items | 24,576 / 16,384 |
+| `generate-fit-gap` (Fit-Gap tab, package implementations only, opens once per BRD + platform, or Assess with AI) | `/api/generate-fit-gap` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | Matches every requirement to the chosen platform's standard; the model's platform knowledge, flagged where unsure | 65,536 / 32,768 |
 | `generate-approach-note` (Approach Note tab, opens once per BRD, or Write with AI) | `/api/generate-approach` | gemini-4-argon (temp 0.3) | claude-sonnet-5-5 (effort high) | The leadership note from a finished BRD: reasoning (problems, options, phases, risks, proposed answers), not a template | 65,536 / 32,768 |
 
 `/api/apply-change`, `/api/export-package` and `/api/export-engineering` make no model call (`export-package` is the rules-based package).
@@ -330,7 +331,7 @@ no domain knowledge. Nothing in the engine, the prompt rules or the form may nam
   fields, stable steps, no double submit, server verdict) for `ui.entity`, else an entity whose name
   appears in the screen text. The Data Entities tab shows constraints and provenance; the BU can Confirm
   an inferred field or toggle Required in edit mode. Editing the other constraints is not built yet.
-- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:pack` (BU demo pack), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
+- **Checks**: `npm run check:transactions` (business documents), `npm run check:repair` (repairing AI answers, corrective retry), `npm run check:live` (real AI, needs a key; not part of the offline set), `npm run check:prototype` (AI-designed prototype, reference screen), `npm run check:materials` (reading uploaded files), `npm run check:questions` (BU / BA & Tech question split), `npm run check:thin` (name-only pipeline), `npm run check:usage` (AI usage control), `npm run check:routing` (per-task model routing), `npm run check:depth` (deep-dive directive on every AI click), `npm run check:quality` (test-case quality bar, readable choice lists), `npm run check:export` (stand-alone prototype file), `npm run check:pack` (BU demo pack), `npm run check:package` (package implementation mode), `npm run check:stream` (dropped Gemini streams), `npm run check:validation` (engine, three unlike domains, route, SQL, pipeline) and
   `npm run check:ui` (drives the real form in jsdom; needs `npm install --no-save jsdom --legacy-peer-deps`).
 
 ## Prototype UI
@@ -439,6 +440,33 @@ a keep/change/remove table of every proposed item). `POST /api/export-demo-pack`
 - Never included: test suite, engineering plan, scope baseline, estimate, proposal, design research, rates, allowance, keys.
   `check:pack` plants SECRET- markers and forbidden words (person-days, INR, SOW, contingency, allowance...) to prove it.
 - `docRender.ts` is the shared Markdown/Word section model (also used by `proposalDoc.ts`). `npm run check:pack` (needs jsdom).
+
+## Package implementation mode (`src/services/fitGap.ts`, `server/fitGapPrompt.ts`, `server/fitGapService.ts`, `src/components/FitGapPanel.tsx`)
+
+For initiatives that implement a platform the business has chosen (an ERP, CRM, HR or ITSM suite, a data platform...) instead of building
+a new application. `delivery: { kind: 'custom' | 'package', platform? }` on the understanding and the definition (`DeliveryPicker` on the
+create screen; switchable later in the BRD's **Fit-Gap** tab). The platform is whatever the BA types: the code and prompts name none
+(UI suggestions only), the model brings its own knowledge of that platform and must mark uncertain fits "(to be confirmed)".
+- **Prompts**: `packageDirective(platform)` is added to Understand Business and the BRD (requirements as processes to match to the
+  standard, screens = the work users do on the platform, records = data to hold or migrate, process-change questions for the BU).
+- **Fit-gap** (task `generate-fit-gap`, Gemini first, Claude backup, opens once per BRD + platform or "Assess with AI"): per requirement the
+  area, traces, fit (`standard` / `configure` / `develop` / `process-change` / `third-party`), the platform feature, the gap, the development
+  object type (Report, Interface, Conversion, Enhancement, Form, Workflow) and complexity; migration objects, organisational structure,
+  role access and open points. The server numbers rows (FG-01...), adds a row for every rule and integration the model left out
+  (`ensureFitGapCoverage`, `addedForCoverage`), types every development row, and adds every record as a migration object. Stored on
+  `definition.fitGap` with `basedOn` = `fitGapSignature` (BRD + platform). `buildFitGap` is the rules-based baseline from the BRD's shape
+  (integrations = interfaces, dashboards = reports, documents = standard transaction + form, rules = configuration, records = migration)
+  and says it must be confirmed by a platform consultant.
+- **Estimate** (`estimate.ts`): a package definition is sized from the fit-gap trimmed to the approved scope (`fitGapForScope`):
+  preparation, fit-gap workshops, architecture, landscape, configuration per area, development per object type, interfaces, third-party,
+  data migration, roles and authorisations, SIT, UAT, training and change, cutover, hypercare, PM 12%. Same allowance, rounding and
+  days x rate rules. Package team (`PACKAGE_ROLES`: functional, technical, integration, data migration consultants, platform administrator),
+  package RASIC parties (client key users own data and test) and milestones. Old rate cards gain default rates for the new roles.
+- **Documents**: the BRD (and the demo pack's BRD) adds the fit-gap, development objects, data to bring in and platform set-up; the review
+  sheet asks the BU to agree each process change; the proposal says the platform is implemented, migration is in scope, licences are not.
+  No effort or money in the fit-gap text. The test suite, engineering plan and prototype are unchanged in this mode.
+- `npm run check:package` covers it (delivery cleaning, prompts, rules-based and AI fit-gap with stand-ins, estimate, scope cuts, RASIC,
+  documents, demo pack, no platform names in code, domain neutrality).
 
 ## Project backup (`src/services/projectFile.ts`)
 

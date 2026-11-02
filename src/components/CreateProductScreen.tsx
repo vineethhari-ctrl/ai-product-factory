@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { UploadedMaterial, MaterialType } from '../types';
+import { UploadedMaterial, MaterialType, DeliveryMode } from '../types';
 import { extractMaterialText } from '../services/materialExtractor';
 import { 
   UploadCloud, 
@@ -19,6 +19,7 @@ import {
   Info,
   RotateCcw
 } from 'lucide-react';
+import { DeliveryPicker } from './DeliveryPicker';
 
 interface CreateProductScreenProps {
   productName: string;
@@ -27,6 +28,9 @@ interface CreateProductScreenProps {
   setBusinessUnit: (unit: string) => void;
   description: string;
   setDescription: (desc: string) => void;
+  /** New application or package implementation (and which platform). */
+  delivery?: DeliveryMode;
+  setDelivery?: (d: DeliveryMode) => void;
   materials: UploadedMaterial[];
   setMaterials: React.Dispatch<React.SetStateAction<UploadedMaterial[]>>;
   onAnalyze: () => void;
@@ -91,6 +95,8 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
   setBusinessUnit,
   description,
   setDescription,
+  delivery,
+  setDelivery,
   materials,
   setMaterials,
   onAnalyze,
@@ -367,6 +373,13 @@ export const CreateProductScreen: React.FC<CreateProductScreenProps> = ({
                 className="w-full text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition-all placeholder:text-slate-400"
               />
             </div>
+
+            {setDelivery && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">What is being delivered?</label>
+                <DeliveryPicker value={delivery} onChange={setDelivery} />
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">

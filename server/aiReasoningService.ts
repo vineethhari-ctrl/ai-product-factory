@@ -14,6 +14,7 @@ import {
   UITheme,
   ScreenDefinition,
   DataEntityDefinition,
+  DeliveryMode,
 } from "../src/types";
 import { type AIImage, AIUnavailableError, callLLMJSON } from "./llmRouter";
 import { buildPrototypePrompt, buildResearchPrompt } from "./prototypePrompt";
@@ -42,6 +43,8 @@ import { definitionWithAudiences, forAudience, withQuestionAudiences } from "../
 import { blueprintToUnderstanding, buildBlueprint } from "./processBlueprint";
 import { hasBriefStructure, parseBrief } from "./briefParser";
 import { buildApiContracts } from "./engineeringPlan";
+import { packageDirective } from "./fitGapPrompt";
+import { cleanDelivery, platformName } from "../src/services/fitGap";
 
 /**
  * Enterprise Intelligent Synthesis Engine (Fallback / Modular baseline)
@@ -52,24 +55,28 @@ export async function analyzeBusinessMaterial(
   materials: UploadedMaterial[],
   productName: string,
   businessUnit: string,
-  description: string = ""
+  description: string = "",
+  delivery?: DeliveryMode
 ): Promise<BusinessUnderstanding> {
-  const u = await analyzeUnlabelled(materials, productName, businessUnit, description);
-  return withQuestionAudiences(u, questionContext(u, productName, businessUnit));
+  const u = await analyzeUnlabelled(materials, productName, businessUnit, description, delivery);
+  const labelled = withQuestionAudiences(u, questionContext(u, productName, businessUnit));
+  // The delivery type is the BA's choice, carried to the BRD and every later step.
+  return delivery ? { ...labelled, delivery } : labelled;
 }
 
 async function analyzeUnlabelled(
   materials: UploadedMaterial[],
   productName: string,
   businessUnit: string,
-  description: string
+  description: string,
+  delivery?: DeliveryMode
 ): Promise<BusinessUnderstanding> {
   const materialsSummary = materials.map((m, idx) => 
     `[Source ${idx + 1}: ${m.filename} (${m.fileType})] \n${m.contentSnippet || 'Uploaded file content'}`
   ).join("\n\n---\n\n") || "(No materials were supplied. Only the product name, business unit and notes above are known; predict the rest from industry benchmarks.)";
 
   const thinness = assessMaterialThinness(materials, description);
-  const benchmarkBlock = thinness.thin ? analysisBenchmarkDirective(thinness.reason) : "";
+  const benchmarkBlock = (thinness.thin ? analysisBenchmarkDirective(thinness.reason) : "") + (delivery?.kind === "package" ? `\n${packageDirective(platformName({ delivery }))}\n` : "");
 
   const prompt = `COGNITIVE ROLE & LINGUISTIC NORMALIZATION DIRECTIVE:
 1. COGNITIVE ROLE & NORMALIZATION ENGINE: You act as an Autonomous Principal Systems Architect and Enterprise Business Strategist. Treat all incoming user inputs, notes, logs, and uploaded materials strictly as unstructured semantic signals, not final prose. Recognize that incoming signals are inherently noisy, draft-quality, and contain shorthand, typographical errors, phonetic mistakes, keyboard slips, and grammatical flaws.
@@ -439,7 +446,9 @@ export async function generateProductDefinition(
   businessUnit: string,
   version: string = "v1.0"
 ): Promise<ProductDefinition> {
-  return definitionWithAudiences(await generateDefinitionUnlabelled(understanding, productName, businessUnit, version));
+  const def = definitionWithAudiences(await generateDefinitionUnlabelled(understanding, productName, businessUnit, version));
+  const delivery = cleanDelivery(understanding.delivery);
+  return delivery ? { ...def, delivery } : def;
 }
 
 /** Problems, KPIs and the parsed brief from the BU's own words, used when the model left them out. */
@@ -459,7 +468,8 @@ async function generateDefinitionUnlabelled(
 ): Promise<ProductDefinition> {
   const thinness = assessUnderstandingThinness(understanding);
   const industry = understanding.benchmark?.industry || "the BU's industry";
-  const benchmarkBlock = thinness.thin ? definitionBenchmarkDirective(thinness.reason) : "";
+  const delivery = cleanDelivery(understanding.delivery);
+  const benchmarkBlock = (thinness.thin ? definitionBenchmarkDirective(thinness.reason) : "") + (delivery?.kind === "package" ? `\n${packageDirective(platformName({ delivery }))}\n` : "");
 
   const prompt = `COGNITIVE ROLE & LINGUISTIC NORMALIZATION DIRECTIVE:
 1. COGNITIVE ROLE & NORMALIZATION ENGINE: You act as an Autonomous Principal Systems Architect and Enterprise Business Strategist. Treat all incoming inputs as unstructured semantic signals rather than final text.

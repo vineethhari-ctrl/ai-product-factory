@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ProductDefinition, ConfidenceStatus } from '../types';
+import { ProductDefinition, ConfidenceStatus, DeliveryMode } from '../types';
+import { isPackage, platformName } from '../services/fitGap';
+import { FitGapPanel } from './FitGapPanel';
 import { constraintSummary, withSystemFields } from '../services/validationEngine';
 import { copyToClipboard } from '../services/clipboardUtils';
 import { currentTestSuite } from '../services/testSuite';
@@ -39,7 +41,8 @@ import {
   BookOpen,
   Cpu,
   Target,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Boxes
 } from 'lucide-react';
 
 interface ProductDefinitionScreenProps {
@@ -54,6 +57,10 @@ interface ProductDefinitionScreenProps {
   /** Writes the Solution Approach Note with the AI (when one is configured). */
   onGenerateApproach?: () => void;
   isGeneratingApproach?: boolean;
+  /** Package implementation: writes the fit-gap with the AI, and switches the delivery type. */
+  onGenerateFitGap?: () => void;
+  isGeneratingFitGap?: boolean;
+  onChangeDelivery?: (d: DeliveryMode) => void;
   onNavigateToQASuite?: () => void;
 }
 
@@ -67,6 +74,9 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   aiBusy,
   onGenerateApproach,
   isGeneratingApproach,
+  onGenerateFitGap,
+  isGeneratingFitGap,
+  onChangeDelivery,
   onNavigateToQASuite,
 }) => {
   /**
@@ -88,7 +98,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
   };
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'brd' | 'overview' | 'approach' | 'personas' | 'screens' | 'rules' | 'data' | 'integrations' | 'governance' | 'history' | 'tests'
+    'brd' | 'overview' | 'approach' | 'fitgap' | 'personas' | 'screens' | 'rules' | 'data' | 'integrations' | 'governance' | 'history' | 'tests'
   >('brd');
   const [saveToast, setSaveToast] = useState(false);
 
@@ -462,6 +472,7 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
             { id: 'brd', label: '📄 BRD Document', icon: FileText },
             { id: 'overview', label: 'Executive Overview', icon: Layers },
             { id: 'approach', label: 'Solution Approach Note', icon: BookOpen },
+            { id: 'fitgap', label: isPackage(definition) ? `Fit-Gap: ${platformName(definition)}` : 'Fit-Gap (package)', icon: Boxes },
             { id: 'personas', label: 'Personas & Journeys', icon: Users },
             { id: 'screens', label: 'Screens & UI Topology', icon: Monitor },
             { id: 'rules', label: 'Business Rules Engine', icon: Scale },
@@ -490,6 +501,10 @@ export const ProductDefinitionScreen: React.FC<ProductDefinitionScreenProps> = (
           })}
         </div>
       </div>
+
+      {activeTab === 'fitgap' && (
+        <FitGapPanel definition={definition} onChangeDelivery={onChangeDelivery} onGenerateFitGap={onGenerateFitGap} isGenerating={isGeneratingFitGap} aiBusy={aiBusy} />
+      )}
 
       {/* Tab 0: DEDICATED FULL BUSINESS REQUIREMENTS DOCUMENT (BRD) */}
       {activeTab === 'brd' && (
