@@ -327,9 +327,9 @@
   "say": "Screen 1. The technician's screen. Open requests and pending faulty returns at the top, status filters, a searchable list, and a button to raise a new request.",
   "marks": [
    [
-    "btn:New",
+    "btn:New Spare",
     "Main action",
-    "The main action of this screen, shown at the top right of the page."
+    "The main action of this screen: raise a new spare part request."
    ]
   ],
   "explain": [],
@@ -347,9 +347,9 @@
   "say": "Screen 3. The storekeeper's issuing console, with approved requests ready to pick, parts issued today, and the log of issue transactions.",
   "marks": [
    [
-    "btn:New",
+    "btn:New PartIssue",
     "Main action",
-    "The main action of this screen, shown at the top right of the page."
+    "The main action of this screen: record a new part issue."
    ]
   ],
   "explain": [],
