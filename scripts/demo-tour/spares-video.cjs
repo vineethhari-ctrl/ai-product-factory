@@ -5,7 +5,9 @@
  */
 const fs = require('fs'), path = require('path'), { execFileSync, spawnSync } = require('child_process');
 const OUT = path.resolve(process.env.TOUR_OUT || 'demo-tour/spares'); const MODEL = process.env.PIPER_MODEL;
-const slides = JSON.parse(fs.readFileSync(path.join(OUT, 'slides.json'), 'utf8')); const NARR = JSON.parse(fs.readFileSync(path.join(OUT, 'narration.json'), 'utf8'));
+const slides = JSON.parse(fs.readFileSync(path.join(OUT, 'slides.json'), 'utf8'));
+// narration: either narration.json ({id:text}) or composed from each slide: say, then every highlighted button (number, name, what it does), then the explanation of the output
+const NARR = fs.existsSync(path.join(OUT, 'narration.json')) ? JSON.parse(fs.readFileSync(path.join(OUT, 'narration.json'), 'utf8')) : Object.fromEntries(slides.map((s) => [s.id, [s.say, ...(s.marks || []).map((m) => `Button ${m.n}, ${m.label}. ${m.what}`), s.explain].filter(Boolean).join(' ')]).filter(([, t]) => t));
 const W = path.join(OUT, 'build'); fs.rmSync(W, { recursive: true, force: true }); fs.mkdirSync(W, { recursive: true });
 const run = (c, a) => execFileSync(c, a, { stdio: ['ignore', 'pipe', 'inherit'] }).toString();
 const dur = (f) => parseFloat(run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]));

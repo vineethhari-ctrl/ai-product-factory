@@ -1,0 +1,678 @@
+{
+ "overview": {
+  "title": "What the AI Product Factory is for",
+  "say": "This is the AI Product Factory. Its objective is simple: to take a rough business requirement, even a single line, and turn it into everything a delivery team needs. That means a business requirements document, a working prototype, test cases, an engineering plan, and a priced proposal, in hours instead of weeks. It does this in nine steps, shown here along the top, and each step is one button. The business stays in control, because nothing is final until they review and approve it. Let us walk through every step using a real example from the Spares module of a service centre.",
+  "marks": [
+   [
+    "text:Upload Material",
+    "The nine step bar",
+    "Shows where you are in the journey. Finished steps get a tick."
+   ],
+   [
+    "btn:Load Enterprise Demo Pack",
+    "Load demo pack",
+    "Loads a ready made sample, so people can try the tool without typing anything."
+   ]
+  ],
+  "explain": [
+   "The panel below explains the flow for business users in four moves: upload what you have, let the AI draft the requirements document, test a live prototype, and hand the result to engineering."
+  ],
+  "say2": []
+ },
+ "create": {
+  "title": "Step 1: Upload Material",
+  "say": "Step one is Upload Material. This is where the business tells the factory what it needs. Nothing has to be tidy.",
+  "marks": [
+   [
+    "ph:e.g. Unified",
+    "Product name",
+    "What this initiative is called. It appears in every document."
+   ],
+   [
+    "ph:e.g. Commercial",
+    "Business unit",
+    "Who the product is for."
+   ],
+   [
+    "btn:New application",
+    "New application",
+    "Choose this when a new application will be built for the business."
+   ],
+   [
+    "btn:Package implementation",
+    "Package implementation",
+    "Choose this when the business will implement a platform such as SAP, instead of building from scratch."
+   ],
+   [
+    "css:textarea[placeholder^=\"Any specific context\"]",
+    "Context notes",
+    "Free text. For this demo, we typed one line: the Spares requirement."
+   ],
+   [
+    "btn:Understand Business",
+    "Understand Business",
+    "Sends everything to the AI to read, and moves to step two."
+   ]
+  ],
+  "explain": [
+   "Our example is one line: spare part requests raised by technicians go through stock check, approval, issue, return of the faulty part and replenishment, with reorder alerts and an audit trail. Normally the business would also upload emails, slides, Word, Excel or PDF files, but a single line is enough to start."
+  ],
+  "say2": []
+ },
+ "understanding": {
+  "title": "Step 2: Business Understanding",
+  "say": "Step two is Business Understanding. After pressing Understand Business, the AI reads the input and reconstructs the requirement in a structured form. This took about three minutes.",
+  "marks": [
+   [
+    "text:Industry benchmark applied",
+    "Benchmark banner",
+    "Appears when the input is thin. The AI predicts missing requirements from how comparable organisations work, and marks every one of them as inferred, so nothing passes as confirmed."
+   ],
+   [
+    "btn:Clarifications",
+    "Clarifications",
+    "Opens the questions the AI needs answered, split between the business team and the technical team."
+   ],
+   [
+    "btn:Proceed to Product Definition",
+    "Proceed to Product Definition",
+    "Turns this understanding into the full requirements document, which is step three."
+   ]
+  ],
+  "explain": [
+   "In this example the factory said the material was limited, only about two hundred characters, and that it predicted the rest from comparable after sales service centres.",
+   "Below is an executive summary written for this product. It describes the whole lifecycle: stock checks, multi level approvals, controlled issuing, mandatory return of faulty parts, and automated replenishment with an audit trail.",
+   "Then come the questions. Business questions go to the business team in plain language, and technical questions go to the tech team. There are twelve here, and each needs an answer before sign off."
+  ],
+  "say2": [
+   "Scrolling down, we see the executive summary.",
+   "And the clarification questions."
+  ]
+ },
+ "brd": {
+  "title": "Step 3: BRD & Product Spec",
+  "say": "Step three is the BRD and Product Spec. One click on Proceed to Product Definition makes the AI write the full Business Requirements Document. This is the longest step, about three to six minutes.",
+  "marks": [
+   [
+    "btn:Edit",
+    "Edit",
+    "Lets the business analyst change any part of the document by hand."
+   ],
+   [
+    "btn:Approach Note",
+    "Approach Note",
+    "Opens a short note for leadership: the problems, the options, the phases and the risks."
+   ],
+   [
+    "btn:Lock Baseline & Notify BU",
+    "Lock Baseline and Notify BU",
+    "Freezes this version as the baseline and prepares the message to the business, so everyone reviews the same document."
+   ],
+   [
+    "btn:Test Suite",
+    "Test Suite",
+    "Jumps to the tests written from this document."
+   ],
+   [
+    "btn:Approve",
+    "Approve",
+    "Marks the document approved by the business. Approval unlocks the prototype."
+   ],
+   [
+    "btn:Copy Full BRD to Clipboard",
+    "Copy Full BRD",
+    "Copies the whole document as text, for email or a ticket."
+   ]
+  ],
+  "explain": [
+   "The banner reminds us again that inferred items need validation. The document is a draft until the business signs off.",
+   "The tabs across the top are different views of the same document. We will open each one."
+  ],
+  "say2": [
+   "Below the buttons are the tabs and the start of the document."
+  ]
+ },
+ "brd-overview": {
+  "title": "BRD tab: Executive Overview",
+  "say": "Tab one is Executive Overview. It is the summary of the whole document.",
+  "marks": [],
+  "explain": [
+   "It states the objective, the problem being solved, the scope and the success measures for spares management, in the business's own vocabulary. Every item shows its basis: stated by the business, proposed by the AI, or inferred."
+  ],
+  "say2": [],
+  "tab": "Executive Overview"
+ },
+ "brd-approach": {
+  "title": "BRD tab: Solution Approach Note",
+  "say": "Tab two is the Solution Approach Note, written for leadership.",
+  "marks": [],
+  "explain": [
+   "It lists the problems, the proposed solution for each module, the design options considered, a phased roadmap, and the main risks, with a proposed answer to each open question so decisions can be taken quickly."
+  ],
+  "say2": [],
+  "tab": "Solution Approach Note"
+ },
+ "brd-personas": {
+  "title": "BRD tab: Personas and Journeys",
+  "say": "Tab three is Personas and Journeys.",
+  "marks": [],
+  "explain": [
+   "The factory found five roles: the service technician, the storekeeper, the workshop supervisor, the regional inventory planner, and an auditor with read only access. For each role it lists goals and access rights, and the journeys show how a request moves between them."
+  ],
+  "say2": [],
+  "tab": "Personas & Journeys"
+ },
+ "brd-screens": {
+  "title": "BRD tab: Screens and UI Topology",
+  "say": "Tab four is Screens and UI Topology.",
+  "marks": [],
+  "explain": [
+   "Every screen of the future application is listed with its purpose, layout type, key figures, filters, table columns and actions. The prototype in the next step is built directly from this list."
+  ],
+  "say2": [],
+  "tab": "Screens & UI Topology"
+ },
+ "brd-rules": {
+  "title": "BRD tab: Business Rules Engine",
+  "say": "Tab five is the Business Rules Engine.",
+  "marks": [],
+  "explain": [
+   "Each business rule has a code, a statement and its evidence. For example, every spare part request must run an automated stock check, and issuing is blocked when the approved quantity is more than the stock on hand minus reserved. There are six rules, and each one is traced to tests later."
+  ],
+  "say2": [],
+  "tab": "Business Rules Engine"
+ },
+ "brd-data": {
+  "title": "BRD tab: Data Model and Fields",
+  "say": "Tab six is the Data Model and Fields.",
+  "marks": [],
+  "explain": [
+   "The records the product keeps, such as spare part requests, issue transactions, faulty part returns and the audit trail, each with every field, its type, whether it is compulsory, and its validation rules. System fields like created by and row version are added automatically."
+  ],
+  "say2": [],
+  "tab": "Data Model & Fields"
+ },
+ "brd-integrations": {
+  "title": "BRD tab: Integrations and APIs",
+  "say": "Tab seven is Integrations and APIs.",
+  "marks": [],
+  "explain": [
+   "The other systems the spares module has to talk to, such as the enterprise resource planning system, the warehouse system and notifications, with what is exchanged."
+  ],
+  "say2": [],
+  "tab": "Integrations & APIs"
+ },
+ "brd-governance": {
+  "title": "BRD tab: Governance and Risks",
+  "say": "Tab eight is Governance and Risks.",
+  "marks": [],
+  "explain": [
+   "Risks written for this product, the standard non functional requirements for performance, security and availability, and the open questions listed by team with an owner for each decision."
+  ],
+  "say2": [],
+  "tab": "Governance & Risks"
+ },
+ "brd-tests": {
+  "title": "BRD tab: Use Cases and Tests",
+  "say": "Tab nine is Use Cases and Tests.",
+  "marks": [],
+  "explain": [
+   "The test suite is linked to the document here. We will see it in full at step seven."
+  ],
+  "say2": [],
+  "tab": "Use Cases & Tests"
+ },
+ "approved": {
+  "title": "Approve the BRD",
+  "say": "Once the business has reviewed the document, trimmed anything out of scope, and agreed it, we press Approve BRD and Build Prototype.",
+  "marks": [
+   [
+    "btn:Approve BRD & Build Prototype",
+    "Approve BRD and Build Prototype",
+    "Locks the baseline and opens step four, the interactive prototype."
+   ]
+  ],
+  "explain": [
+   "Approval is the control point. Until the business signs off, everything is marked as a draft."
+  ],
+  "say2": []
+ },
+ "prototype-intro": {
+  "title": "Step 4: Interactive Prototype",
+  "say": "Step four is the Interactive Prototype. This is the application, shown as the business would use it. At this point it is built by rules from the document, and next we will ask the AI to design it properly.",
+  "marks": [
+   [
+    "btn:Application view",
+    "Application view",
+    "Shows the prototype as a finished application."
+   ],
+   [
+    "btn:Data & schema",
+    "Data and schema",
+    "Shows the data tables behind it."
+   ],
+   [
+    "btn:Design tools",
+    "Design tools",
+    "Opens the controls for the AI design, and for a reference screen."
+   ],
+   [
+    "btn:Request Change",
+    "Request Change",
+    "Describes a change in plain words and shows what it affects. This is step six."
+   ],
+   [
+    "btn:Export prototype",
+    "Export prototype",
+    "Saves the prototype as one file that opens in any browser, with no install."
+   ],
+   [
+    "btn:BU demo pack",
+    "BU demo pack",
+    "Downloads a zip for the business: the prototype, the BRD, the approach note and a review sheet. No costs are included."
+   ],
+   [
+    "btn:All docs (Word)",
+    "All docs Word",
+    "Downloads every document as Word, for the team."
+   ],
+   [
+    "btn:Engineering Pkg",
+    "Engineering Pkg",
+    "Prepares the engineering package, which is step eight."
+   ]
+  ],
+  "explain": [
+   "The role selector lets us see the application as each user. Every button on this toolbar is one deliverable or one action."
+  ],
+  "say2": []
+ },
+ "design-tools": {
+  "title": "Design tools: design with AI",
+  "say": "Design tools opens this bar. Here we can upload a reference screenshot, and the AI copies its layout, never its words or data.",
+  "marks": [
+   [
+    "btn:Design with AI",
+    "Design with AI",
+    "Asks the AI to research comparable applications and then design every screen for this product. It can be repeated with Redesign with AI."
+   ]
+  ],
+  "explain": [
+   "We pressed Design with AI. The AI first researched four comparable applications, then designed all eight screens. It took about five minutes."
+  ],
+  "say2": []
+ },
+ "prototype": {
+  "title": "The prototype, designed by the AI",
+  "say": "This is the result. The left menu lists the screens, grouped by module, and the top right shows the signed in sample user for the selected role.",
+  "marks": [
+   [
+    "btn:Application view",
+    "Application view",
+    "The finished application look."
+   ],
+   [
+    "css:select",
+    "Role selector",
+    "Switch the whole application to another role, to see what that person would see."
+   ]
+  ],
+  "explain": [
+   "Every screen was designed for its own job, using the business's words. We will open each one."
+  ],
+  "say2": []
+ },
+ "proto-1": {
+  "title": "Prototype screen 1",
+  "say": "Screen 1. The technician's screen. Open requests and pending faulty returns at the top, status filters, a searchable list, and a button to raise a new request.",
+  "marks": [
+   [
+    "btn:New",
+    "Main action",
+    "The main action of this screen, shown at the top right of the page."
+   ]
+  ],
+  "explain": [],
+  "say2": []
+ },
+ "proto-2": {
+  "title": "Prototype screen 2",
+  "say": "Screen 2. The supervisor's approval queue, where requests wait for a decision.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "proto-3": {
+  "title": "Prototype screen 3",
+  "say": "Screen 3. The storekeeper's issuing console, with approved requests ready to pick, parts issued today, and the log of issue transactions.",
+  "marks": [
+   [
+    "btn:New",
+    "Main action",
+    "The main action of this screen, shown at the top right of the page."
+   ]
+  ],
+  "explain": [],
+  "say2": []
+ },
+ "proto-4": {
+  "title": "Prototype screen 4",
+  "say": "Screen 4. Bin inventory and thresholds, where stock levels and reorder points are set.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "proto-5": {
+  "title": "Prototype screen 5",
+  "say": "Screen 5. Faulty part return intake, where returned parts are checked and quarantined.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "proto-6": {
+  "title": "Prototype screen 6",
+  "say": "Screen 6. Reorder alerts and replenishment, for the planner.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "proto-7": {
+  "title": "Prototype screen 7",
+  "say": "Screen 7. The spares transaction ledger, a record of every movement that cannot be changed.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "proto-8": {
+  "title": "Prototype screen 8",
+  "say": "Screen 8. The spare part catalog ledger, a tamper evident hash chain. Selecting a record opens its details, and the business can even simulate tampering to see the chain break.",
+  "marks": [],
+  "explain": [],
+  "say2": []
+ },
+ "role-switch": {
+  "title": "Switching role",
+  "say": "Switching the role changes the menu and what each user can do. The auditor, for example, has read only access.",
+  "marks": [
+   [
+    "css:select",
+    "Role selector",
+    "Changes who you are in the prototype."
+   ]
+  ],
+  "explain": [
+   "This lets the business check, screen by screen, that each person sees only what they should."
+  ],
+  "say2": []
+ },
+ "change-open": {
+  "title": "Step 6: Change Impact",
+  "say": "Step six is Change Impact. When the business wants something changed, they press Request Change and describe it in plain words.",
+  "marks": [
+   [
+    "btn:Analyze Impact",
+    "Analyze Impact",
+    "Asks the AI which screens, rules, records, tests and costs the change touches."
+   ]
+  ],
+  "explain": [
+   "Here we typed a request for a warranty check before a part is issued."
+  ],
+  "say2": []
+ },
+ "change-result": {
+  "title": "Change impact result",
+  "say": "This is the impact analysis.",
+  "marks": [],
+  "explain": [
+   "It lists what the change touches, so the business can decide before any work starts. Because the document is locked, the change is recorded against the baseline."
+  ],
+  "say2": []
+ },
+ "blueprint": {
+  "title": "Service Blueprint",
+  "say": "This is the Service Blueprint view, the process as a chain of steps with who does what.",
+  "marks": [
+   [
+    "btn:Simulate Step",
+    "Simulate Step",
+    "Walks a case through the process, one step at a time."
+   ],
+   [
+    "btn:KPI Commitments",
+    "KPI Commitments",
+    "Shows the measures the business committed to."
+   ]
+  ],
+  "explain": [
+   "It helps the business check that the process, as understood, is the one they actually run."
+  ],
+  "say2": []
+ },
+ "qa": {
+  "title": "Step 7: Use Cases and QA",
+  "say": "Step seven is Use Cases and QA. The AI writes the test suite from the approved document.",
+  "marks": [
+   [
+    "btn:Regenerate with AI",
+    "Regenerate with AI",
+    "Rewrites the test suite with the AI, if the document has changed."
+   ],
+   [
+    "btn:Copy Test Suite",
+    "Copy Test Suite",
+    "Copies it for Jira or UAT."
+   ],
+   [
+    "btn:Proceed to Engineering Package",
+    "Proceed to Engineering Package",
+    "Moves to step eight."
+   ]
+  ],
+  "explain": [
+   "All six business rules are covered. There are five formal use cases, thirty six scenarios and thirty four executable test cases.",
+   "Each use case follows the whole lifecycle, from request through approval, issue and return, to replenishment."
+  ],
+  "say2": [
+   "Further down, the use cases."
+  ]
+ },
+ "qa-matrix": {
+  "title": "QA: Scenario Coverage Matrix",
+  "say": "The Scenario Coverage Matrix tab.",
+  "marks": [
+   [
+    "btn:Scenario Coverage Matrix",
+    "Scenario Coverage Matrix",
+    "Shows how every rule is tested."
+   ]
+  ],
+  "explain": [
+   "For every rule there are positive, negative, boundary and edge scenarios, so a rule is tested when it holds and when it is broken."
+  ],
+  "say2": [],
+  "tab": "Scenario Coverage Matrix"
+ },
+ "qa-cases": {
+  "title": "QA: Executable Test Cases",
+  "say": "The Executable Test Cases tab.",
+  "marks": [
+   [
+    "btn:Executable Test Cases",
+    "Executable Test Cases",
+    "The cases the testing team runs."
+   ]
+  ],
+  "explain": [
+   "Each case has steps, test data in the product's own field names, and a measurable expected result."
+  ],
+  "say2": [],
+  "tab": "Executable Test Cases"
+ },
+ "qa-bdd": {
+  "title": "QA: Automated BDD Feature",
+  "say": "The Automated BDD Feature tab.",
+  "marks": [
+   [
+    "btn:Automated BDD Feature",
+    "Automated BDD Feature",
+    "The same tests as a Gherkin file."
+   ]
+  ],
+  "explain": [
+   "The scenarios are written as given, when and then steps, ready for an automation framework."
+  ],
+  "say2": [],
+  "tab": "Automated BDD Feature"
+ },
+ "eng": {
+  "title": "Step 8: Engineering Package",
+  "say": "Step eight is the Engineering Package, for the delivery team.",
+  "marks": [
+   [
+    "btn:All documents as Word",
+    "All documents as Word",
+    "Downloads every document as real Word files."
+   ],
+   [
+    "btn:Download All Deliverables",
+    "Download All Deliverables",
+    "One zip with everything."
+   ],
+   [
+    "btn:JSON",
+    "JSON",
+    "The project data, for tools."
+   ],
+   [
+    "btn:Download BRD",
+    "Download BRD",
+    "The requirements document as a PDF."
+   ]
+  ],
+  "explain": [
+   "The architecture and delivery plan was written by the AI for this product.",
+   "It describes the services, who owns them, the interfaces they expose and the events they publish.",
+   "Further down are the API contracts for every record, the quality targets with numbers, security controls, the backlog with acceptance lines, deployment, and the test strategy."
+  ],
+  "say2": [
+   "Scrolling, the services and interfaces.",
+   "And the contracts, targets and backlog."
+  ]
+ },
+ "prop-scope": {
+  "title": "Step 9: Proposal and SOW, approved scope",
+  "say": "Step nine is the Proposal and Statement of Work, and this is where effort generation happens. It is built from the scope the business approved, never from the first draft.",
+  "marks": [
+   [
+    "btn:Upload final BRD",
+    "Upload final BRD",
+    "If the business returns a final signed BRD, the AI matches it to the draft to see what was kept or removed."
+   ],
+   [
+    "btn:1. Approved scope",
+    "1. Approved scope",
+    "Tick or untick every module, screen, record, rule and integration."
+   ]
+  ],
+  "explain": [
+   "The summary shows effort, duration and total fee. Every item has a tick, and cutting a module removes its screens and changes the estimate."
+  ],
+  "say2": []
+ },
+ "prop-confirmed": {
+  "title": "Confirm the scope",
+  "say": "Now the analyst types who approved the scope and when, and presses Confirm.",
+  "marks": [
+   [
+    "btn:Confirm this is the BU-approved scope",
+    "Confirm scope",
+    "Locks the scope. Until then every document is marked draft."
+   ]
+  ],
+  "explain": [
+   "After confirming, the estimate and the document price exactly this scope."
+  ],
+  "say2": []
+ },
+ "prop-effort": {
+  "title": "Effort generation",
+  "say": "The Effort tab is effort generation. It is calculated by rules, not guessed by the AI.",
+  "marks": [
+   [
+    "btn:2. Effort",
+    "2. Effort",
+    "Shows the person days for every activity."
+   ]
+  ],
+  "explain": [
+   "Each activity shows functional and technical days, its phase, and how it was estimated. The total is about two hundred and ninety seven person days, or nearly fifteen person months. Any figure can be adjusted, and it is flagged as adjusted."
+  ],
+  "say2": []
+ },
+ "prop-cost": {
+  "title": "Cost and team",
+  "say": "The Cost and team tab.",
+  "marks": [
+   [
+    "btn:3. Cost",
+    "3. Cost and team",
+    "Days times rate, for each role."
+   ]
+  ],
+  "explain": [
+   "The fee is about twenty nine lakh sixty six thousand rupees over about nine weeks. The price is exactly days multiplied by rate, with payment milestones that add up to the total."
+  ],
+  "say2": []
+ },
+ "prop-rasic": {
+  "title": "RASIC",
+  "say": "The RASIC tab.",
+  "marks": [
+   [
+    "btn:4. RASIC",
+    "4. RASIC",
+    "Who is responsible, accountable, supporting, informed or consulted."
+   ]
+  ],
+  "explain": [
+   "For each type of activity it shows the delivery team and the client's roles. Each row has exactly one accountable party."
+  ],
+  "say2": []
+ },
+ "prop-doc": {
+  "title": "The proposal document",
+  "say": "The last tab is the proposal document itself.",
+  "marks": [
+   [
+    "btn:5. Proposal",
+    "5. Proposal / SOW",
+    "The finished document."
+   ],
+   [
+    "btn:Rewrite with AI",
+    "Write with AI",
+    "Asks the AI to write the words of the proposal. The numbers always come from the estimate engine."
+   ]
+  ],
+  "explain": [
+   "It covers the summary, approach, deliverables, assumptions, exclusions, client responsibilities, risks, acceptance and governance, and can be downloaded as a Word file. That completes the cycle: one line of requirement to a priced proposal."
+  ],
+  "say2": []
+ },
+ "usage": {
+  "title": "AI usage control",
+  "say": "Finally, the AI tokens button at the top shows who spent what.",
+  "marks": [
+   [
+    "btn:AI tokens",
+    "AI tokens",
+    "Opens the usage panel."
+   ]
+  ],
+  "explain": [
+   "It shows tokens and cost by person and project, with limits and a monthly budget. A full cycle like this costs a few dollars."
+  ],
+  "say2": []
+ }
+}
