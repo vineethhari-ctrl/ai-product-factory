@@ -36,6 +36,13 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const M = JSON.parse(fs.readFileSync(path.join(__dirname, 'howto-spec.json'), 'utf8'));
   const S = (id, o = {}) => slide(id, M[id].title, { ...M[id], ...o });
 
+  if (process.env.BRD_ONLY) {   // recapture only the BRD pages from a saved project (LS=<localstorage.json>), no AI calls
+    const ls = JSON.parse(fs.readFileSync(process.env.LS, 'utf8')); await p.evaluate((d) => { for (const [k, v] of Object.entries(d)) { try { localStorage.setItem(k, v); } catch {} } }, ls); await p.reload(); await sleep(3000);
+    await step('brd', async () => { await click(/BRD & Product Spec/); await p.getByText('Official Business Requirements Document', { exact: false }).first().waitFor({ timeout: 60000 }); await sleep(2500); });
+    await S('brd', { ys: [0, 800] });
+    for (const id of ['brd-overview', 'brd-approach', 'brd-personas', 'brd-screens', 'brd-rules', 'brd-data', 'brd-integrations', 'brd-governance', 'brd-tests']) await step(id, async () => { await click(new RegExp(esc(M[id].tab))); await sleep(2200); }).then(() => S(id));
+    log('DONE'); await b.close(); return;
+  }
   await step('start', async () => { const nb = p.locator('input[placeholder^="e.g. priya"]'); if (await nb.count()) { await nb.fill('Vineeth'); await p.keyboard.press('Enter'); await sleep(600); } });
   await S('overview');
   await step('fill', async () => { await p.locator('input[placeholder^="e.g. Unified"]').fill('Spares Management'); await p.locator('input[placeholder^="e.g. Commercial"]').fill('After-Sales Service'); await p.locator('textarea[placeholder^="Any specific context"]').fill(REQ); await sleep(600); await p.getByText('PRODUCT INITIATIVE').first().scrollIntoViewIfNeeded().catch(() => {}); });
