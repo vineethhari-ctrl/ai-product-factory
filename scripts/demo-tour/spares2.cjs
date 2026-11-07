@@ -28,7 +28,7 @@ let order = all.map((s) => s.id.replace(/-\d+$/, ''));
   await step('qa', async () => { await click(/Use Cases & QA/); await sleep(3000); const g = btn(/Generate with AI/); if (await g.count()) { await g.click(); await sleep(3000); await p.waitForFunction(() => !/Writing|Generating|Drafting/i.test(document.body.innerText), null, { timeout: 900000 }).catch(() => {}); } await sleep(2500); });
   await shot('qa', 'Use cases and QA', [0, 800]);
   for (const [id, name] of [['qa-matrix', 'Scenario Coverage Matrix'], ['qa-cases', 'Executable Test Cases'], ['qa-bdd', 'Automated BDD Feature']]) { await step(id, async () => { await click(new RegExp(name)); await sleep(1200); }); await shot(id, name, [0, 600]); }
-  await step('eng', async () => { await click(/Interactive Prototype/); await sleep(2500); await click(/Engineering Pkg/); await p.getByText('Autonomous Engineering Handoff').first().waitFor({ timeout: 2400000 }); await p.waitForFunction(() => !/Generating|Writing|Drafting/i.test(document.body.innerText), null, { timeout: 900000 }).catch(() => {}); await sleep(3000); });
+  await step('eng', async () => { await click(/Interactive Prototype/); await sleep(2500); await click(/Engineering Pkg/); await p.getByText('Autonomous Engineering Handoff').first().waitFor({ timeout: 300000 }); await p.waitForFunction(() => !/Generating|Writing|Drafting/i.test(document.body.innerText), null, { timeout: 900000 }).catch(() => {}); await sleep(3000); });
   await shot('eng', 'Engineering package', [0, 800, 1600]);
   const rank = (id) => { const k = id.replace(/-\d+$/, ''); const i = order.indexOf(k); return i < 0 ? 999 : i; };
   const prop = slides.filter((s) => s.id.startsWith('prop')); const rest = slides.filter((s) => !s.id.startsWith('prop'));
